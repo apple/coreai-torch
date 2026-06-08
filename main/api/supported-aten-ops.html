@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="indigo" data-content_root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Supported ATen ops - coreai-torch documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Debugging" href="debugging.html" /><link rel="prev" title="TorchMetalKernel" href="TorchMetalKernel.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d88b86f9" />
+    <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=9454f7d5" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=05f3bbaf" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    
+  <meta property="og:type" content="website"/><meta property="og:title" content="Supported ATen ops"/>
+    <meta name="twitter:card" content="summary"/>
+  <script>
+  var defined_VERSIONS = [{"name": "main", "version": "main"}];
+  var defined_VERSION_MATCH = "main";
+</script>
+<script src="../_static/version-switcher.js" defer></script>
+<script>
+  // Override Shibuya's 3-state toggle (auto/light/dark) with a 2-state toggle (light/dark)
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.querySelector(".js-theme");
+    if (!btn) return;
+
+    // Remove Shibuya's click listener by cloning the button
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    function getEffectiveMode() {
+      var mode = document.documentElement.getAttribute("data-color-mode") || "auto";
+      if (mode === "auto") {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      return mode;
+    }
+
+    newBtn.addEventListener("click", function () {
+      var next = getEffectiveMode() === "dark" ? "light" : "dark";
+      if (typeof setColorMode === "function") {
+        setColorMode(next);
+      }
+      localStorage._theme = next;
+      var label = newBtn.getAttribute("data-aria-" + next);
+      if (label) newBtn.setAttribute("aria-label", label);
+    });
+  });
+</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../index.html">
+      
+      
+      <strong>coreai-torch</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"><ul><li class="link"><a href="../getting-started/installation.html">Getting Started</a></li><li class="link"><a href="../guides/conversion-workflows.html">Guides</a></li><li class="link"><a href="TorchConverter.html">API</a></li><li class="link"><a href="../coreai-core/index.html">coreai-core</a></li></ul></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../getting-started/installation.html">Installing coreai-torch</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../getting-started/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../whats-new.html">What&#8217;s new</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/conversion-workflows.html">Conversion Workflows</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/custom-op-lowering.html">Custom Op Lowering</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/custom-metal-kernels.html">Custom Metal Kernels</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/composite-ops.html">Composite Ops Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/externalization.html">Externalization</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">API Reference</span></p>
+<ul class="current">
+<li class="toctree-l1 _expand"><a class="reference internal" href="TorchConverter.html">TorchConverter API reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="composite-ops.html">Composite ops API reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="composite-ops/module-class.html">Module-class composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/gather-mm.html">GatherMM</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/gated-delta-update.html">GatedDeltaUpdate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/rms-norm.html">RMSNormImpl</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/rope.html">RoPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/sdpa.html">SDPA</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="composite-ops/aten-derived.html">ATen-derived composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/batch-norm.html">batch_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/group-norm.html">group_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/hard-sigmoid.html">hard_sigmoid</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/instance-norm.html">instance_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/layer-norm.html">layer_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/linalg-vector-norm.html">linalg_vector_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/log-softmax.html">log_softmax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/pixel-shuffle.html">pixel_shuffle</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="generate-composite-decl.html">generate_composite_decl</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="ExternalizeSpec.html">ExternalizeSpec</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="TorchMetalKernel.html">TorchMetalKernel</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Supported ATen ops</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="debugging.html">Debugging</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Core AI (coreai-core)</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../coreai-core/index.html">Core AI (coreai-core)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/tutorials/construct-a-graph.html">Constructing a CoreAI Graph</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/tutorials/run-an-aimodel.html">Running an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> with <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/api/coreai.html">coreai</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">More</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../faq.html">Frequently asked questions</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../contributing.html">Contributing</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../resources.html">Resources</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../release-notes.html">Release notes</a></li>
+</ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#how-to-read-this-page">How to read this page</a></li>
+<li><a class="reference internal" href="#aten-ops">ATen ops</a></li>
+<li><a class="reference internal" href="#higher-order-ops">Higher-order ops</a></li>
+<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#notices">Notices</a></li>
+</ul>
+</div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">coreai-torch</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Supported ATen ops</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12"><div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="supported-aten-ops.html.md"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem" data-url="supported-aten-ops.html.md">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="../_sources/api/supported-aten-ops.md.txt" target="_blank" rel="nofollow">
+          <span class="iconify-icon">
+            <img src="../_static/icons/markdown.svg" alt="" width="14" height="14">
+          </span>
+          <span>View as Markdown</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div><article class="yue" role="main">
+          <section class="tex2jax_ignore mathjax_ignore" id="supported-aten-ops">
+<h1>Supported ATen ops<a class="headerlink" href="#supported-aten-ops" title="Link to this heading">¶</a></h1>
+<p>This page lists every PyTorch ATen operator that <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> lowers to Core AI operations out of the box.</p>
+<section id="how-to-read-this-page">
+<h2>How to read this page<a class="headerlink" href="#how-to-read-this-page" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Op names use the FX qualified-name form <code class="docutils literal notranslate"><span class="pre">op_name.overload</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">add.Tensor</span></code>, <code class="docutils literal notranslate"><span class="pre">mean.dim</span></code>). When PyTorch’s decomposition pipeline produces a different overload than the one listed, that overload is not supported.</p></li>
+<li><p>A few names appear without an overload suffix (e.g. <code class="docutils literal notranslate"><span class="pre">add</span></code>, <code class="docutils literal notranslate"><span class="pre">mul</span></code>, <code class="docutils literal notranslate"><span class="pre">getitem</span></code>) — these match plain Python-operator FX nodes that have no <code class="docutils literal notranslate"><span class="pre">.default</span></code> overload.</p></li>
+<li><p>Three ops — <code class="docutils literal notranslate"><span class="pre">instance_norm.default</span></code>, <code class="docutils literal notranslate"><span class="pre">pixel_shuffle.default</span></code>, and <code class="docutils literal notranslate"><span class="pre">scaled_dot_product_attention.default</span></code> — are deliberately preserved by <code class="docutils literal notranslate"><span class="pre">get_decomp_table()</span></code> and emitted as composite ops in the lowered IR.</p></li>
+<li><p>All ops below are resolved through the registry in <code class="docutils literal notranslate"><span class="pre">coreai_torch._aten_to_core</span></code>. To override a built-in lowering with your own, pass <code class="docutils literal notranslate"><span class="pre">allow_override=True</span></code> to <code class="docutils literal notranslate"><span class="pre">register_torch_lowering()</span></code>.</p></li>
+</ul>
+</section>
+<section id="aten-ops">
+<h2>ATen ops<a class="headerlink" href="#aten-ops" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>ATen op</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_adaptive_avg_pool2d.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">_local_scalar_dense.default</span></code></p></td>
+<td><p>Returns the 0-dim input as-is</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_log_softmax.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">_native_batch_norm_legit_no_training.default</span></code></p></td>
+<td><p>Inference path only</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_softmax.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">_to_copy.default</span></code></p></td>
+<td><p>Identity or <code class="docutils literal notranslate"><span class="pre">coreai.cast</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_unsafe_view.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">abs.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">acos.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">acosh.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">add</span></code>, <code class="docutils literal notranslate"><span class="pre">add.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">add.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">addmm.default</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alpha</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code> honored</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alias.default</span></code></p></td>
+<td><p>Identity — no IR emitted</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">amax.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">amin.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">any.default</span></code>, <code class="docutils literal notranslate"><span class="pre">any.dim</span></code>, <code class="docutils literal notranslate"><span class="pre">any.dims</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">arange.start_step</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">argmax.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">asin.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">asinh.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">atan.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">atanh.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">avg_pool2d.default</span></code></p></td>
+<td><p>Lowered as a composite op</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">avg_pool3d.default</span></code></p></td>
+<td><p>Lowered as a composite op</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bitwise_and.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bitwise_not.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bitwise_or.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bitwise_xor.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bmm.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cat.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ceil</span></code>, <code class="docutils literal notranslate"><span class="pre">ceil.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">clamp.default</span></code>, <code class="docutils literal notranslate"><span class="pre">clamp.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">clone.default</span></code></p></td>
+<td><p>Identity in the absence of memory-format changes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">complex.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">constant_pad_nd.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">convolution.default</span></code></p></td>
+<td><p>1D / 2D / 3D, transposed, grouped</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">copy.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cos.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cosh.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cumsum.default</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.scan</span></code> with a sum combiner</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">div.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">div.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">div.Tensor_mode</span></code></p></td>
+<td><p>Honors <code class="docutils literal notranslate"><span class="pre">rounding_mode</span></code> (<code class="docutils literal notranslate"><span class="pre">None</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;floor&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;trunc&quot;</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">embedding.default</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.gather_nd</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">empty.default</span></code>, <code class="docutils literal notranslate"><span class="pre">empty.memory_format</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">eq.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">eq.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">erf.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">exp.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">exp2.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">expand.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">expm1.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">flip.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">floor.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">floor_divide.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">floordiv</span></code>, <code class="docutils literal notranslate"><span class="pre">floordiv.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">floordiv.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fmod.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">fmod.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">full.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">full_like.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gather.default</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.gather_along_axis</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ge.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">ge.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gelu.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">getitem</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gt.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">gt.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hardsigmoid.default</span></code></p></td>
+<td><p>Lowered as a composite</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">hardswish.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hardtanh.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">index.Tensor</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.gather_nd</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">index_put.default</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.scatter_nd</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">index_select.default</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.gather_along_axis</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">instance_norm.default</span></code></p></td>
+<td><p>Preserved as composite by <code class="docutils literal notranslate"><span class="pre">get_decomp_table()</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">isinf.default</span></code></p></td>
+<td><p>Lowered as <code class="docutils literal notranslate"><span class="pre">(x</span> <span class="pre">==</span> <span class="pre">+inf)</span> <span class="pre">|</span> <span class="pre">(x</span> <span class="pre">==</span> <span class="pre">-inf)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">le.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">le.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">leaky_relu.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">lift_fresh_copy.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">linalg_vector_norm.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">log.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">log10.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">log1p.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">log2.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">logical_and.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">logical_not.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">logical_or.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">logical_xor.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">lt.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">lt.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max.default</span></code>, <code class="docutils literal notranslate"><span class="pre">max.dim</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_pool2d_with_indices.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">maximum.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mean.default</span></code>, <code class="docutils literal notranslate"><span class="pre">mean.dim</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min.default</span></code>, <code class="docutils literal notranslate"><span class="pre">min.dim</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">minimum.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mm.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mod</span></code>, <code class="docutils literal notranslate"><span class="pre">mod.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">mod.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mul</span></code>, <code class="docutils literal notranslate"><span class="pre">mul.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">mul.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">native_group_norm.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">native_layer_norm.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ne.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">ne.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">neg</span></code>, <code class="docutils literal notranslate"><span class="pre">neg.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nonzero.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">nonzero_numpy.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">permute.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pixel_shuffle.default</span></code></p></td>
+<td><p>Preserved as composite by <code class="docutils literal notranslate"><span class="pre">get_decomp_table()</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">polar.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pow.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">pow.Tensor_Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">pow.Tensor_Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">prod.default</span></code>, <code class="docutils literal notranslate"><span class="pre">prod.dim_int</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reciprocal.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">relu.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remainder.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">repeat.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">round.default</span></code>, <code class="docutils literal notranslate"><span class="pre">round.decimals</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rsqrt.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scalar_tensor.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scaled_dot_product_attention.default</span></code></p></td>
+<td><p>Preserved as composite by <code class="docutils literal notranslate"><span class="pre">get_decomp_table()</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scatter.reduce</span></code>, <code class="docutils literal notranslate"><span class="pre">scatter.src</span></code>, <code class="docutils literal notranslate"><span class="pre">scatter.value</span></code>, <code class="docutils literal notranslate"><span class="pre">scatter.value_reduce</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">select.int</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.slice_</span></code> plus a dim removal</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sigmoid.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sign.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">silu.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sin.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sinh.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">slice.Tensor</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.slice_</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">slice_scatter.default</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.slice_update</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">split_with_sizes.default</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.split</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sqrt.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">squeeze.dims</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sub</span></code>, <code class="docutils literal notranslate"><span class="pre">sub.Scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">sub.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sum.dim_IntList</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sym_float</span></code></p></td>
+<td><p>Casts a <code class="docutils literal notranslate"><span class="pre">SymInt</span></code> scalar tensor to a <code class="docutils literal notranslate"><span class="pre">SymFloat</span></code> scalar tensor</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sym_min</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sym_size.int</span></code></p></td>
+<td><p>Returns the size of a tensor along a dim as a shape-<code class="docutils literal notranslate"><span class="pre">[1]</span></code> tensor</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tan.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tanh.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tile.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">to.dtype</span></code></p></td>
+<td><p>Identity or <code class="docutils literal notranslate"><span class="pre">coreai.cast</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">topk.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">true_divide.Tensor</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">truediv</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">trunc</span></code>, <code class="docutils literal notranslate"><span class="pre">trunc.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unsqueeze.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">upsample_bilinear2d.vec</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.interpolate</span></code> (linear mode)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">upsample_nearest2d.vec</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.interpolate</span></code> (nearest-neighbor mode)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">view.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">view_as_complex.default</span></code>, <code class="docutils literal notranslate"><span class="pre">view_as_complex_copy.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">view_as_real.default</span></code>, <code class="docutils literal notranslate"><span class="pre">view_as_real_copy.default</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">where.self</span></code></p></td>
+<td><p></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="higher-order-ops">
+<h2>Higher-order ops<a class="headerlink" href="#higher-order-ops" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Op</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cond</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">torch.cond</span></code> — emitted as a Core AI conditional with two branch subgraphs</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">while_loop</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">torch._higher_order_ops.while_loop</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="see-also">
+<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="TorchConverter.html"><span class="doc">TorchConverter API reference</span></a> — <code class="docutils literal notranslate"><span class="pre">register_torch_lowering()</span></code> for adding or overriding op lowerings.</p></li>
+<li><p><a class="reference internal" href="../guides/custom-op-lowering.html"><span class="doc">Custom Op Lowering</span></a> — tutorial walkthrough.</p></li>
+<li><p><a class="reference internal" href="composite-ops.html"><span class="doc">Composite ops API reference</span></a> — built-in composite op modules.</p></li>
+</ul>
+</section>
+<section id="notices">
+<h2>Notices<a class="headerlink" href="#notices" title="Link to this heading">¶</a></h2>
+<p>PyTorch is a trademark of Meta Platforms, Inc.</p>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="TorchMetalKernel.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">TorchMetalKernel</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="debugging.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Debugging</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2026, Apple Inc.</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials">
+<a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/shibuya.js?v=50760d75"></script>
+      <script src="../_static/copy-page-button.js?v=d5e0191b"></script></body>
+</html>

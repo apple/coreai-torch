@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="indigo" data-content_root="./">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Index - coreai-torch documentation</title><link rel="index" title="Index" href="#" /><link rel="search" title="Search" href="search.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d88b86f9" />
+    <link rel="stylesheet" type="text/css" href="_static/shibuya.css?v=9454f7d5" />
+    <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=05f3bbaf" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <script>
+  var defined_VERSIONS = [{"name": "main", "version": "main"}];
+  var defined_VERSION_MATCH = "main";
+</script>
+<script src="_static/version-switcher.js" defer></script>
+<script>
+  // Override Shibuya's 3-state toggle (auto/light/dark) with a 2-state toggle (light/dark)
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.querySelector(".js-theme");
+    if (!btn) return;
+
+    // Remove Shibuya's click listener by cloning the button
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    function getEffectiveMode() {
+      var mode = document.documentElement.getAttribute("data-color-mode") || "auto";
+      if (mode === "auto") {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      return mode;
+    }
+
+    newBtn.addEventListener("click", function () {
+      var next = getEffectiveMode() === "dark" ? "light" : "dark";
+      if (typeof setColorMode === "function") {
+        setColorMode(next);
+      }
+      localStorage._theme = next;
+      var label = newBtn.getAttribute("data-aria-" + next);
+      if (label) newBtn.setAttribute("aria-label", label);
+    });
+  });
+</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="index.html">
+      
+      
+      <strong>coreai-torch</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"><ul><li class="link"><a href="getting-started/installation.html">Getting Started</a></li><li class="link"><a href="guides/conversion-workflows.html">Guides</a></li><li class="link"><a href="api/TorchConverter.html">API</a></li><li class="link"><a href="coreai-core/index.html">coreai-core</a></li></ul></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div><div class="sy-container mx-auto body">
+    <main class="sy-content mx-auto pt-12 px-6 xl:px-12 break-words">
+      <article class="yue" role="main">
+        
+
+<h1 id="index">Index</h1>
+
+<div class="genindex-jumpbox">
+ <a href="#A"><strong>A</strong></a>
+ | <a href="#C"><strong>C</strong></a>
+ | <a href="#D"><strong>D</strong></a>
+ | <a href="#E"><strong>E</strong></a>
+ | <a href="#F"><strong>F</strong></a>
+ | <a href="#G"><strong>G</strong></a>
+ | <a href="#H"><strong>H</strong></a>
+ | <a href="#I"><strong>I</strong></a>
+ | <a href="#L"><strong>L</strong></a>
+ | <a href="#M"><strong>M</strong></a>
+ | <a href="#N"><strong>N</strong></a>
+ | <a href="#O"><strong>O</strong></a>
+ | <a href="#P"><strong>P</strong></a>
+ | <a href="#R"><strong>R</strong></a>
+ | <a href="#S"><strong>S</strong></a>
+ | <a href="#T"><strong>T</strong></a>
+ | <a href="#U"><strong>U</strong></a>
+ | <a href="#V"><strong>V</strong></a>
+ | <a href="#W"><strong>W</strong></a>
+ 
+</div>
+<h2 id="A">A</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIModelAsset">AIModelAsset (class in coreai.authoring)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIProgram">AIProgram (class in coreai.authoring)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AllocationType">AllocationType (class in coreai.authoring)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.SpecializationOptions.allowed_compute_unit_kinds">allowed_compute_unit_kinds (coreai.runtime.SpecializationOptions property)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.Module.as_string">as_string() (coreai.authoring.Module method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="C">C</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.ContainerType">ContainerType (class in coreai.authoring)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.Context">Context (class in coreai.authoring)</a>
+</li>
+      <li>
+    coreai
+
+      <ul>
+        <li><a href="coreai-core/api/coreai.html#module-coreai">module</a>
+</li>
+      </ul></li>
+      <li>
+    coreai.authoring
+
+      <ul>
+        <li><a href="coreai-core/api/coreai.html#module-coreai.authoring">module</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    coreai.runtime
+
+      <ul>
+        <li><a href="coreai-core/api/coreai.html#module-coreai.runtime">module</a>
+</li>
+      </ul></li>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.SpecializationOptions.cpu_only">cpu_only() (coreai.runtime.SpecializationOptions class method)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.Module.create">create() (coreai.authoring.Module class method)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.CustomMetalKernel">CustomMetalKernel (class in coreai.authoring)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="D">D</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.SpecializationOptions.default">default() (coreai.runtime.SpecializationOptions class method)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.InferenceFunction.desc">desc (coreai.runtime.InferenceFunction property)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.NDArray.dtype">dtype (coreai.runtime.NDArray property)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.Module.dump">dump() (coreai.authoring.Module method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="E">E</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIModelAsset.executable">executable() (coreai.authoring.AIModelAsset method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="F">F</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.FourCC">FourCC (class in coreai.authoring)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.NDArray.from_descriptor">from_descriptor() (coreai.runtime.NDArray class method)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.SpecializationOptions.from_preferred_compute_unit_kind">from_preferred_compute_unit_kind() (coreai.runtime.SpecializationOptions class method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="G">G</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIProgram.get_graph">get_graph() (coreai.authoring.AIProgram method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="H">H</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.HardwareConstraints">HardwareConstraints (class in coreai.authoring)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AllocationType.Heap">Heap (coreai.authoring.AllocationType attribute)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="I">I</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.ImageConstraints">ImageConstraints (class in coreai.authoring)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.ImageSpec">ImageSpec (class in coreai.authoring)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.InferenceFunction">InferenceFunction (class in coreai.runtime)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AllocationType.IOSurface">IOSurface (coreai.authoring.AllocationType attribute)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.TensorSpec.is_materialized">is_materialized (coreai.authoring.TensorSpec property)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIModelAsset.is_valid">is_valid() (coreai.authoring.AIModelAsset static method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="L">L</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIModelAsset.load">load() (coreai.authoring.AIModelAsset class method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="M">M</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIModelAsset.metadata">metadata (coreai.authoring.AIModelAsset property)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.MetalParameter">MetalParameter (class in coreai.authoring)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.MLAsset">MLAsset (class in coreai)</a>
+</li>
+      <li>
+    module
+
+      <ul>
+        <li><a href="coreai-core/api/coreai.html#module-coreai">coreai</a>
+</li>
+        <li><a href="coreai-core/api/coreai.html#module-coreai.authoring">coreai.authoring</a>
+</li>
+        <li><a href="coreai-core/api/coreai.html#module-coreai.runtime">coreai.runtime</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.Module">Module (class in coreai.authoring)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AllocationType.MTLBuffer">MTLBuffer (coreai.authoring.AllocationType attribute)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="N">N</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.NDArray">NDArray (class in coreai.runtime)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.NDArray.numpy">numpy() (coreai.runtime.NDArray method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="O">O</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIProgram.optimize">optimize() (coreai.authoring.AIProgram method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.OSVersion">OSVersion (class in coreai.authoring)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="P">P</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIModelAsset.path">path (coreai.authoring.AIModelAsset property)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.SpecializationOptions.preferred_compute_unit_kind">preferred_compute_unit_kind (coreai.runtime.SpecializationOptions property)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIModelAsset.program">program (coreai.authoring.AIModelAsset property)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="R">R</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.TensorSpec.rank">rank (coreai.authoring.TensorSpec property)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="S">S</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIProgram.save_asset">save_asset() (coreai.authoring.AIProgram method)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.TensorSpec.set_default_mtl_constraints">set_default_mtl_constraints() (coreai.authoring.TensorSpec method)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIProgram.set_hardware_constraints">set_hardware_constraints() (coreai.authoring.AIProgram method)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIProgram.set_static_shape_config">set_static_shape_config() (coreai.authoring.AIProgram method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.NDArray.shape">shape (coreai.runtime.NDArray property)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.SpecializationOptions">SpecializationOptions (class in coreai.runtime)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.StorageKind">StorageKind (class in coreai.runtime)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.NDArray.strides">strides (coreai.runtime.NDArray property)</a>
+</li>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIModelAsset.summary">summary() (coreai.authoring.AIModelAsset method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="T">T</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.CustomMetalKernel.template_kernel_src">template_kernel_src() (coreai.authoring.CustomMetalKernel method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.TensorSpec">TensorSpec (class in coreai.authoring)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="U">U</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.AIModelAsset.update_metadata">update_metadata() (coreai.authoring.AIModelAsset method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="V">V</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.CustomMetalKernel.validate_and_set_dtype_templates">validate_and_set_dtype_templates() (coreai.authoring.CustomMetalKernel method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.authoring.Module.verify">verify() (coreai.authoring.Module method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="W">W</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="coreai-core/api/coreai.html#coreai.runtime.SpecializationOptions.with_debug">with_debug() (coreai.runtime.SpecializationOptions method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+
+
+      </article>
+      
+    </main>
+  </div><footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2026, Apple Inc.</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials">
+<a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="_static/shibuya.js?v=50760d75"></script>
+      <script src="_static/copy-page-button.js?v=d5e0191b"></script></body>
+</html>

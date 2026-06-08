@@ -1,0 +1,357 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "intro",
+   "metadata": {},
+   "source": [
+    "# Constructing a CoreAI Graph\n",
+    "\n",
+    "This notebook walks through building a minimal CoreAI graph from scratch — without\n",
+    "going through a framework importer like PyTorch — and saving it as an `.aimodel`\n",
+    "asset on disk. By the end you will have a file you can load and execute in the\n",
+    "next tutorial.\n",
+    "\n",
+    "Along the way we touch the four authoring concepts you will see throughout the\n",
+    "rest of these tutorials:\n",
+    "\n",
+    "- **`TensorSpec`** — describes a tensor's shape and dtype.\n",
+    "- **`Module`** — the container you append graphs into.\n",
+    "- **Graph entrypoint** — a named function (here, `main`) that defines the\n",
+    "  computation: its inputs, outputs, and the ops in between.\n",
+    "- **`AIProgram`** — a deployable program built from one or more modules. This is\n",
+    "  the unit you save to disk."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "warning",
+   "metadata": {},
+   "source": [
+    ":::{warning}\n",
+    "**APIs in flux.** A few graph-building primitives (the `@graph` decorator and\n",
+    "elementwise op constructors) currently live under `coreai._compiler` while the\n",
+    "public authoring surface is finalized. They will be re-exported from\n",
+    "`coreai.authoring` in a follow-up release; the import paths in the setup cell\n",
+    "below are the only place this leaks through.\n",
+    ":::"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "setup-md",
+   "metadata": {},
+   "source": [
+    "## Setup\n",
+    "\n",
+    "Import the public authoring types from `coreai.authoring`, plus the (temporary)\n",
+    "graph-building primitives noted above."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "imports",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:09.232797Z",
+     "iopub.status.busy": "2026-06-04T23:13:09.232330Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.445622Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.444678Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Dev installation detected. Using local Core AI Framework.\n"
+     ]
+    }
+   ],
+   "source": [
+    "import shutil\n",
+    "from pathlib import Path\n",
+    "from typing import Annotated\n",
+    "\n",
+    "import numpy as np\n",
+    "\n",
+    "from coreai.authoring import AIModelAsset, AIProgram, Module, TensorSpec\n",
+    "\n",
+    "# Graph-building primitives — pending re-export from coreai.authoring.\n",
+    "from coreai._compiler.dialects import coreai as ops\n",
+    "from coreai._compiler.ir import Value"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "specs-md",
+   "metadata": {},
+   "source": [
+    "## Describe the inputs and outputs\n",
+    "\n",
+    "A `TensorSpec` describes a tensor by **shape** and **dtype**. Inputs and outputs\n",
+    "of a graph are described with specs — the runtime uses them to validate the\n",
+    "tensors you pass in and the tensors it returns.\n",
+    "\n",
+    "We will build a graph that takes one `2 × 3` `float32` tensor and produces one\n",
+    "`2 × 3` `float32` tensor."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "specs",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.447443Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.447294Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.451834Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.451081Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "input:  tensor<2x3xf32>\n",
+      "output: tensor<2x3xf32>\n"
+     ]
+    }
+   ],
+   "source": [
+    "input_spec = TensorSpec(shape=[2, 3], dtype=np.float32)\n",
+    "output_spec = TensorSpec(shape=[2, 3], dtype=np.float32, name=\"y\")\n",
+    "\n",
+    "print(f\"input:  {input_spec}\")\n",
+    "print(f\"output: {output_spec}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "build-md",
+   "metadata": {},
+   "source": [
+    "## Build the graph\n",
+    "\n",
+    "Create a `Module` and, inside its `with` block, declare a graph entrypoint. The\n",
+    "`@ops.graph` decorator inspects a regular Python function and uses it to build\n",
+    "a CoreAI graph: the parameter and return annotations describe the graph's\n",
+    "inputs and outputs, and the function body defines the computation. You do not\n",
+    "call `main` yourself — CoreAI builds the graph at decoration time.\n",
+    "\n",
+    "Here the graph has one input `x` and returns `x + x` — a single elementwise add."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "build",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.453228Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.453111Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.470623Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.470201Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Module verified.\n"
+     ]
+    }
+   ],
+   "source": [
+    "module = Module.create()\n",
+    "with module:\n",
+    "\n",
+    "    @ops.graph\n",
+    "    def main(\n",
+    "        x: Annotated[Value, input_spec],\n",
+    "    ) -> Annotated[Value, output_spec]:\n",
+    "        return ops.add(x, x)\n",
+    "\n",
+    "module.verify()\n",
+    "print(\"Module verified.\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "program-md",
+   "metadata": {},
+   "source": [
+    "## Wrap in an `AIProgram`\n",
+    "\n",
+    "An `AIProgram` is the deployable unit. You construct one from a `Module` and use\n",
+    "it to run optimization passes or to serialize the program to disk."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "program",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.472009Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.471916Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.474216Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.473635Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "program = AIProgram(module)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "save-md",
+   "metadata": {},
+   "source": [
+    "## Save as an `.aimodel`\n",
+    "\n",
+    "`AIProgram.save_asset(path)` writes the program out as an `.aimodel` directory —\n",
+    "a small bundle containing the program bytecode plus a `metadata.json` file. The\n",
+    "saved asset is the artifact you ship; it can be loaded later for inference\n",
+    "without any of the authoring code you wrote above."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "save",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.475505Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.475388Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.479489Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.479034Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "saved to: hello-graph.aimodel\n"
+     ]
+    }
+   ],
+   "source": [
+    "asset_path = Path(\"./hello-graph.aimodel\")\n",
+    "if asset_path.exists():\n",
+    "    shutil.rmtree(asset_path)\n",
+    "\n",
+    "asset = program.save_asset(asset_path)\n",
+    "print(f\"saved to: {asset.path}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "inspect-md",
+   "metadata": {},
+   "source": [
+    "## Inspect the saved asset\n",
+    "\n",
+    "An `.aimodel` is a directory. List its contents and total size to confirm the\n",
+    "save succeeded — you should see the program bytecode plus its metadata."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "inspect",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.480788Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.480705Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.483398Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.483007Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "contents:   ['main.hash', 'main.mlirb', 'metadata.json']\n",
+      "total size: 446 bytes\n"
+     ]
+    }
+   ],
+   "source": [
+    "files = sorted(p.name for p in asset_path.iterdir())\n",
+    "total_bytes = sum(p.stat().st_size for p in asset_path.rglob(\"*\") if p.is_file())\n",
+    "\n",
+    "print(f\"contents:   {files}\")\n",
+    "print(f\"total size: {total_bytes} bytes\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "validate-md",
+   "metadata": {},
+   "source": [
+    "## Validate that the asset is loadable\n",
+    "\n",
+    "As a final check, load the asset back with `AIModelAsset.load`, open it as an\n",
+    "executable model, and confirm the `main` function is present. The next tutorial\n",
+    "in this series picks up from `hello.aimodel` and runs an actual inference."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "validate",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.484574Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.484499Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.498350Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.497839Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "OK\n"
+     ]
+    }
+   ],
+   "source": [
+    "reloaded = AIModelAsset.load(asset_path)\n",
+    "async with reloaded.executable() as model:\n",
+    "    # load_function raises KeyError if the name is missing.\n",
+    "    model.load_function(\"main\")\n",
+    "print(\"OK\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.11.13"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}

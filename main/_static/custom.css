@@ -1,0 +1,239 @@
+/* ── Notebook (myst-nb) source/output: borderless, blend with the page ── */
+:root {
+    --mystnb-source-margin-color: transparent;
+    --mystnb-source-border-color: transparent;
+    --mystnb-source-bg-color: transparent;
+    --mystnb-source-border-width: 0;
+    --mystnb-stdout-margin-color: transparent;
+    --mystnb-stderr-margin-color: transparent;
+
+    /* shibuya 2026.5.19 dropped --sy-c-accent in favor of the Radix-style
+     * --accent-9 / --accent-a3 palette (driven by theme_options.accent_color).
+     * Re-export the old name so our custom.css (and ::selection background)
+     * keeps working without rewriting every reference. */
+    --sy-c-accent: var(--accent-9);
+}
+
+/* Text selection — soft accent tint */
+::selection {
+    background-color: color-mix(in srgb, var(--sy-c-accent) 25%, transparent);
+    color: inherit;
+}
+
+/* ── Typography ── */
+article h2 {
+    border-bottom: 2px solid var(--sy-c-divider);
+    padding-bottom: 0.4em;
+    margin-top: 2.5rem;
+}
+
+article h3 {
+    border-bottom: 1px solid color-mix(in srgb, var(--sy-c-accent) 25%, transparent);
+    padding-bottom: 0.3em;
+    margin-top: 2rem;
+}
+
+article hr {
+    border: none;
+    border-top: 2px solid var(--sy-c-divider);
+    margin: 3rem 0;
+}
+
+article p {
+    line-height: 1.7;
+}
+
+article table td code {
+    white-space: nowrap;
+}
+
+/* ── All code blocks (markdown + notebooks) ── */
+.highlight > pre,
+pre.literal-block {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 8px;
+}
+
+.code-block-caption {
+    border: none;
+}
+
+/* Notebook cells — no left border, same look as markdown code blocks */
+div.cell,
+div.cell > div.cell_input,
+div.cell > div.cell_output {
+    border: none !important;
+    border-left: none !important;
+}
+
+/* Inline code */
+code.literal,
+code.docutils {
+    background: var(--sy-c-surface, #f6f8fa);
+    border: 1px solid var(--sy-c-divider, #d0d7de);
+    border-radius: 4px;
+    padding: 0.15em 0.35em;
+    font-size: 0.88em;
+}
+
+html.dark code.literal,
+html.dark code.docutils {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* ── Header ── */
+.sy-head {
+    border-bottom: 2px solid var(--sy-c-accent);
+}
+
+/* ── Sidebar ── */
+.sy-lside {
+    background: var(--sy-c-foot-background);
+    border-right: 1px solid var(--sy-c-divider);
+}
+
+.sy-sidebar-toc a.current {
+    color: var(--sy-c-accent) !important;
+    font-weight: 600;
+}
+
+/* Reset code font in sidebar nav — prevents identifier-titled pages
+ * (e.g. generate_composite_decl) from rendering in monospace */
+.sy-lside a code {
+    font-family: inherit;
+    font-size: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+/* ── Tables ── */
+article table {
+    border: 1px solid var(--sy-c-divider);
+    border-radius: 6px;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+article table thead th {
+    background: color-mix(in srgb, var(--sy-c-accent) 8%, transparent);
+    border-bottom: 2px solid color-mix(in srgb, var(--sy-c-accent) 25%, transparent);
+    font-weight: 600;
+    padding: 0.6em 1em;
+}
+
+article table td,
+article table th {
+    padding: 0.6em 1em;
+    border-bottom: 1px solid var(--sy-c-divider);
+}
+
+/* ── Admonitions ── */
+article .admonition {
+    border-radius: 6px;
+    border-left-width: 4px;
+}
+
+article .admonition.warning {
+    border-left-color: var(--sy-c-accent);
+}
+
+/* ── Version switcher ── */
+.version-switcher {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-right: 0.75rem;
+}
+
+.version-switcher__btn {
+    background: none;
+    border: 1px solid var(--sy-c-border, #d0d7de);
+    border-radius: 6px;
+    padding: 0.3em 0.8em;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: inherit;
+    white-space: nowrap;
+    transition: border-color 0.15s;
+}
+
+.version-switcher__btn:hover {
+    border-color: var(--sy-c-accent);
+}
+
+.version-switcher__btn::after {
+    content: " \25BE";
+}
+
+.version-switcher__list {
+    position: absolute;
+    left: 0;
+    top: 100%;
+    margin-top: 4px;
+    padding: 0.4rem 0;
+    list-style: none;
+    background: var(--sy-c-background, #fff);
+    border: 1px solid var(--sy-c-divider, #d0d7de);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+    min-width: 10rem;
+}
+
+html.dark .version-switcher__list {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.version-switcher__list a {
+    display: block;
+    padding: 0.35em 1em;
+    text-decoration: none;
+    color: inherit;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    transition: background 0.12s;
+}
+
+.version-switcher__list a:hover {
+    background: var(--sy-c-surface, #f6f8fa);
+}
+
+.version-switcher__list a[aria-current="true"] {
+    font-weight: 600;
+    color: var(--sy-c-accent);
+}
+
+/* ── Copy-page button ── */
+
+/* The copy-page button is absolutely positioned at the top-right of the
+ * article on lg+ breakpoints, so any wide first-child content extends
+ * underneath it. Reserve right padding to avoid overlap. */
+@media (min-width: 1024px) {
+    .copy-page-wrapper + .yue > p:first-child,
+    .copy-page-wrapper + .yue > section:first-of-type > p:first-child,
+    .copy-page-wrapper + .yue > section:first-of-type > h1:first-of-type {
+        padding-right: 11rem;
+    }
+}
+
+/* The wrapper's padding and invisible area must not capture mouse events —
+ * only the visible interactive children (buttons, links) should. */
+.copy-page-wrapper {
+    pointer-events: none;
+}
+
+.copy-page-wrapper > * {
+    pointer-events: auto;
+}
+
+/* The copy-page dropdown's Markdown icon is loaded as <img> from
+ * _static/icons/. In <img> context an SVG's fill="currentColor" defaults to
+ * black, so invert in dark mode to keep contrast against the dark dropdown. */
+html.dark #copy-page-content img {
+    filter: invert(1);
+}

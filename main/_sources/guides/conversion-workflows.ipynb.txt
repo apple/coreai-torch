@@ -1,0 +1,260 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Conversion Workflows\n",
+    "\n",
+    "`TorchConverter` accepts models in two forms. Pick based on what you have and whether you need {doc}`externalization` to optimize submodules independently or hand off to specialized backends.\n",
+    "\n",
+    "```{admonition} Which method?\n",
+    "- **Already have an `ExportedProgram`?** → Use `add_exported_program`.\n",
+    "- **Have an `nn.Module` and need externalization?** → Use `add_pytorch_module` with `externalize_modules`.\n",
+    "- **Have an `nn.Module`, no externalization?** → Either method works.\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## From an ExportedProgram\n",
+    "\n",
+    "You export and decompose the model yourself, then pass the `ExportedProgram` directly."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "\n",
+    "from coreai_torch import TorchConverter, get_decomp_table\n",
+    "\n",
+    "\n",
+    "class MyModel(nn.Module):\n",
+    "    def __init__(self):\n",
+    "        super().__init__()\n",
+    "        self.linear = nn.Linear(10, 5)\n",
+    "\n",
+    "    def forward(self, x):\n",
+    "        return self.linear(x)\n",
+    "\n",
+    "\n",
+    "model = MyModel().eval()\n",
+    "\n",
+    "ep = torch.export.export(model, args=(torch.randn(1, 10),))\n",
+    "ep = ep.run_decompositions(get_decomp_table())\n",
+    "\n",
+    "converter = TorchConverter().add_exported_program(ep)\n",
+    "coreai_program = converter.to_coreai()\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**When to use:** You need full control over the export pipeline, or you already have an exported program from another tool.\n",
+    "\n",
+    "```{warning}\n",
+    "You **must** call `run_decompositions()` before passing the program. Use `get_decomp_table()` to preserve the operations that `TorchConverter` lowers as composite ops.\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## From an nn.Module\n",
+    "\n",
+    "Pass your model and an `export_fn` that returns a decomposed `ExportedProgram`. This is equivalent to calling `add_exported_program()` with the result of `export_fn`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import coreai_torch\n",
+    "\n",
+    "model = MyModel().eval()\n",
+    "sample = (torch.randn(1, 10),)\n",
+    "\n",
+    "converter = TorchConverter().add_pytorch_module(\n",
+    "    model,\n",
+    "    export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(\n",
+    "        coreai_torch.get_decomp_table()\n",
+    "    ),\n",
+    ")\n",
+    "coreai_program = converter.to_coreai()\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**When to use:** You have an `nn.Module` and want to pass it directly. Required if you need externalization; otherwise equivalent to `add_exported_program()`."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Externalizing submodules\n",
+    "\n",
+    "Externalizing a submodule preserves its operation boundary during conversion, so the operation stays intact as a recognizable unit. When you mark a well-known building block — such as attention, RoPE, or RMSNorm — as a **composite op**, the compiler recognizes that operation and can apply an optimized implementation tailored to it, producing a faster model.\n",
+    "\n",
+    "Externalization uses `add_pytorch_module` with the `externalize_modules` argument.\n",
+    "\n",
+    "### Composite op externalization\n",
+    "\n",
+    "Tag a submodule with an `ExternalizeSpec`, giving it a composite op name and the attributes that define its behavior. The name and attributes are carried through conversion so the compiler can recognize the operation and optimize it:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "import coreai_torch\n",
+    "from coreai_torch import ExternalizeSpec, TorchConverter\n",
+    "from coreai_torch.composite_ops import RMSNormImpl\n",
+    "\n",
+    "\n",
+    "class RMSNorm(nn.Module):\n",
+    "    \"\"\"Convenience wrapper that owns the learnable scale parameter.\"\"\"\n",
+    "\n",
+    "    def __init__(self, dim: int, eps: float = 1e-5):\n",
+    "        super().__init__()\n",
+    "        self.weight = nn.Parameter(torch.ones(dim))\n",
+    "        self.norm = RMSNormImpl(eps=eps)\n",
+    "\n",
+    "    def forward(self, x: torch.Tensor) -> torch.Tensor:\n",
+    "        return self.norm(x, self.weight)\n",
+    "\n",
+    "\n",
+    "class ModelWithNorm(nn.Module):\n",
+    "    def __init__(self):\n",
+    "        super().__init__()\n",
+    "        self.norm = RMSNorm(dim=10)\n",
+    "        self.linear = nn.Linear(10, 5)\n",
+    "\n",
+    "    def forward(self, x):\n",
+    "        return self.linear(self.norm(x))\n",
+    "\n",
+    "\n",
+    "model = ModelWithNorm().eval()\n",
+    "sample = (torch.randn(1, 10),)\n",
+    "\n",
+    "converter = TorchConverter().add_pytorch_module(\n",
+    "    model,\n",
+    "    export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(\n",
+    "        coreai_torch.get_decomp_table()\n",
+    "    ),\n",
+    "    externalize_modules=[\n",
+    "        ExternalizeSpec(\n",
+    "            target_class=RMSNormImpl,\n",
+    "            composite_op_name=\"rms_norm\",\n",
+    "            composite_attrs=[\"axes\", \"eps\"],\n",
+    "        )\n",
+    "    ],\n",
+    ")\n",
+    "coreai_program = converter.to_coreai()\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**When to use:** Mark performance-critical building blocks (RMSNorm, RoPE, SDPA, and similar) so the compiler can optimize them as recognized operations.\n",
+    "\n",
+    "```{note}\n",
+    "`coreai_torch.composite_ops` ships convenience wrappers like `RMSNorm` that own the learnable scale for you, so you can use those instead of defining one yourself — but `target_class` in the `ExternalizeSpec` must still be `RMSNormImpl` (the inner module the converter recognizes as the `rms_norm` composite op).\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Passing a bare module class to `externalize_modules` instead of an `ExternalizeSpec` performs *simple externalization*: the submodule is extracted into its own standalone graph with no composite-op metadata and no optimization benefit. This is **experimental** — prefer composite-op externalization above."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "See {doc}`composite-ops` for built-in composite ops and {doc}`externalization` for advanced externalization patterns."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Comparison\n",
+    "\n",
+    "| | From ExportedProgram | From nn.Module | With externalization |\n",
+    "|---|---|---|---|\n",
+    "| **Entry point** | `add_exported_program()` | `add_pytorch_module()` | `add_pytorch_module()` |\n",
+    "| **You manage** | Export + decomposition | Export + decomposition (via `export_fn`) | Export + decomposition (via `export_fn`) |\n",
+    "| **Decomposition** | Manual (`run_decompositions`) | Manual (inside `export_fn`) | Manual (inside `export_fn`) |\n",
+    "| **Externalization** | Not available | Not available | `externalize_modules` |\n",
+    "| **Best for** | Full pipeline control | nn.Module input | Composite ops |"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "13",
+   "metadata": {},
+   "source": [
+    "## Next Steps\n",
+    "\n",
+    "- {doc}`../guides/composite-ops` — preserve attention, normalization, and MoE ops as recognizable units for hardware-optimized dispatch.\n",
+    "- {doc}`../guides/custom-op-lowering` — register lowerings for custom or unsupported PyTorch ops.\n",
+    "- {doc}`../api/supported-aten-ops` — full list of ATen ops with built-in lowering rules."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Notices\n",
+    "\n",
+    "PyTorch is a trademark of Meta Platforms, Inc.\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "name": "python",
+   "version": "3.10.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

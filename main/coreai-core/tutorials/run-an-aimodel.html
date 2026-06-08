@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="indigo" data-content_root="../../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Running an .aimodel with coreai.runtime - coreai-torch documentation</title><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="coreai" href="../api/coreai.html" /><link rel="prev" title="Constructing a CoreAI Graph" href="construct-a-graph.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d88b86f9" />
+    <link rel="stylesheet" type="text/css" href="../../_static/shibuya.css?v=9454f7d5" />
+    <link rel="stylesheet" type="text/css" href="../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="../../_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=05f3bbaf" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    
+  <meta property="og:type" content="website"/><meta property="og:title" content="Running an .aimodel with coreai.runtime"/>
+    <meta name="twitter:card" content="summary"/>
+  <script>
+  var defined_VERSIONS = [{"name": "main", "version": "main"}];
+  var defined_VERSION_MATCH = "main";
+</script>
+<script src="../../_static/version-switcher.js" defer></script>
+<script>
+  // Override Shibuya's 3-state toggle (auto/light/dark) with a 2-state toggle (light/dark)
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.querySelector(".js-theme");
+    if (!btn) return;
+
+    // Remove Shibuya's click listener by cloning the button
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    function getEffectiveMode() {
+      var mode = document.documentElement.getAttribute("data-color-mode") || "auto";
+      if (mode === "auto") {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      return mode;
+    }
+
+    newBtn.addEventListener("click", function () {
+      var next = getEffectiveMode() === "dark" ? "light" : "dark";
+      if (typeof setColorMode === "function") {
+        setColorMode(next);
+      }
+      localStorage._theme = next;
+      var label = newBtn.getAttribute("data-aria-" + next);
+      if (label) newBtn.setAttribute("aria-label", label);
+    });
+  });
+</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../../index.html">
+      
+      
+      <strong>coreai-torch</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"><ul><li class="link"><a href="../../getting-started/installation.html">Getting Started</a></li><li class="link"><a href="../../guides/conversion-workflows.html">Guides</a></li><li class="link"><a href="../../api/TorchConverter.html">API</a></li><li class="link"><a href="../index.html">coreai-core</a></li></ul></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../getting-started/installation.html">Installing coreai-torch</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../getting-started/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../whats-new.html">What&#8217;s new</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/conversion-workflows.html">Conversion Workflows</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/custom-op-lowering.html">Custom Op Lowering</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/custom-metal-kernels.html">Custom Metal Kernels</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/composite-ops.html">Composite Ops Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/externalization.html">Externalization</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/TorchConverter.html">TorchConverter API reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/composite-ops.html">Composite ops API reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../api/composite-ops/module-class.html">Module-class composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/gather-mm.html">GatherMM</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/gated-delta-update.html">GatedDeltaUpdate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/rms-norm.html">RMSNormImpl</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/rope.html">RoPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/sdpa.html">SDPA</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/composite-ops/aten-derived.html">ATen-derived composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/batch-norm.html">batch_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/group-norm.html">group_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/hard-sigmoid.html">hard_sigmoid</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/instance-norm.html">instance_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/layer-norm.html">layer_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/linalg-vector-norm.html">linalg_vector_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/log-softmax.html">log_softmax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/pixel-shuffle.html">pixel_shuffle</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/generate-composite-decl.html">generate_composite_decl</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/ExternalizeSpec.html">ExternalizeSpec</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/TorchMetalKernel.html">TorchMetalKernel</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/supported-aten-ops.html">Supported ATen ops</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/debugging.html">Debugging</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Core AI (coreai-core)</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">Core AI (coreai-core)</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="construct-a-graph.html">Constructing a CoreAI Graph</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Running an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> with <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../api/coreai.html">coreai</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">More</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../faq.html">Frequently asked questions</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../contributing.html">Contributing</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../resources.html">Resources</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../release-notes.html">Release notes</a></li>
+</ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#setup">Setup</a><ul>
+<li><a class="reference internal" href="#ensure-hello-aimodel-exists">Ensure <code class="docutils literal notranslate">aimodel</span></code> exists</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#open-the-asset">Open the asset</a></li>
+<li><a class="reference internal" href="#open-the-model-and-run-inference">Open the model and run inference</a></li>
+<li><a class="reference internal" href="#inspect-the-output">Inspect the output</a></li>
+<li><a class="reference internal" href="#what-s-next">What&#8217;s next</a></li>
+</ul>
+</div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../../index.html"><span itemprop="name">coreai-torch</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">Core AI (coreai-core)</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="2" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Running an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> with <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code></strong>
+        <meta itemprop="position" content="3" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12"><div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="run-an-aimodel.html.md"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem" data-url="run-an-aimodel.html.md">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="run-an-aimodel.html.md" target="_blank" rel="nofollow">
+          <span class="iconify-icon">
+            <img src="../../_static/icons/markdown.svg" alt="" width="14" height="14">
+          </span>
+          <span>View as Markdown</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div><article class="yue" role="main">
+          <section class="tex2jax_ignore mathjax_ignore" id="running-an-aimodel-with-coreai-runtime">
+<h1>Running an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> with <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code><a class="headerlink" href="#running-an-aimodel-with-coreai-runtime" title="Link to this heading">¶</a></h1>
+<p>This notebook loads an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> asset and runs inference on it. We will use
+four public types:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">AIModelAsset</span></code></strong> — the on-disk representation of a saved program
+(from <code class="docutils literal notranslate"><span class="pre">coreai.authoring</span></code>).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">InferenceFunction</span></code></strong> — a callable function inside the model (here, <code class="docutils literal notranslate"><span class="pre">main</span></code>).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">NDArray</span></code></strong> — the runtime’s multi-dimensional array type, used to pass
+inputs in and read outputs back.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">SpecializationOptions</span></code></strong> — for advanced device/configuration tuning
+(covered briefly at the end).</p></li>
+</ul>
+<p>Inside the <code class="docutils literal notranslate"><span class="pre">async</span> <span class="pre">with</span></code> block you will also see an <code class="docutils literal notranslate"><span class="pre">AIModel</span></code> — the runnable
+handle yielded by the asset’s <code class="docutils literal notranslate"><span class="pre">executable()</span></code> context manager. It is the type
+you call <code class="docutils literal notranslate"><span class="pre">load_function</span></code> on, but you do not import or construct it directly.</p>
+<p>We assume you have already produced a <code class="docutils literal notranslate"><span class="pre">hello.aimodel</span></code> from the previous
+tutorial (<em>Constructing a CoreAI Graph</em>). The setup cell below recreates it
+if it is missing, so this notebook is also safe to run standalone.</p>
+<section id="setup">
+<h2>Setup<a class="headerlink" href="#setup" title="Link to this heading">¶</a></h2>
+<p>Import the asset and runtime types. Inference is asynchronous, so we will
+use <code class="docutils literal notranslate"><span class="pre">await</span></code> and <code class="docutils literal notranslate"><span class="pre">async</span> <span class="pre">with</span></code> directly inside cells (Jupyter runs each cell
+in an event loop).</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.authoring</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIModelAsset</span>
+</span><span data-line="6"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">InferenceFunction</span><span class="p">,</span> <span class="n">NDArray</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="n">asset_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./hello-run.aimodel&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+<section id="ensure-hello-aimodel-exists">
+<h3>Ensure <code class="docutils literal notranslate"><span class="pre">hello.aimodel</span></code> exists<a class="headerlink" href="#ensure-hello-aimodel-exists" title="Link to this heading">¶</a></h3>
+<p>If the asset from the previous tutorial is not on disk, build a fresh copy
+now. The build path mirrors the construction shown in <em>Constructing a CoreAI
+Graph</em>. We’re going to go ahead and recreate the asset path.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">shutil</span><span class="w"> </span><span class="kn">import</span> <span class="n">rmtree</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.authoring</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIProgram</span><span class="p">,</span> <span class="n">Module</span><span class="p">,</span> <span class="n">TensorSpec</span>
+</span><span data-line="5"><span class="c1"># Pending re-export from coreai.authoring; see the previous tutorial.</span>
+</span><span data-line="6"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai._compiler.dialects</span><span class="w"> </span><span class="kn">import</span> <span class="n">coreai</span> <span class="k">as</span> <span class="n">ops</span>
+</span><span data-line="7"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai._compiler.ir</span><span class="w"> </span><span class="kn">import</span> <span class="n">Value</span>
+</span><span data-line="8">
+</span><span data-line="9"><span class="c1"># Reconstruct asset.</span>
+</span><span data-line="10"><span class="k">if</span> <span class="n">asset_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+</span><span data-line="11">    <span class="n">rmtree</span><span class="p">(</span><span class="n">asset_path</span><span class="p">)</span>
+</span><span data-line="12">
+</span><span data-line="13"><span class="n">module</span> <span class="o">=</span> <span class="n">Module</span><span class="o">.</span><span class="n">create</span><span class="p">()</span>
+</span><span data-line="14"><span class="k">with</span> <span class="n">module</span><span class="p">:</span>
+</span><span data-line="15">
+</span><span data-line="16">    <span class="nd">@ops</span><span class="o">.</span><span class="n">graph</span>
+</span><span data-line="17">    <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span>
+</span><span data-line="18">        <span class="n">x</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">Value</span><span class="p">,</span> <span class="n">TensorSpec</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)],</span>
+</span><span data-line="19">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">Value</span><span class="p">,</span> <span class="n">TensorSpec</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;y&quot;</span><span class="p">)]:</span>
+</span><span data-line="20">        <span class="k">return</span> <span class="n">ops</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+</span><span data-line="21">
+</span><span data-line="22"><span class="n">AIProgram</span><span class="p">(</span><span class="n">module</span><span class="p">)</span><span class="o">.</span><span class="n">save_asset</span><span class="p">(</span><span class="n">asset_path</span><span class="p">)</span>
+</span><span data-line="23"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;created </span><span class="si">{</span><span class="n">asset_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="open-the-asset">
+<h2>Open the asset<a class="headerlink" href="#open-the-asset" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">AIModelAsset.load</span></code> reads the <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> directory header from disk so you
+can inspect it; it does not yet compile the program for inference. That work
+happens lazily inside the <code class="docutils literal notranslate"><span class="pre">executable()</span></code> async context manager used in the
+next section.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>Two ways to load a model.</strong> This tutorial uses <code class="docutils literal notranslate"><span class="pre">AIModelAsset.load(path)</span></code>
+followed by <code class="docutils literal notranslate"><span class="pre">async</span> <span class="pre">with</span> <span class="pre">asset.executable()</span> <span class="pre">as</span> <span class="pre">model:</span></code> — the resource-managed
+form, which gives you explicit control over when the compiled model is
+released. There is also a one-shot <code class="docutils literal notranslate"><span class="pre">await</span> <span class="pre">AIModel.load(path)</span></code> that returns
+a runnable <code class="docutils literal notranslate"><span class="pre">AIModel</span></code> directly; reach for it when you want a long-lived
+model handle without the <code class="docutils literal notranslate"><span class="pre">async</span> <span class="pre">with</span></code> block (e.g. inside an application
+object that owns the model for its full lifetime).</p>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">asset</span> <span class="o">=</span> <span class="n">AIModelAsset</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">asset_path</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="open-the-model-and-run-inference">
+<h2>Open the model and run inference<a class="headerlink" href="#open-the-model-and-run-inference" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">asset.executable()</span></code> returns an async context manager that yields an
+<code class="docutils literal notranslate"><span class="pre">AIModel</span></code> — a runnable handle to the compiled program. Resources are released
+when the <code class="docutils literal notranslate"><span class="pre">async</span> <span class="pre">with</span></code> block exits, so all model usage happens inside it.</p>
+<p>Inside the block we do five things in order:</p>
+<ol class="arabic simple">
+<li><p>list the functions exposed by the model,</p></li>
+<li><p>look up <code class="docutils literal notranslate"><span class="pre">main</span></code> and inspect its <code class="docutils literal notranslate"><span class="pre">desc</span></code> (name, input names, output names),</p></li>
+<li><p>build the input dict — each name from the signature maps to an <code class="docutils literal notranslate"><span class="pre">NDArray</span></code>
+(which accepts a NumPy array, a PyTorch tensor, or a Python list, wrapping
+the data without a copy where possible),</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">await</span></code> the call to get back a <code class="docutils literal notranslate"><span class="pre">dict</span></code> keyed by output name, and</p></li>
+<li><p>copy the result out as NumPy so we can inspect it after exiting the
+context.</p></li>
+</ol>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">async</span> <span class="k">with</span> <span class="n">asset</span><span class="o">.</span><span class="n">executable</span><span class="p">()</span> <span class="k">as</span> <span class="n">model</span><span class="p">:</span>
+</span><span data-line="2">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;functions: </span><span class="si">{</span><span class="n">model</span><span class="o">.</span><span class="n">function_names</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="3">
+</span><span data-line="4">    <span class="n">function</span><span class="p">:</span> <span class="n">InferenceFunction</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">load_function</span><span class="p">(</span><span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</span><span data-line="5">    <span class="n">desc</span> <span class="o">=</span> <span class="n">function</span><span class="o">.</span><span class="n">desc</span>
+</span><span data-line="6">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;name:    </span><span class="si">{</span><span class="n">desc</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="7">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;inputs:  </span><span class="si">{</span><span class="n">desc</span><span class="o">.</span><span class="n">input_names</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="8">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;outputs: </span><span class="si">{</span><span class="n">desc</span><span class="o">.</span><span class="n">output_names</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="9">
+</span><span data-line="10">    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="mf">1.5</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+</span><span data-line="11">    <span class="n">inputs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">(</span><span class="n">x</span><span class="p">)}</span>
+</span><span data-line="12">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;input x:</span><span class="se">\n</span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="13">
+</span><span data-line="14">    <span class="n">outputs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">function</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
+</span><span data-line="15">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;output keys: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">outputs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="16">
+</span><span data-line="17">    <span class="c1"># Materialize the result inside the block — the model&#39;s backing buffers</span>
+</span><span data-line="18">    <span class="c1"># are only guaranteed valid until the context exits.</span>
+</span><span data-line="19">    <span class="n">result</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="s2">&quot;y&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="inspect-the-output">
+<h2>Inspect the output<a class="headerlink" href="#inspect-the-output" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">.numpy()</span></code> was called inside the <code class="docutils literal notranslate"><span class="pre">async</span> <span class="pre">with</span></code> block to ensure the result was
+materialized before the model’s buffers could be released. We can now inspect
+the array freely. Our <code class="docutils literal notranslate"><span class="pre">main</span></code> function computes <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">+</span> <span class="pre">x</span></code>, so for an input of
+all <code class="docutils literal notranslate"><span class="pre">1.5</span></code>s we expect all <code class="docutils literal notranslate"><span class="pre">3.0</span></code>s back.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;shape: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="2"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;dtype: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">dtype</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="3"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;value:</span><span class="se">\n</span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+</span><span data-line="6"><span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span>
+</span><span data-line="7"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;OK — inference produced expected output shape and dtype&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="what-s-next">
+<h2>What’s next<a class="headerlink" href="#what-s-next" title="Link to this heading">¶</a></h2>
+<p>You now have the core loop: <strong>load</strong> an asset, <strong>enter</strong> its executable,
+<strong>build</strong> inputs, <strong>await</strong> the call, and <strong>read</strong> the outputs back as NumPy.</p>
+<p>For more advanced configuration, two types in <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code> are worth
+knowing about:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">SpecializationOptions</span></code></strong> — pass to <code class="docutils literal notranslate"><span class="pre">asset.executable(options)</span></code> to pin the
+preferred compute unit (CPU / GPU / Neural Engine) or enable debug mode.
+<em>(macOS only.)</em></p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">StorageKind</span></code></strong> — passed to <code class="docutils literal notranslate"><span class="pre">NDArray(data,</span> <span class="pre">backing=...)</span></code> to choose
+byte-backed, IOSurface-backed, or Metal-backed storage. The default
+(<code class="docutils literal notranslate"><span class="pre">StorageKind.BYTES</span></code>) is what you want unless you are interoperating with
+graphics or camera buffers.</p></li>
+</ul>
+<p>Both are importable from <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code>, e.g.:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpecializationOptions</span><span class="p">,</span> <span class="n">StorageKind</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="construct-a-graph.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Constructing a CoreAI Graph</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="../api/coreai.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">coreai</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2026, Apple Inc.</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials">
+<a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../_static/shibuya.js?v=50760d75"></script>
+      <script src="../../_static/copy-page-button.js?v=d5e0191b"></script></body>
+</html>

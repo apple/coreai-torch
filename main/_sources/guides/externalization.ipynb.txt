@@ -1,0 +1,232 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Externalization\n",
+    "\n",
+    "Externalization preserves a submodule's operation boundary during conversion, so the operation stays intact as a recognizable unit in the converted model. When you mark a well-known building block — such as attention, RoPE, or RMSNorm — as a **composite op**, the compiler recognizes that operation and can apply an implementation optimized for it, producing a faster model.\n",
+    "\n",
+    "Use `ExternalizeSpec` to tag the extracted submodule with a composite op name and the attributes that define it, so the compiler can recognize and optimize the operation."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## What externalization produces\n",
+    "\n",
+    "Both modes extract the matching submodule into its own `coreai.graph` that `@main` calls with `coreai.invoke`. The difference is what that graph carries. Take a model whose `forward` is `linear(norm(x))`, with the `norm` submodule externalized:\n",
+    "\n",
+    "**Composite op externalization** marks the extracted graph as a named composite op — note the `private` graph and the `composite_decl` attribute recording the op name and its attributes, which the compiler recognizes and optimizes:\n",
+    "\n",
+    "```llvm\n",
+    "module {\n",
+    "  coreai.graph private noinline @norm.rms_norm(\n",
+    "      %arg0: tensor<1x10xf32> {coreai.name = \"input\"},\n",
+    "      %arg1: tensor<10xf32> {coreai.name = \"scale\"}\n",
+    "  ) -> tensor<1x10xf32> attributes {\n",
+    "      composite_decl = #coreai.composite_declaration<\"rms_norm\" = {\n",
+    "          input_names = [\"input\", \"scale\"],\n",
+    "          op_attrs = {axes = -1 : si64, eps = 9.99999974E-6 : f32, version = 1 : si64},\n",
+    "          output_names = [\"output\"]}>\n",
+    "  } {\n",
+    "    // ... rms-norm body ...\n",
+    "    coreai.output %15 : tensor<1x10xf32>\n",
+    "  }\n",
+    "  coreai.graph @main(%arg0: tensor<1x10xf32>) -> tensor<1x5xf32> {\n",
+    "    %3 = coreai.invoke @norm.rms_norm(%arg0, %0)\n",
+    "        : (tensor<1x10xf32>, tensor<10xf32>) -> tensor<1x10xf32>\n",
+    "    // ... linear ...\n",
+    "    coreai.output %7 : tensor<1x5xf32>\n",
+    "  }\n",
+    "}\n",
+    "```\n",
+    "\n",
+    "**Simple externalization** extracts the same submodule as a plain graph boundary — no `composite_decl`, so the compiler sees an opaque subgraph rather than a named op:\n",
+    "\n",
+    "```llvm\n",
+    "module {\n",
+    "  coreai.graph noinline @norm(%arg0: tensor<1x10xf32>) -> tensor<1x10xf32> {\n",
+    "    // ... rms-norm body ...\n",
+    "    coreai.output %16 : tensor<1x10xf32>\n",
+    "  }\n",
+    "  coreai.graph @main(%arg0: tensor<1x10xf32>) -> tensor<1x5xf32> {\n",
+    "    %3 = coreai.invoke @norm(%arg0)\n",
+    "        : (tensor<1x10xf32>) -> tensor<1x10xf32>\n",
+    "    // ... linear ...\n",
+    "    coreai.output %7 : tensor<1x5xf32>\n",
+    "  }\n",
+    "}\n",
+    "```\n",
+    "\n",
+    "Symbol names and constants above are illustrative (the converter appends a hash suffix to each externalized graph name)."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Composite Op Externalization\n",
+    "\n",
+    "Use `ExternalizeSpec` to mark a submodule as a named composite op:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "\n",
+    "from coreai_torch import ExternalizeSpec\n",
+    "\n",
+    "\n",
+    "class RMSNormComposite(nn.Module):\n",
+    "    def __init__(self, axes=-1, eps=1e-5, version=1):\n",
+    "        super().__init__()\n",
+    "        self.axes = axes\n",
+    "        self.eps = eps\n",
+    "        self.version = version\n",
+    "\n",
+    "    def forward(self, input: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:\n",
+    "        x_f32 = input.to(torch.float32)\n",
+    "        inv_rms = torch.rsqrt((x_f32 * x_f32).mean(self.axes, keepdim=True) + self.eps)\n",
+    "        return (input * inv_rms).to(input.dtype) * scale\n",
+    "\n",
+    "model = RMSNormComposite().eval()\n",
+    "sample = (torch.randn(10), torch.randn(10))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "```python\n",
+    "import torch\n",
+    "\n",
+    "import coreai_torch\n",
+    "from coreai_torch import ExternalizeSpec, TorchConverter\n",
+    "\n",
+    "converter = TorchConverter().add_pytorch_module(\n",
+    "    model,\n",
+    "    export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(\n",
+    "        coreai_torch.get_decomp_table()\n",
+    "    ),\n",
+    "    externalize_modules=[\n",
+    "        ExternalizeSpec(\n",
+    "            target_class=RMSNormComposite,\n",
+    "            composite_op_name=\"rms_norm\",\n",
+    "            composite_attrs=[\"axes\", \"eps\", \"version\"],\n",
+    "        )\n",
+    "    ],\n",
+    ")\n",
+    "coreai_program = converter.to_coreai()\n",
+    "coreai_program.optimize()\n",
+    "```\n",
+    "\n",
+    "Each instance is externalized using its own attribute values, so two instances configured differently are preserved as distinct composite ops.\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Input and output names\n",
+    "\n",
+    "`input_names` and `output_names` for each composite op are derived automatically from the module's parameters, buffers, and `forward()` signature — no manual bookkeeping is needed. Optional arguments passed as `None` at a call site are excluded automatically.\n",
+    "\n",
+    "### Requirements for composite op modules\n",
+    "\n",
+    "Composite op `forward` methods must follow two rules:\n",
+    "\n",
+    "1. **Forward arguments must be tensors** — all `forward` parameters that become inputs must be `torch.Tensor`. Scalar configuration (e.g., `eps`, `is_causal`) should be stored as instance attributes and serialized via `composite_attrs` in `ExternalizeSpec`.\n",
+    "\n",
+    "2. **Optional arguments must use `torch.Tensor | None = None`** — when an optional is not provided (left as `None`), it is excluded entirely and does not appear in `input_names`. There is no support for default tensor values."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Simple externalization (experimental)\n",
+    "\n",
+    "Passing a bare module class to `externalize_modules` — instead of an `ExternalizeSpec` — extracts the submodule into its own standalone graph with no composite-op metadata. It offers no optimization benefit and simply defines a boundary around the submodule.\n",
+    "\n",
+    "```{warning}\n",
+    "Simple externalization is **experimental**. Prefer composite-op externalization above.\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## API Quick Reference\n",
+    "\n",
+    "### ExternalizeSpec\n",
+    "\n",
+    "| Field | Type | Description |\n",
+    "|---|---|---|\n",
+    "| `target_class` | `type` | The `nn.Module` subclass to match. Every instance found in the model will be externalized. |\n",
+    "| `composite_op_name` | `str \\| None` | If set, the submodule is preserved as a named composite op the compiler can recognize and optimize. |\n",
+    "| `composite_attrs` | `list[str] \\| None` | Instance attribute names to record as attributes of the composite op. |\n",
+    "\n",
+    "Set `composite_op_name`, and optionally `composite_attrs`, to preserve the submodule as a composite op the compiler can optimize.\n",
+    "\n",
+    "### Relevant `add_pytorch_module` parameters\n",
+    "\n",
+    "| Parameter | Type | Description |\n",
+    "|---|---|---|\n",
+    "| `externalize_modules` | `list[ExternalizeSpec] \\| None` | The `ExternalizeSpec` objects describing which submodule classes to externalize as composite ops. |\n",
+    "\n",
+    "See {doc}`../api/TorchConverter` for the full method signature."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "8",
+   "metadata": {},
+   "source": [
+    "## Next Steps\n",
+    "\n",
+    "- {doc}`../guides/composite-ops` — the built-in composite op modules you can pass to `externalize_modules`.\n",
+    "- {doc}`../guides/conversion-workflows` — `add_pytorch_module` workflow, which is required for externalization.\n",
+    "- {doc}`../api/ExternalizeSpec` — full API reference for `ExternalizeSpec`."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Notices\n",
+    "\n",
+    "PyTorch is a trademark of Meta Platforms, Inc.\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "name": "python",
+   "version": "3.10.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

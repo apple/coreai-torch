@@ -1,0 +1,296 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Custom Op Lowering\n",
+    "\n",
+    "`TorchConverter` maps standard ATen ops to CoreAI graphs automatically. This guide shows how to register lowerings for custom or unsupported ops.\n",
+    "\n",
+    "```{warning}\n",
+    "Writing a lowering uses authoring APIs from `coreai-core` (such as `coreai._compiler.dialects`). The leading underscore on `_compiler` marks this as private upstream API — it may move or change without notice across `coreai-core` releases.\n",
+    "```\n",
+    "\n",
+    "## When You Need This\n",
+    "\n",
+    "- Your model calls a custom torch op (registered via `torch.library`) that the converter does not recognize.\n",
+    "- You want to replace the built-in lowering for a standard ATen op with a specialized implementation."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Lowering a custom torch Op\n",
+    "\n",
+    "### Step 1 — Define the custom torch Op\n",
+    "\n",
+    "Use `@torch.library.custom_op` to register the op with the PyTorch dispatcher, and `register_fake` to provide the abstract implementation needed by `torch.export`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "\n",
+    "\n",
+    "@torch.library.custom_op(\"my_lib::scaled_add\", mutates_args=())\n",
+    "def scaled_add(x: torch.Tensor, y: torch.Tensor, scale: float) -> torch.Tensor:\n",
+    "    \"\"\"Eager implementation: runs on CPU during normal PyTorch inference.\"\"\"\n",
+    "    return x + scale * y\n",
+    "\n",
+    "\n",
+    "@scaled_add.register_fake\n",
+    "def _(x: torch.Tensor, y: torch.Tensor, scale: float) -> torch.Tensor:\n",
+    "    \"\"\"Abstract implementation: called by torch.export to infer output shapes.\"\"\"\n",
+    "    return torch.empty_like(x)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The eager body runs during regular PyTorch execution. The `register_fake` body is called by the exporter's shape-propagation machinery; it only needs to return a tensor with the correct shape and dtype.\n",
+    "\n",
+    "### Step 2 — Use the Op in a model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "\n",
+    "\n",
+    "class ScaledAddModel(nn.Module):\n",
+    "    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:\n",
+    "        return torch.ops.my_lib.scaled_add(x, y, 0.5)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Step 3 — Export the model\n",
+    "\n",
+    "Export and run decompositions as usual. Custom ops are not touched by the decomposition pass, so `my_lib::scaled_add` remains as a single node in the graph."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "from coreai_torch import get_decomp_table\n",
+    "\n",
+    "model = ScaledAddModel().eval()\n",
+    "example_inputs = (torch.randn(4, 8), torch.randn(4, 8))\n",
+    "\n",
+    "exported = torch.export.export(model, args=example_inputs)\n",
+    "exported = exported.run_decompositions(get_decomp_table())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Step 4 — Register the CoreAI lowering\n",
+    "\n",
+    "Create a `TorchConverter`, then use `register_torch_lowering` as a decorator. The lowering function receives:\n",
+    "\n",
+    "| Argument | Type | Description |\n",
+    "|---|---|---|\n",
+    "| `values_map` | `dict[str, Value]` | Maps FX node names to their CoreAI `Value`s. Use this to look up tensor operands. |\n",
+    "| `node` | `torch.fx.Node` | The FX node being lowered. Tensor args are `fx.Node` objects; scalar args are plain Python values. |\n",
+    "| `loc` | `Location` | CoreAI Location. Pass to CoreAI op constructors. |\n",
+    "\n",
+    "The op's qualified name in the FX graph always carries the overload suffix `.default`, so register it as `\"my_lib::scaled_add.default\"`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from coreai._compiler.dialects import coreai\n",
+    "\n",
+    "from coreai_torch import TorchConverter\n",
+    "from coreai_torch._utils import get_operands\n",
+    "\n",
+    "converter = TorchConverter()\n",
+    "\n",
+    "\n",
+    "@converter.register_torch_lowering(\"my_lib::scaled_add.default\")\n",
+    "def lower_scaled_add(values_map, node, loc):\n",
+    "    x, y = get_operands(values_map, node, [0, 1], loc)\n",
+    "    scale = node.args[2]  # plain Python float\n",
+    "\n",
+    "    scale_val = coreai.constant(scale, dtype=x.type.element_type)\n",
+    "    scaled_y = coreai.broadcasting_mul(y, scale_val, loc=loc)\n",
+    "    return coreai.broadcasting_add(x, scaled_y, loc=loc)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Step 5 — Convert"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "coreai_program = converter.add_exported_program(\n",
+    "    exported,\n",
+    "    input_names=[\"x\", \"y\"],\n",
+    "    output_names=[\"result\"],\n",
+    ").to_coreai()\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Step 6 — Inspect the generated CoreAI graph "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print(str(coreai_program))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Overriding built-in lowerings\n",
+    "\n",
+    "To replace the built-in lowering for a standard ATen op, pass `allow_override=True`. This is useful when you know your model's runtime constraints allow a simpler implementation.\n",
+    "\n",
+    "For example, the default lowering for `aten._adaptive_avg_pool2d` handles dynamic input shapes and non-divisible output sizes. If your model always runs with static shapes and an output size that evenly divides the input (e.g., ResNet's final `adaptive_avg_pool2d(output_size=(1, 1))`), you can replace it with a simpler `sumpool2d` + divide:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "import numpy as np\n",
+    "\n",
+    "from coreai_torch._utils import get_operand\n",
+    "\n",
+    "\n",
+    "# A model that uses adaptive_avg_pool2d\n",
+    "class PoolModel(nn.Module):\n",
+    "    def forward(self, x: torch.Tensor) -> torch.Tensor:\n",
+    "        return torch.nn.functional.adaptive_avg_pool2d(x, (1, 1))\n",
+    "\n",
+    "\n",
+    "pool_model = PoolModel().eval()\n",
+    "pool_input = (torch.randn(1, 3, 8, 8),)\n",
+    "pool_exported = torch.export.export(pool_model, args=pool_input)\n",
+    "pool_exported = pool_exported.run_decompositions(get_decomp_table())\n",
+    "\n",
+    "converter = TorchConverter()\n",
+    "\n",
+    "\n",
+    "@converter.register_torch_lowering(\n",
+    "    \"aten::_adaptive_avg_pool2d.default\", allow_override=True\n",
+    ")\n",
+    "def lower_adaptive_avg_pool2d_static(values_map, node, loc):\n",
+    "    x = get_operand(values_map, node, 0, loc)\n",
+    "    output_h, output_w = node.args[1]\n",
+    "    input_h, input_w = x.type.shape[2], x.type.shape[3]\n",
+    "    stride_h, stride_w = input_h // output_h, input_w // output_w\n",
+    "    kernel_h = input_h - (output_h - 1) * stride_h\n",
+    "    kernel_w = input_w - (output_w - 1) * stride_w\n",
+    "    return coreai.broadcasting_divide(\n",
+    "        coreai.sumpool2d(\n",
+    "            x,\n",
+    "            kernel_size=np.array([kernel_h, kernel_w], dtype=np.uint32),\n",
+    "            strides=np.array([stride_h, stride_w], dtype=np.uint32),\n",
+    "            dilation=coreai.constant([1, 1], dtype=np.uint32),\n",
+    "        ),\n",
+    "        coreai.cast(float(kernel_h * kernel_w), x.type.element_type),\n",
+    "    )\n",
+    "\n",
+    "\n",
+    "coreai_program = converter.add_exported_program(pool_exported).to_coreai()\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Notes\n",
+    "\n",
+    "- **Op name format.** The qualified name must be `\"namespace::op_name.overload\"`. Custom ops defined with `@custom_op` always use the `.default` overload.\n",
+    "- **Reserved namespaces.** `aten`, `higher_order`, `coreai`, and `coreaix` are built-in. Overriding requires `allow_override=True`.\n",
+    "- **Per-instance registration.** Lowerings are stored on the `TorchConverter` instance and do not affect other converters or the global resolver tables.\n",
+    "- **Multiple return values.** If your op returns a tuple, return a Python list of `Value`s from the lowering function. The converter stores them as `\"node_name#0\"`, `\"node_name#1\"`, etc. in `values_map`."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "16",
+   "metadata": {},
+   "source": [
+    "## Next Steps\n",
+    "\n",
+    "- {doc}`../api/supported-aten-ops` — check the full built-in op coverage before writing a custom lowering.\n",
+    "- {doc}`../guides/composite-ops` — use `generate_composite_decl` to write composite op lowerings that dispatch to hardware-optimized kernels.\n",
+    "- {doc}`../api/TorchConverter` — `register_torch_lowering` API reference."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Notices\n",
+    "\n",
+    "PyTorch is a trademark of Meta Platforms, Inc.\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "name": "python",
+   "version": "3.10.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

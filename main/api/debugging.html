@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="indigo" data-content_root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Debugging - coreai-torch documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Core AI (coreai-core)" href="../coreai-core/index.html" /><link rel="prev" title="Supported ATen ops" href="supported-aten-ops.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d88b86f9" />
+    <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=9454f7d5" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=05f3bbaf" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    
+  <meta property="og:type" content="website"/><meta property="og:title" content="Debugging"/>
+    <meta name="twitter:card" content="summary"/>
+  <script>
+  var defined_VERSIONS = [{"name": "main", "version": "main"}];
+  var defined_VERSION_MATCH = "main";
+</script>
+<script src="../_static/version-switcher.js" defer></script>
+<script>
+  // Override Shibuya's 3-state toggle (auto/light/dark) with a 2-state toggle (light/dark)
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.querySelector(".js-theme");
+    if (!btn) return;
+
+    // Remove Shibuya's click listener by cloning the button
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    function getEffectiveMode() {
+      var mode = document.documentElement.getAttribute("data-color-mode") || "auto";
+      if (mode === "auto") {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      return mode;
+    }
+
+    newBtn.addEventListener("click", function () {
+      var next = getEffectiveMode() === "dark" ? "light" : "dark";
+      if (typeof setColorMode === "function") {
+        setColorMode(next);
+      }
+      localStorage._theme = next;
+      var label = newBtn.getAttribute("data-aria-" + next);
+      if (label) newBtn.setAttribute("aria-label", label);
+    });
+  });
+</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../index.html">
+      
+      
+      <strong>coreai-torch</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"><ul><li class="link"><a href="../getting-started/installation.html">Getting Started</a></li><li class="link"><a href="../guides/conversion-workflows.html">Guides</a></li><li class="link"><a href="TorchConverter.html">API</a></li><li class="link"><a href="../coreai-core/index.html">coreai-core</a></li></ul></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../getting-started/installation.html">Installing coreai-torch</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../getting-started/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../whats-new.html">What&#8217;s new</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/conversion-workflows.html">Conversion Workflows</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/custom-op-lowering.html">Custom Op Lowering</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/custom-metal-kernels.html">Custom Metal Kernels</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/composite-ops.html">Composite Ops Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/externalization.html">Externalization</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">API Reference</span></p>
+<ul class="current">
+<li class="toctree-l1 _expand"><a class="reference internal" href="TorchConverter.html">TorchConverter API reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="composite-ops.html">Composite ops API reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="composite-ops/module-class.html">Module-class composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/gather-mm.html">GatherMM</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/gated-delta-update.html">GatedDeltaUpdate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/rms-norm.html">RMSNormImpl</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/rope.html">RoPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/sdpa.html">SDPA</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="composite-ops/aten-derived.html">ATen-derived composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/batch-norm.html">batch_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/group-norm.html">group_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/hard-sigmoid.html">hard_sigmoid</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/instance-norm.html">instance_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/layer-norm.html">layer_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/linalg-vector-norm.html">linalg_vector_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/log-softmax.html">log_softmax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/pixel-shuffle.html">pixel_shuffle</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="generate-composite-decl.html">generate_composite_decl</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="ExternalizeSpec.html">ExternalizeSpec</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="TorchMetalKernel.html">TorchMetalKernel</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="supported-aten-ops.html">Supported ATen ops</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Debugging</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Core AI (coreai-core)</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../coreai-core/index.html">Core AI (coreai-core)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/tutorials/construct-a-graph.html">Constructing a CoreAI Graph</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/tutorials/run-an-aimodel.html">Running an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> with <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/api/coreai.html">coreai</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">More</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../faq.html">Frequently asked questions</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../contributing.html">Contributing</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../resources.html">Resources</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../release-notes.html">Release notes</a></li>
+</ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#quick-start">Quick start</a></li>
+<li><a class="reference internal" href="#finding-nan-infinity-issues">Finding NaN/infinity issues</a><ul>
+<li><a class="reference internal" href="#pytorch-models">PyTorch models</a></li>
+<li><a class="reference internal" href="#core-ai-programs">Core AI programs</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#comparing-model-implementations">Comparing model implementations</a><ul>
+<li><a class="reference internal" href="#cross-framework-comparison">Cross-framework comparison</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#core-ai-inspector">Core AI inspector</a></li>
+<li><a class="reference internal" href="#structural-graph-analysis">Structural graph analysis</a><ul>
+<li><a class="reference internal" href="#graph-difference-analysis">Graph difference analysis</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#performance-profiling">Performance profiling</a></li>
+<li><a class="reference internal" href="#custom-validation">Custom validation</a></li>
+<li><a class="reference internal" href="#configuration">Configuration</a><ul>
+<li><a class="reference internal" href="#search-strategies">Search strategies</a></li>
+<li><a class="reference internal" href="#batch-size">Batch size</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#torch-utilities">Torch utilities</a><ul>
+<li><a class="reference internal" href="#saving-intermediate-values">Saving intermediate values</a></li>
+<li><a class="reference internal" href="#loading-intermediate-values">Loading intermediate values</a></li>
+<li><a class="reference internal" href="#custom-value-filtering">Custom value filtering</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#see-also">See also</a></li>
+</ul>
+</div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">coreai-torch</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Debugging</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12"><div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="debugging.html.md"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem" data-url="debugging.html.md">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="../_sources/api/debugging.md.txt" target="_blank" rel="nofollow">
+          <span class="iconify-icon">
+            <img src="../_static/icons/markdown.svg" alt="" width="14" height="14">
+          </span>
+          <span>View as Markdown</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div><article class="yue" role="main">
+          <section class="tex2jax_ignore mathjax_ignore" id="debugging">
+<h1>Debugging<a class="headerlink" href="#debugging" title="Link to this heading">¶</a></h1>
+<p>Find NaN/infinity issues, compare model implementations, and analyze structural differences with the debugging module.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>During the current preview, set the following environment variables to ensure
+operation-level debug metadata is preserved and available to these tools:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">export</span><span class="w"> </span><span class="nv">USE_LOCAL_COREAI</span><span class="o">=</span><span class="m">1</span>
+</span><span data-line="2"><span class="nb">export</span><span class="w"> </span><span class="nv">ENABLE_DEBUG_INFO</span><span class="o">=</span><span class="m">1</span>
+</span></pre></div>
+</div>
+</div>
+<section id="quick-start">
+<h2>Quick start<a class="headerlink" href="#quick-start" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.validator</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_validator_for_exported_program</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="c1"># Find NaN/inf issues in PyTorch models</span>
+</span><span data-line="4"><span class="n">model</span> <span class="o">=</span> <span class="n">MyModel</span><span class="p">()</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+</span><span data-line="5"><span class="n">exported</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">),))</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="n">validator</span> <span class="o">=</span> <span class="n">create_validator_for_exported_program</span><span class="p">(</span><span class="n">exported</span><span class="p">)</span>
+</span><span data-line="8"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check_for_nans</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">),))</span>
+</span><span data-line="9">
+</span><span data-line="10"><span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
+</span><span data-line="11">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;NaN detected at: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="finding-nan-infinity-issues">
+<h2>Finding NaN/infinity issues<a class="headerlink" href="#finding-nan-infinity-issues" title="Link to this heading">¶</a></h2>
+<p><strong>Use when:</strong> Your model produces NaN or infinity values and you need to find which operation caused the issue.</p>
+<section id="pytorch-models">
+<h3>PyTorch models<a class="headerlink" href="#pytorch-models" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.validator</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_validator_for_exported_program</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="c1"># Export your model</span>
+</span><span data-line="4"><span class="n">exported_program</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_input</span><span class="p">)</span>
+</span><span data-line="5">
+</span><span data-line="6"><span class="c1"># Create validator</span>
+</span><span data-line="7"><span class="n">validator</span> <span class="o">=</span> <span class="n">create_validator_for_exported_program</span><span class="p">(</span><span class="n">exported_program</span><span class="p">)</span>
+</span><span data-line="8">
+</span><span data-line="9"><span class="c1"># Check for numerical issues</span>
+</span><span data-line="10"><span class="n">nan_result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check_for_nans</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">)</span>
+</span><span data-line="11"><span class="n">inf_result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check_for_infs</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">)</span>
+</span><span data-line="12">
+</span><span data-line="13"><span class="c1"># Get first failing operation</span>
+</span><span data-line="14"><span class="k">if</span> <span class="n">nan_result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
+</span><span data-line="15">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;First NaN at: </span><span class="si">{</span><span class="n">nan_result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="core-ai-programs">
+<h3>Core AI programs<a class="headerlink" href="#core-ai-programs" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.validator</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_validator_for_coreai_program</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="c1"># Convert to Core AI</span>
+</span><span data-line="4"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">exported_program</span><span class="p">)</span>
+</span><span data-line="5"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="6"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="c1"># Create validator</span>
+</span><span data-line="9"><span class="n">validator</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_validator_for_coreai_program</span><span class="p">(</span><span class="n">coreai_program</span><span class="p">,</span> <span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</span><span data-line="10">
+</span><span data-line="11"><span class="c1"># Check for issues</span>
+</span><span data-line="12"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check_for_nans</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)})</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+<section id="comparing-model-implementations">
+<h2>Comparing model implementations<a class="headerlink" href="#comparing-model-implementations" title="Link to this heading">¶</a></h2>
+<p><strong>Use when:</strong> You need to verify that PyTorch and Core AI models produce the same outputs after conversion.</p>
+<section id="cross-framework-comparison">
+<h3>Cross-framework comparison<a class="headerlink" href="#cross-framework-comparison" title="Link to this heading">¶</a></h3>
+<p>Compare PyTorch vs Core AI to verify conversion correctness:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.comparator</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_comparator_for_programs</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="c1"># Create comparator between PyTorch and Core AI</span>
+</span><span data-line="4"><span class="n">comparator</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_comparator_for_programs</span><span class="p">(</span>
+</span><span data-line="5">    <span class="n">source_program</span><span class="o">=</span><span class="n">exported_program</span><span class="p">,</span>
+</span><span data-line="6">    <span class="n">target_program</span><span class="o">=</span><span class="n">coreai_program</span><span class="p">,</span>
+</span><span data-line="7">    <span class="n">target_entry_point</span><span class="o">=</span><span class="s2">&quot;main&quot;</span>
+</span><span data-line="8"><span class="p">)</span>
+</span><span data-line="9">
+</span><span data-line="10"><span class="c1"># Compare outputs with tolerance</span>
+</span><span data-line="11"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">comparator</span><span class="o">.</span><span class="n">compare_with_tolerance</span><span class="p">(</span>
+</span><span data-line="12">    <span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">example_input</span><span class="p">},</span>
+</span><span data-line="13">    <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
+</span><span data-line="14">    <span class="n">atol</span><span class="o">=</span><span class="mf">1e-8</span>
+</span><span data-line="15"><span class="p">)</span>
+</span><span data-line="16">
+</span><span data-line="17"><span class="c1"># Check for differences</span>
+</span><span data-line="18"><span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
+</span><span data-line="19">    <span class="k">for</span> <span class="n">source_op</span><span class="p">,</span> <span class="n">target_op</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
+</span><span data-line="20">        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Mismatch: </span><span class="si">{</span><span class="n">source_op</span><span class="si">}</span><span class="s2"> vs </span><span class="si">{</span><span class="n">target_op</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+<section id="core-ai-inspector">
+<h2>Core AI inspector<a class="headerlink" href="#core-ai-inspector" title="Link to this heading">¶</a></h2>
+<p><strong>Use when:</strong> You need to examine intermediate values from specific operations in a deployed Core AI model.</p>
+<p>Capture intermediate values from deployed Core AI models:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.inspector</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoreAIInspector</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIModel</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="c1"># Load deployed Core AI model</span>
+</span><span data-line="5"><span class="n">asset_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;my_model.aimodel&quot;</span><span class="p">)</span>
+</span><span data-line="6"><span class="n">ai_model</span> <span class="o">=</span> <span class="k">await</span> <span class="n">AIModel</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">asset_path</span><span class="p">)</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="c1"># Create inspector</span>
+</span><span data-line="9"><span class="n">inspector</span> <span class="o">=</span> <span class="n">CoreAIInspector</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">ai_model</span><span class="p">,</span> <span class="n">function_name</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</span><span data-line="10">
+</span><span data-line="11"><span class="c1"># Get operation IDs to inspect (from debug info)</span>
+</span><span data-line="12"><span class="n">coreai_op_ids</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">]</span>
+</span><span data-line="13">
+</span><span data-line="14"><span class="c1"># Capture intermediate values</span>
+</span><span data-line="15"><span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">inspector</span><span class="o">.</span><span class="n">get_intermediates_for_ops</span><span class="p">(</span>
+</span><span data-line="16">    <span class="n">coreai_op_ids</span><span class="p">,</span>
+</span><span data-line="17">    <span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)}</span>
+</span><span data-line="18"><span class="p">)</span>
+</span><span data-line="19">
+</span><span data-line="20"><span class="c1"># Check results</span>
+</span><span data-line="21"><span class="k">for</span> <span class="n">op_id</span><span class="p">,</span> <span class="n">outputs</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span data-line="22">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Op </span><span class="si">{</span><span class="n">op_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">outputs</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">outputs</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="mi">0</span><span class="si">}</span><span class="s2"> outputs&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="structural-graph-analysis">
+<h2>Structural graph analysis<a class="headerlink" href="#structural-graph-analysis" title="Link to this heading">¶</a></h2>
+<p><strong>Use when:</strong> You want to understand how model structure changes between different versions or after optimization passes.</p>
+<section id="graph-difference-analysis">
+<h3>Graph difference analysis<a class="headerlink" href="#graph-difference-analysis" title="Link to this heading">¶</a></h3>
+<p>Analyze structural differences between model implementations using graph isomorphism:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.graph_diff</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span data-line="2">    <span class="n">compute_exported_program_diff</span><span class="p">,</span>
+</span><span data-line="3">    <span class="n">compute_coreai_program_diff</span><span class="p">,</span>
+</span><span data-line="4">    <span class="n">write_diff</span>
+</span><span data-line="5"><span class="p">)</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="c1"># Compare two PyTorch programs</span>
+</span><span data-line="8"><span class="n">source_program</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model_v1</span><span class="p">,</span> <span class="n">example_input</span><span class="p">)</span>
+</span><span data-line="9"><span class="n">target_program</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model_v2</span><span class="p">,</span> <span class="n">example_input</span><span class="p">)</span>
+</span><span data-line="10">
+</span><span data-line="11"><span class="n">diff</span> <span class="o">=</span> <span class="n">compute_exported_program_diff</span><span class="p">(</span><span class="n">source_program</span><span class="p">,</span> <span class="n">target_program</span><span class="p">)</span>
+</span><span data-line="12">
+</span><span data-line="13"><span class="c1"># Check structural compatibility</span>
+</span><span data-line="14"><span class="k">if</span> <span class="n">diff</span><span class="o">.</span><span class="n">is_isomorphic</span><span class="p">:</span>
+</span><span data-line="15">    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;✓ Graphs have identical structure&quot;</span><span class="p">)</span>
+</span><span data-line="16"><span class="k">else</span><span class="p">:</span>
+</span><span data-line="17">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;✗ Found </span><span class="si">{</span><span class="n">diff</span><span class="o">.</span><span class="n">summary</span><span class="o">.</span><span class="n">unmapped_source_node_count</span><span class="si">}</span><span class="s2"> structural differences&quot;</span><span class="p">)</span>
+</span><span data-line="18">
+</span><span data-line="19">    <span class="c1"># Write detailed diff report to stdout</span>
+</span><span data-line="20">    <span class="n">write_diff</span><span class="p">(</span>
+</span><span data-line="21">        <span class="n">diff</span><span class="p">,</span>
+</span><span data-line="22">        <span class="n">diff</span><span class="o">.</span><span class="n">source_graph</span><span class="p">,</span>
+</span><span data-line="23">        <span class="n">diff</span><span class="o">.</span><span class="n">target_graph</span><span class="p">,</span>
+</span><span data-line="24">        <span class="n">max_items</span><span class="o">=</span><span class="mi">20</span>
+</span><span data-line="25">    <span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+<section id="performance-profiling">
+<h2>Performance profiling<a class="headerlink" href="#performance-profiling" title="Link to this heading">¶</a></h2>
+<p><strong>Use when:</strong> You need to identify slow operations and performance bottlenecks in your Core AI model.</p>
+<p>Profile operation timing in Core AI programs:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.benchmarker</span><span class="w"> </span><span class="kn">import</span> <span class="n">benchmark_coreai_program</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="c1"># Run benchmark</span>
+</span><span data-line="4"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">benchmark_coreai_program</span><span class="p">(</span>
+</span><span data-line="5">    <span class="n">coreai_program</span><span class="o">=</span><span class="n">coreai_program</span><span class="p">,</span>
+</span><span data-line="6">    <span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)},</span>
+</span><span data-line="7">    <span class="n">num_runs</span><span class="o">=</span><span class="mi">50</span>
+</span><span data-line="8"><span class="p">)</span>
+</span><span data-line="9">
+</span><span data-line="10"><span class="c1"># Show timing summary</span>
+</span><span data-line="11"><span class="n">result</span><span class="o">.</span><span class="n">write_summary</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+</span><span data-line="12">
+</span><span data-line="13"><span class="c1"># Get module-level timing</span>
+</span><span data-line="14"><span class="n">module_timings</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">get_module_timings</span><span class="p">()</span>
+</span><span data-line="15"><span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">module</span> <span class="ow">in</span> <span class="n">module_timings</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span data-line="16">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">module</span><span class="o">.</span><span class="n">aggregated_op_stats</span><span class="o">.</span><span class="n">average</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">ms avg&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="custom-validation">
+<h2>Custom validation<a class="headerlink" href="#custom-validation" title="Link to this heading">¶</a></h2>
+<p><strong>Use when:</strong> You need to check for specific conditions beyond NaN/infinity (e.g., value ranges, specific patterns).</p>
+<p>Create custom checks beyond NaN/infinity:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">check_large_values</span><span class="p">(</span><span class="n">outputs</span><span class="p">):</span>
+</span><span data-line="2"><span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if any output has values &gt; threshold&quot;&quot;&quot;</span>
+</span><span data-line="3">    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span>
+</span><span data-line="4">        <span class="nb">abs</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mf">1000.0</span> <span class="k">if</span> <span class="n">arr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">False</span>
+</span><span data-line="5">        <span class="k">for</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">outputs</span>
+</span><span data-line="6">    <span class="p">)</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="c1"># Use custom check</span>
+</span><span data-line="9"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">check_large_values</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="configuration">
+<h2>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">¶</a></h2>
+<section id="search-strategies">
+<h3>Search strategies<a class="headerlink" href="#search-strategies" title="Link to this heading">¶</a></h3>
+<p>Choose how to search through operations:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.search_strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">LevelOrderStrategy</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="c1"># Binary search (default - fastest for finding first issue)</span>
+</span><span data-line="4"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">bisection</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+</span><span data-line="5">
+</span><span data-line="6"><span class="c1"># Top-down (systematic from inputs to outputs)</span>
+</span><span data-line="7"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">top_down</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
+</span><span data-line="8">
+</span><span data-line="9"><span class="c1"># Adaptive (automatically selects best approach)</span>
+</span><span data-line="10"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">auto</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="batch-size">
+<h3>Batch size<a class="headerlink" href="#batch-size" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Control batch size for memory efficiency</span>
+</span><span data-line="2"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">bisection</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>  <span class="c1"># Smaller batches</span>
+</span><span data-line="3"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">bisection</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>  <span class="c1"># Larger batches</span>
+</span><span data-line="4"><span class="n">validator</span> <span class="o">=</span> <span class="n">create_validator_for_exported_program</span><span class="p">(</span><span class="n">exported</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+<section id="torch-utilities">
+<h2>Torch utilities<a class="headerlink" href="#torch-utilities" title="Link to this heading">¶</a></h2>
+<p><strong>Use when:</strong> You need to save intermediate values to disk for later analysis or share debug data.</p>
+<section id="saving-intermediate-values">
+<h3>Saving intermediate values<a class="headerlink" href="#saving-intermediate-values" title="Link to this heading">¶</a></h3>
+<p>Save all intermediate tensor values from PyTorch model execution:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.torch_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_intermediates</span><span class="p">,</span> <span class="n">load_intermediates</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="c1"># Export your PyTorch model</span>
+</span><span data-line="5"><span class="n">exported_program</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_input</span><span class="p">)</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="c1"># Save intermediate values to disk</span>
+</span><span data-line="8"><span class="n">metadata_path</span> <span class="o">=</span> <span class="n">save_intermediates</span><span class="p">(</span>
+</span><span data-line="9">    <span class="n">program</span><span class="o">=</span><span class="n">exported_program</span><span class="p">,</span>
+</span><span data-line="10">    <span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">,</span>
+</span><span data-line="11">    <span class="n">output_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./debug_output&quot;</span><span class="p">)</span>
+</span><span data-line="12"><span class="p">)</span>
+</span><span data-line="13">
+</span><span data-line="14"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Intermediates saved to: </span><span class="si">{</span><span class="n">metadata_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="loading-intermediate-values">
+<h3>Loading intermediate values<a class="headerlink" href="#loading-intermediate-values" title="Link to this heading">¶</a></h3>
+<p>Load saved intermediate values for analysis:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Load intermediate values from disk</span>
+</span><span data-line="2"><span class="n">debug_trace</span> <span class="o">=</span> <span class="n">load_intermediates</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./debug_output/main.aimodelintermediates&quot;</span><span class="p">))</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="c1"># Access saved values</span>
+</span><span data-line="5"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Inputs: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">debug_trace</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="6"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Outputs: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">debug_trace</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="7"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Intermediates: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">debug_trace</span><span class="o">.</span><span class="n">intermediates</span><span class="p">)</span><span class="si">}</span><span class="s2"> operations&quot;</span><span class="p">)</span>
+</span><span data-line="8">
+</span><span data-line="9"><span class="c1"># Analyze specific intermediate values</span>
+</span><span data-line="10"><span class="k">for</span> <span class="n">node_name</span><span class="p">,</span> <span class="n">tensor</span> <span class="ow">in</span> <span class="n">debug_trace</span><span class="o">.</span><span class="n">intermediates</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span data-line="11">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">node_name</span><span class="si">}</span><span class="s2">: shape </span><span class="si">{</span><span class="n">tensor</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">, mean </span><span class="si">{</span><span class="n">tensor</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</section>
+<section id="custom-value-filtering">
+<h3>Custom value filtering<a class="headerlink" href="#custom-value-filtering" title="Link to this heading">¶</a></h3>
+<p>Filter which intermediate values to save:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">custom_filter</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span>
+</span><span data-line="2"><span class="w">    </span><span class="sd">&quot;&quot;&quot;Only save convolution and linear layer outputs&quot;&quot;&quot;</span>
+</span><span data-line="3">    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">op</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">target</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;conv&quot;</span><span class="p">,</span> <span class="s2">&quot;linear&quot;</span><span class="p">,</span> <span class="s2">&quot;matmul&quot;</span><span class="p">])</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="c1"># Save only filtered operations</span>
+</span><span data-line="6"><span class="n">metadata_path</span> <span class="o">=</span> <span class="n">save_intermediates</span><span class="p">(</span>
+</span><span data-line="7">    <span class="n">program</span><span class="o">=</span><span class="n">exported_program</span><span class="p">,</span>
+</span><span data-line="8">    <span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">,</span>
+</span><span data-line="9">    <span class="n">output_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./debug_output&quot;</span><span class="p">),</span>
+</span><span data-line="10">    <span class="n">node_filter</span><span class="o">=</span><span class="n">custom_filter</span>
+</span><span data-line="11"><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>The debugging module provides tools for validating model correctness, analyzing structural changes, and identifying performance issues.</p>
+</section>
+</section>
+<section id="see-also">
+<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="../guides/conversion-workflows.html"><span class="doc">Conversion Workflows</span></a> — understand the full pipeline from export to <code class="docutils literal notranslate"><span class="pre">DeployableProgram</span></code>.</p></li>
+<li><p><a class="reference internal" href="supported-aten-ops.html"><span class="doc">Supported ATen ops</span></a> — check which ATen ops have built-in lowering rules if you hit a conversion error.</p></li>
+<li><p><a class="reference internal" href="TorchConverter.html"><span class="doc">TorchConverter API reference</span></a> — the main conversion class; <code class="docutils literal notranslate"><span class="pre">to_coreai()</span></code> produces the program you validate here.</p></li>
+</ul>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="supported-aten-ops.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Supported ATen ops</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="../coreai-core/index.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Core AI (coreai-core)</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2026, Apple Inc.</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials">
+<a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/shibuya.js?v=50760d75"></script>
+      <script src="../_static/copy-page-button.js?v=d5e0191b"></script></body>
+</html>

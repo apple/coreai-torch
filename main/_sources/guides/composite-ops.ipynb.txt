@@ -1,0 +1,273 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Composite Ops Guide\n",
+    "\n",
+    "Composite ops preserve an operation's boundary — such as RMSNorm, RoPE, or attention — keeping it intact as a recognizable unit during conversion. This lets the compiler recognize the operation and apply an implementation optimized for it.\n",
+    "\n",
+    "coreai-torch produces composite ops in two ways:\n",
+    "\n",
+    "- **Module-class composite ops** — `nn.Module` subclasses exposed in `coreai_torch.composite_ops` (such as `RMSNormImpl`, `RoPE`, and `SDPA`). You build these into your model and externalize them with an `ExternalizeSpec`, as shown in this guide.\n",
+    "- **ATen-derived composite ops** — recognized automatically from the ATen nodes (`fx.Node`s) in your `ExportedProgram` during conversion (such as `instance_norm`, `layer_norm`, and `pixel_shuffle`). These have no `nn.Module` wrapper: use the standard PyTorch APIs and the converter preserves them as composite ops, as long as `get_decomp_table()` keeps them from being decomposed.\n",
+    "\n",
+    "This guide covers the module-class workflow. For the full list of both kinds, see the {doc}`../api/composite-ops` reference."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## The General Pattern\n",
+    "\n",
+    "Using any composite op involves three steps:\n",
+    "\n",
+    "1. **Use the provided class** as a named submodule in your model — not as the root module.\n",
+    "2. **Convert via `add_pytorch_module`** — this is the required entrypoint for composite op externalization.\n",
+    "3. **Pass an `ExternalizeSpec`** with `composite_op_name` and `composite_attrs` identifying the op and the instance attributes that define it.\n",
+    "\n",
+    "Generic skeleton:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "\n",
+    "import coreai_torch\n",
+    "from coreai_torch import ExternalizeSpec, TorchConverter\n",
+    "from coreai_torch.composite_ops import RMSNormImpl"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "```python\n",
+    "import torch\n",
+    "\n",
+    "import coreai_torch\n",
+    "from coreai_torch import ExternalizeSpec, TorchConverter\n",
+    "\n",
+    "coreai_program = (\n",
+    "    TorchConverter()\n",
+    "    .add_pytorch_module(\n",
+    "        model,\n",
+    "        export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(\n",
+    "            coreai_torch.get_decomp_table()\n",
+    "        ),\n",
+    "        externalize_modules=[\n",
+    "            ExternalizeSpec(\n",
+    "                target_class=SomeOp,\n",
+    "                composite_op_name=\"some_op\",\n",
+    "                composite_attrs=[\"attr1\", \"attr2\"],\n",
+    "            )\n",
+    "        ],\n",
+    "    )\n",
+    "    .to_coreai()\n",
+    ")\n",
+    "coreai_program.optimize()\n",
+    "```\n",
+    "\n",
+    "The converter preserves each matching submodule instance as a named composite op carrying its attributes, so the compiler can recognize and optimize it.\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Worked Example: RMSNorm\n",
+    "\n",
+    "This section walks through the full cycle — model definition, conversion, and numerical verification.\n",
+    "\n",
+    "### Define a model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "from coreai_torch.composite_ops import RMSNormImpl\n",
+    "\n",
+    "\n",
+    "class RMSNorm(nn.Module):\n",
+    "    \"\"\"Convenience wrapper that owns the learnable scale parameter.\"\"\"\n",
+    "\n",
+    "    def __init__(self, dim: int, eps: float = 1e-5):\n",
+    "        super().__init__()\n",
+    "        self.weight = nn.Parameter(torch.ones(dim))\n",
+    "        self.norm = RMSNormImpl(eps=eps)\n",
+    "\n",
+    "    def forward(self, x: torch.Tensor) -> torch.Tensor:\n",
+    "        return self.norm(x, self.weight)\n",
+    "\n",
+    "\n",
+    "class FeedForwardBlock(nn.Module):\n",
+    "    def __init__(self, dim: int, ff_dim: int, eps: float = 1e-5):\n",
+    "        super().__init__()\n",
+    "        self.norm = RMSNorm(dim=dim, eps=eps)\n",
+    "        self.fc1 = nn.Linear(dim, ff_dim, bias=False)\n",
+    "        self.fc2 = nn.Linear(ff_dim, dim, bias=False)\n",
+    "\n",
+    "    def forward(self, x: torch.Tensor) -> torch.Tensor:\n",
+    "        return self.fc2(torch.relu(self.fc1(self.norm(x))))\n",
+    "\n",
+    "\n",
+    "model = FeedForwardBlock(dim=64, ff_dim=256).eval()\n",
+    "sample = (torch.randn(2, 16, 64),)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Convert\n",
+    "\n",
+    "Externalize `RMSNormImpl` as the `rms_norm` composite op. Because `RMSNormImpl.forward(input, scale)` takes the scale as an explicit argument, the learnable `weight` parameter on the wrapper appears as a graph input on the composite op boundary rather than being baked in as a constant.\n",
+    "\n",
+    "```{note}\n",
+    "`coreai_torch.composite_ops` also ships an `RMSNorm` convenience wrapper that owns the learnable scale for you, so you can import that instead of defining one yourself — but `target_class` in the `ExternalizeSpec` must still be `RMSNormImpl`.\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import coreai_torch\n",
+    "\n",
+    "coreai_program = (\n",
+    "    TorchConverter()\n",
+    "    .add_pytorch_module(\n",
+    "        model,\n",
+    "        export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(\n",
+    "            coreai_torch.get_decomp_table()\n",
+    "        ),\n",
+    "        externalize_modules=[\n",
+    "            ExternalizeSpec(\n",
+    "                target_class=RMSNormImpl,\n",
+    "                composite_op_name=\"rms_norm\",\n",
+    "                composite_attrs=[\"axes\", \"eps\"],\n",
+    "            )\n",
+    "        ],\n",
+    "    )\n",
+    "    .to_coreai()\n",
+    ")\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Verify numerical correctness"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import tempfile\n",
+    "import torch\n",
+    "from pathlib import Path\n",
+    "\n",
+    "import numpy as np\n",
+    "from coreai.runtime import NDArray\n",
+    "\n",
+    "\n",
+    "async def run_and_compare(coreai_program, model, sample):\n",
+    "    with tempfile.TemporaryDirectory() as tmpdir:\n",
+    "        asset = coreai_program.save_asset(Path(tmpdir) / \"rms_norm_example.aimodel\")\n",
+    "        async with asset.executable() as ai_model:\n",
+    "            function = ai_model.load_function(\"main\")\n",
+    "\n",
+    "            x = sample[0]\n",
+    "            coreai_out = await function({\"x\": NDArray(x)})\n",
+    "            coreai_np = list(coreai_out.values())[0].numpy()\n",
+    "\n",
+    "            with torch.no_grad():\n",
+    "                torch_np = model(x).numpy()\n",
+    "\n",
+    "            print(f\"Max abs error: {np.abs(torch_np - coreai_np).max():.2e}\")\n",
+    "            print(f\"Outputs match: {np.allclose(torch_np, coreai_np, atol=1e-4)}\")\n",
+    "\n",
+    "\n",
+    "await run_and_compare(coreai_program, model, sample)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Other Composite Ops\n",
+    "\n",
+    "The same three-step pattern (use the class as a submodule → convert via `add_pytorch_module` → pass an `ExternalizeSpec`) works for every built-in composite op. See the {doc}`../api/composite-ops` reference for the full list, including constructor signatures, forward arguments, and attributes."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "```{tip}\n",
+    "- Use `add_pytorch_module` — it is the required entrypoint for externalization.\n",
+    "- `composite_attrs` must match actual instance attribute names on the target class (e.g., `self.eps`, `self.axes`).\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "12",
+   "metadata": {},
+   "source": [
+    "## Next Steps\n",
+    "\n",
+    "- {doc}`../guides/externalization` — extract composite op submodules as separate named functions in the converted model.\n",
+    "- {doc}`../guides/custom-op-lowering` — implement a custom composite op lowering with `register_torch_lowering` and `generate_composite_decl`.\n",
+    "- {doc}`../api/composite-ops` — full API reference for all built-in composite op modules."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Notices\n",
+    "\n",
+    "PyTorch is a trademark of Meta Platforms, Inc. Hugging Face is a trademark of Hugging Face, Inc.\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "name": "python",
+   "version": "3.10.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

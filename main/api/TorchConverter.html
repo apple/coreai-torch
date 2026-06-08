@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="indigo" data-content_root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TorchConverter API reference - coreai-torch documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Composite ops API reference" href="composite-ops.html" /><link rel="prev" title="Externalization" href="../guides/externalization.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d88b86f9" />
+    <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=9454f7d5" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=05f3bbaf" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    
+  <meta property="og:type" content="website"/><meta property="og:title" content="TorchConverter API reference"/>
+    <meta name="twitter:card" content="summary"/>
+  <script>
+  var defined_VERSIONS = [{"name": "main", "version": "main"}];
+  var defined_VERSION_MATCH = "main";
+</script>
+<script src="../_static/version-switcher.js" defer></script>
+<script>
+  // Override Shibuya's 3-state toggle (auto/light/dark) with a 2-state toggle (light/dark)
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.querySelector(".js-theme");
+    if (!btn) return;
+
+    // Remove Shibuya's click listener by cloning the button
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    function getEffectiveMode() {
+      var mode = document.documentElement.getAttribute("data-color-mode") || "auto";
+      if (mode === "auto") {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      return mode;
+    }
+
+    newBtn.addEventListener("click", function () {
+      var next = getEffectiveMode() === "dark" ? "light" : "dark";
+      if (typeof setColorMode === "function") {
+        setColorMode(next);
+      }
+      localStorage._theme = next;
+      var label = newBtn.getAttribute("data-aria-" + next);
+      if (label) newBtn.setAttribute("aria-label", label);
+    });
+  });
+</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../index.html">
+      
+      
+      <strong>coreai-torch</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"><ul><li class="link"><a href="../getting-started/installation.html">Getting Started</a></li><li class="link"><a href="../guides/conversion-workflows.html">Guides</a></li><li class="link"><a href="#">API</a></li><li class="link"><a href="../coreai-core/index.html">coreai-core</a></li></ul></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../getting-started/installation.html">Installing coreai-torch</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../getting-started/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../whats-new.html">What&#8217;s new</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/conversion-workflows.html">Conversion Workflows</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/custom-op-lowering.html">Custom Op Lowering</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/custom-metal-kernels.html">Custom Metal Kernels</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/composite-ops.html">Composite Ops Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../guides/externalization.html">Externalization</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">API Reference</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">TorchConverter API reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="composite-ops.html">Composite ops API reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="composite-ops/module-class.html">Module-class composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/gather-mm.html">GatherMM</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/gated-delta-update.html">GatedDeltaUpdate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/rms-norm.html">RMSNormImpl</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/rope.html">RoPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/sdpa.html">SDPA</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="composite-ops/aten-derived.html">ATen-derived composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/batch-norm.html">batch_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/group-norm.html">group_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/hard-sigmoid.html">hard_sigmoid</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/instance-norm.html">instance_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/layer-norm.html">layer_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/linalg-vector-norm.html">linalg_vector_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/log-softmax.html">log_softmax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="composite-ops/pixel-shuffle.html">pixel_shuffle</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="generate-composite-decl.html">generate_composite_decl</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="ExternalizeSpec.html">ExternalizeSpec</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="TorchMetalKernel.html">TorchMetalKernel</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="supported-aten-ops.html">Supported ATen ops</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="debugging.html">Debugging</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Core AI (coreai-core)</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../coreai-core/index.html">Core AI (coreai-core)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/tutorials/construct-a-graph.html">Constructing a CoreAI Graph</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/tutorials/run-an-aimodel.html">Running an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> with <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/api/coreai.html">coreai</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">More</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../faq.html">Frequently asked questions</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../contributing.html">Contributing</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../resources.html">Resources</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../release-notes.html">Release notes</a></li>
+</ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#overview">Overview</a></li>
+<li><a class="reference internal" href="#constructor">Constructor</a></li>
+<li><a class="reference internal" href="#methods">Methods</a><ul>
+<li><a class="reference internal" href="#add-exported-program"><code class="docutils literal notranslate"><span class="pre">add_exported_program</span></code></a></li>
+<li><a class="reference internal" href="#add-pytorch-module"><code class="docutils literal notranslate"><span class="pre">add_pytorch_module</span></code></a></li>
+<li><a class="reference internal" href="#to-coreai"><code class="docutils literal notranslate"><span class="pre">to_coreai</span></code></a></li>
+<li><a class="reference internal" href="#clear"><code class="docutils literal notranslate"><span class="pre">clear</span></code></a></li>
+<li><a class="reference internal" href="#register-torch-lowering"><code class="docutils literal notranslate"><span class="pre">register_torch_lowering</span></code></a></li>
+<li><a class="reference internal" href="#register-custom-kernels"><code class="docutils literal notranslate"><span class="pre">register_custom_kernels</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#standalone-functions">Standalone functions</a><ul>
+<li><a class="reference internal" href="#get-decomp-table"><code class="docutils literal notranslate"><span class="pre">get_decomp_table</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#io-naming">IO naming</a><ul>
+<li><a class="reference internal" href="#parameters">Parameters</a></li>
+<li><a class="reference internal" href="#default-names">Default names</a></li>
+<li><a class="reference internal" href="#ordering">Ordering</a></li>
+<li><a class="reference internal" href="#examples">Examples</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#notices">Notices</a></li>
+</ul>
+</div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">coreai-torch</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">TorchConverter API reference</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12"><div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="TorchConverter.html.md"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem" data-url="TorchConverter.html.md">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="../_sources/api/TorchConverter.md.txt" target="_blank" rel="nofollow">
+          <span class="iconify-icon">
+            <img src="../_static/icons/markdown.svg" alt="" width="14" height="14">
+          </span>
+          <span>View as Markdown</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div><article class="yue" role="main">
+          <section class="tex2jax_ignore mathjax_ignore" id="torchconverter-api-reference">
+<h1>TorchConverter API reference<a class="headerlink" href="#torchconverter-api-reference" title="Link to this heading">¶</a></h1>
+<p>A converter that produces a Core AI <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code> from a PyTorch exported program.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">TorchConverter</span><span class="p">,</span> <span class="n">get_decomp_table</span>
+</span></pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> traverses the exported FX graph of a PyTorch model, maps ATen operators to Core AI operations, and emits an <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code> ready for on-device execution.</p>
+<p>Load a model using <code class="docutils literal notranslate"><span class="pre">add_exported_program()</span></code> or <code class="docutils literal notranslate"><span class="pre">add_pytorch_module()</span></code>, then call <code class="docutils literal notranslate"><span class="pre">to_coreai()</span></code> to produce the artifact. Register custom lowerings with <code class="docutils literal notranslate"><span class="pre">register_torch_lowering()</span></code> for ops that have no built-in mapping, and supply Metal kernel source for compute-intensive operations with <code class="docutils literal notranslate"><span class="pre">register_custom_kernels()</span></code>.</p>
+</section>
+<hr class="docutils" />
+<section id="constructor">
+<h2>Constructor<a class="headerlink" href="#constructor" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">TorchConverter</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p>Creates a <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> instance with no loaded programs and no custom lowerings.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">TorchConverter</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="methods">
+<h2>Methods<a class="headerlink" href="#methods" title="Link to this heading">¶</a></h2>
+<section id="add-exported-program">
+<h3><code class="docutils literal notranslate"><span class="pre">add_exported_program</span></code><a class="headerlink" href="#add-exported-program" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">add_exported_program</span><span class="p">(</span>
+</span><span data-line="2">    <span class="bp">self</span><span class="p">,</span>
+</span><span data-line="3">    <span class="n">exported_program</span><span class="p">:</span> <span class="n">ExportedProgram</span><span class="p">,</span>
+</span><span data-line="4">    <span class="n">input_names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span data-line="5">    <span class="n">output_names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span data-line="6">    <span class="n">state_names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span data-line="7">    <span class="n">entrypoint_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;main&quot;</span><span class="p">,</span>
+</span><span data-line="8"><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TorchConverter</span>
+</span></pre></div>
+</div>
+<p>Loads an exported PyTorch program into the converter. Returns <code class="docutils literal notranslate"><span class="pre">self</span></code> for method chaining.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The caller <strong>must</strong> call <code class="docutils literal notranslate"><span class="pre">run_decompositions()</span></code> on the program before passing it here — use <code class="docutils literal notranslate"><span class="pre">get_decomp_table()</span></code> to preserve known composite ops in the lowered IR.</p>
+</div>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">exported_program</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">torch.export.ExportedProgram</span></code></p></td>
+<td><p>—</p></td>
+<td><p>The exported PyTorch program to convert.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">input_names</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sequence[str]</span> <span class="pre">|</span> <span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>Names for non-stateful user inputs only. Mutated inputs (buffers and user-input mutations) are renamed via <code class="docutils literal notranslate"><span class="pre">state_names</span></code>. <strong>Breaking change</strong>: previously this covered all graph inputs.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">output_names</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sequence[str]</span> <span class="pre">|</span> <span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>Names for non-state outputs (return values) only. Mutation outputs are renamed via <code class="docutils literal notranslate"><span class="pre">state_names</span></code>. <strong>Breaking change</strong>: previously this covered all graph outputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">state_names</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sequence[str]</span> <span class="pre">|</span> <span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>Names for stateful IO. Each name applies to both the state input and its corresponding mutation output — matching the Core AI runtime’s single-name-per-state model. See <a class="reference internal" href="#io-naming"><span class="xref myst">IO Naming</span></a> below.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">entrypoint_name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;main&quot;</span></code></p></td>
+<td><p>Name of the entry-point graph in the generated Core AI module. Must be unique across all staged programs.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Returns:</strong> <code class="docutils literal notranslate"><span class="pre">self</span></code> — the same <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> instance, for chaining.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">TorchConverter</span><span class="p">,</span> <span class="n">get_decomp_table</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="n">model</span> <span class="o">=</span> <span class="n">MyModel</span><span class="p">()</span>
+</span><span data-line="5"><span class="n">exported</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">example_inputs</span><span class="p">)</span>
+</span><span data-line="6"><span class="n">exported</span> <span class="o">=</span> <span class="n">exported</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span>
+</span><span data-line="9">    <span class="n">exported</span><span class="p">,</span>
+</span><span data-line="10">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;image&quot;</span><span class="p">],</span>
+</span><span data-line="11">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;logits&quot;</span><span class="p">],</span>
+</span><span data-line="12"><span class="p">)</span>
+</span><span data-line="13"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="14"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="add-pytorch-module">
+<h3><code class="docutils literal notranslate"><span class="pre">add_pytorch_module</span></code><a class="headerlink" href="#add-pytorch-module" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">add_pytorch_module</span><span class="p">(</span>
+</span><span data-line="2">    <span class="bp">self</span><span class="p">,</span>
+</span><span data-line="3">    <span class="n">module</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
+</span><span data-line="4">    <span class="n">export_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">],</span> <span class="n">ExportedProgram</span><span class="p">],</span>
+</span><span data-line="5">    <span class="n">externalize_modules</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span data-line="6">    <span class="n">input_names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span data-line="7">    <span class="n">output_names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span data-line="8">    <span class="n">state_names</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span data-line="9">    <span class="n">entrypoint_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;main&quot;</span><span class="p">,</span>
+</span><span data-line="10"><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TorchConverter</span>
+</span></pre></div>
+</div>
+<p>Stages an <code class="docutils literal notranslate"><span class="pre">nn.Module</span></code> for conversion. <code class="docutils literal notranslate"><span class="pre">export_fn</span></code> must return a <strong>decomposed</strong> <code class="docutils literal notranslate"><span class="pre">ExportedProgram</span></code> (i.e., with <code class="docutils literal notranslate"><span class="pre">run_decompositions()</span></code> already called). Returns <code class="docutils literal notranslate"><span class="pre">self</span></code> for method chaining.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">module</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">nn.Module</span></code></p></td>
+<td><p>—</p></td>
+<td><p>The PyTorch module to convert.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">export_fn</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Callable[[nn.Module],</span> <span class="pre">ExportedProgram]</span></code></p></td>
+<td><p>—</p></td>
+<td><p>A callable that exports and decomposes the module. Must call <code class="docutils literal notranslate"><span class="pre">run_decompositions()</span></code> on the result (e.g., <code class="docutils literal notranslate"><span class="pre">lambda</span> <span class="pre">m:</span> <span class="pre">torch.export.export(m,</span> <span class="pre">args=sample).run_decompositions(coreai_torch.get_decomp_table())</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">externalize_modules</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">list</span> <span class="pre">|</span> <span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>Optional list of <code class="docutils literal notranslate"><span class="pre">ExternalizeSpec</span></code> objects describing submodule classes to preserve as composite ops. Bare class types are also accepted for <em>experimental</em> simple externalization.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">input_names</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sequence[str]</span> <span class="pre">|</span> <span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>Names for non-stateful user inputs only. Mutated inputs (buffers and user-input mutations) are renamed via <code class="docutils literal notranslate"><span class="pre">state_names</span></code>. <strong>Breaking change</strong>: previously this covered all graph inputs.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">output_names</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sequence[str]</span> <span class="pre">|</span> <span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>Names for non-state outputs (return values) only. Mutation outputs are renamed via <code class="docutils literal notranslate"><span class="pre">state_names</span></code>. <strong>Breaking change</strong>: previously this covered all graph outputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">state_names</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sequence[str]</span> <span class="pre">|</span> <span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>Names for stateful IO. See <a class="reference internal" href="#io-naming"><span class="xref myst">IO Naming</span></a> below.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">entrypoint_name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;main&quot;</span></code></p></td>
+<td><p>Name of the entry-point graph in the generated Core AI module. Must be unique across all staged programs.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Returns:</strong> <code class="docutils literal notranslate"><span class="pre">self</span></code> — the same <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> instance, for chaining.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">model</span> <span class="o">=</span> <span class="n">MyModel</span><span class="p">()</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+</span><span data-line="2"><span class="n">sample</span> <span class="o">=</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">224</span><span class="p">,</span> <span class="mi">224</span><span class="p">),)</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_pytorch_module</span><span class="p">(</span>
+</span><span data-line="5">    <span class="n">model</span><span class="p">,</span>
+</span><span data-line="6">    <span class="n">export_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">sample</span><span class="p">)</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span>
+</span><span data-line="7">        <span class="n">coreai_torch</span><span class="o">.</span><span class="n">get_decomp_table</span><span class="p">()</span>
+</span><span data-line="8">    <span class="p">),</span>
+</span><span data-line="9"><span class="p">)</span>
+</span><span data-line="10"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="11"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="to-coreai">
+<h3><code class="docutils literal notranslate"><span class="pre">to_coreai</span></code><a class="headerlink" href="#to-coreai" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">to_coreai</span><span class="p">(</span>
+</span><span data-line="2">    <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">entrypoints</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</span><span data-line="3"><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AIProgram</span>
+</span></pre></div>
+</div>
+<p>Converts the loaded program into a Core AI <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code>. This is the main entry point for conversion. The model must have been loaded via <code class="docutils literal notranslate"><span class="pre">add_exported_program()</span></code> or <code class="docutils literal notranslate"><span class="pre">add_pytorch_module()</span></code> before calling this method.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">entrypoints</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sequence[str]</span> <span class="pre">|</span> <span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>If provided, only convert programs with these entrypoint names. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, convert all staged programs.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Returns:</strong> <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code> — a compiled Core AI model ready for deployment and execution.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span>
+</span><span data-line="2">    <span class="n">exported</span><span class="p">,</span>
+</span><span data-line="3">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;image&quot;</span><span class="p">],</span>
+</span><span data-line="4">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;logits&quot;</span><span class="p">],</span>
+</span><span data-line="5"><span class="p">)</span>
+</span><span data-line="6"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="7"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="clear">
+<h3><code class="docutils literal notranslate"><span class="pre">clear</span></code><a class="headerlink" href="#clear" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">entrypoints</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></pre></div>
+</div>
+<p>Remove staged programs. Custom lowerings registered via <code class="docutils literal notranslate"><span class="pre">register_torch_lowering()</span></code> are always preserved.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">entrypoints</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sequence[str]</span> <span class="pre">|</span> <span class="pre">None</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></td>
+<td><p>If provided, remove only programs with these entrypoint names. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, remove all staged programs.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span>
+</span><span data-line="2"><span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">ep_a</span><span class="p">,</span> <span class="n">entrypoint_name</span><span class="o">=</span><span class="s2">&quot;encoder&quot;</span><span class="p">)</span>
+</span><span data-line="3"><span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">ep_b</span><span class="p">,</span> <span class="n">entrypoint_name</span><span class="o">=</span><span class="s2">&quot;decoder&quot;</span><span class="p">)</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="c1"># Remove just the encoder</span>
+</span><span data-line="6"><span class="n">converter</span><span class="o">.</span><span class="n">clear</span><span class="p">(</span><span class="n">entrypoints</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;encoder&quot;</span><span class="p">])</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="c1"># Remove everything</span>
+</span><span data-line="9"><span class="n">converter</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="register-torch-lowering">
+<h3><code class="docutils literal notranslate"><span class="pre">register_torch_lowering</span></code><a class="headerlink" href="#register-torch-lowering" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">register_torch_lowering</span><span class="p">(</span>
+</span><span data-line="2">    <span class="bp">self</span><span class="p">,</span>
+</span><span data-line="3">    <span class="n">qualified_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span><span data-line="4">    <span class="n">allow_override</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+</span><span data-line="5"><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span>
+</span></pre></div>
+</div>
+<p>Decorator that registers a custom lowering function for an FX node. Use this to provide a Core AI implementation for a custom or unsupported torch operator.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Lowering functions are written against authoring APIs from <code class="docutils literal notranslate"><span class="pre">coreai-core</span></code> (such as <code class="docutils literal notranslate"><span class="pre">coreai._compiler.dialects</span></code>). The leading underscore on <code class="docutils literal notranslate"><span class="pre">_compiler</span></code> marks this as private upstream API — it may move or change without notice across <code class="docutils literal notranslate"><span class="pre">coreai-core</span></code> releases.</p>
+</div>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">qualified_name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p>—</p></td>
+<td><p>Op name in <code class="docutils literal notranslate"><span class="pre">&quot;namespace::op_name&quot;</span></code> form, matching the torch op’s qualified name (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;my_lib::my_op&quot;</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">allow_override</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">True</span></code>, silently replaces an existing lowering for the same op. If <code class="docutils literal notranslate"><span class="pre">False</span></code>, raises on conflict.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Returns:</strong> A decorator function. The decorated function must have the signature:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">lowering_func</span><span class="p">(</span>
+</span><span data-line="2">    <span class="n">values_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Value</span><span class="p">],</span>
+</span><span data-line="3">    <span class="n">node</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">fx</span><span class="o">.</span><span class="n">Node</span><span class="p">,</span>
+</span><span data-line="4">    <span class="n">loc</span><span class="p">:</span> <span class="n">Location</span><span class="p">,</span>
+</span><span data-line="5"><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Value</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">Value</span><span class="p">]</span>
+</span></pre></div>
+</div>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Callback Parameter</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">values_map</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dict[str,</span> <span class="pre">Value]</span></code></p></td>
+<td><p>Map of FX node names to their corresponding Core AI <code class="docutils literal notranslate"><span class="pre">Value</span></code>s. Use this to look up operands.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">node</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">torch.fx.Node</span></code></p></td>
+<td><p>The FX node being lowered. Access <code class="docutils literal notranslate"><span class="pre">node.args</span></code> for operands and <code class="docutils literal notranslate"><span class="pre">node.meta</span></code> for metadata.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">loc</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Location</span></code></p></td>
+<td><p>The Core AI Location for the current operation. Pass this to Core AI op constructors.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Raises:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">ValueError</span></code> if <code class="docutils literal notranslate"><span class="pre">qualified_name</span></code> is not in <code class="docutils literal notranslate"><span class="pre">&quot;namespace::op_name&quot;</span></code> form.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ValueError</span></code> if the namespace is reserved (<code class="docutils literal notranslate"><span class="pre">aten</span></code>, <code class="docutils literal notranslate"><span class="pre">higher_order</span></code>, <code class="docutils literal notranslate"><span class="pre">coreai</span></code>, <code class="docutils literal notranslate"><span class="pre">coreaix</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ValueError</span></code> if a lowering already exists for the op and <code class="docutils literal notranslate"><span class="pre">allow_override</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+<p><strong>Example — register a lowering for a custom torch op:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai._compiler.dialects</span><span class="w"> </span><span class="kn">import</span> <span class="n">coreai</span>
+</span><span data-line="3"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch._utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_operands</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="nd">@torch</span><span class="o">.</span><span class="n">library</span><span class="o">.</span><span class="n">custom_op</span><span class="p">(</span><span class="s2">&quot;my_lib::scaled_add&quot;</span><span class="p">,</span> <span class="n">mutates_args</span><span class="o">=</span><span class="p">())</span>
+</span><span data-line="6"><span class="k">def</span><span class="w"> </span><span class="nf">scaled_add</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">scale</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+</span><span data-line="7">    <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">y</span>
+</span><span data-line="8">
+</span><span data-line="9"><span class="nd">@scaled_add</span><span class="o">.</span><span class="n">register_fake</span>
+</span><span data-line="10"><span class="k">def</span><span class="w"> </span><span class="nf">_</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+</span><span data-line="11">    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</span><span data-line="12">
+</span><span data-line="13"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span>
+</span><span data-line="14">
+</span><span data-line="15"><span class="nd">@converter</span><span class="o">.</span><span class="n">register_torch_lowering</span><span class="p">(</span><span class="s2">&quot;my_lib::scaled_add.default&quot;</span><span class="p">)</span>
+</span><span data-line="16"><span class="k">def</span><span class="w"> </span><span class="nf">lower_scaled_add</span><span class="p">(</span><span class="n">values_map</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">loc</span><span class="p">):</span>
+</span><span data-line="17">    <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">get_operands</span><span class="p">(</span><span class="n">values_map</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">loc</span><span class="p">)</span>
+</span><span data-line="18">    <span class="n">scale</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>  <span class="c1"># plain Python float</span>
+</span><span data-line="19">    <span class="n">scale_val</span> <span class="o">=</span> <span class="n">coreai</span><span class="o">.</span><span class="n">constant</span><span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">element_type</span><span class="p">)</span>
+</span><span data-line="20">    <span class="n">scaled_y</span> <span class="o">=</span> <span class="n">coreai</span><span class="o">.</span><span class="n">broadcasting_mul</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">scale_val</span><span class="p">,</span> <span class="n">loc</span><span class="o">=</span><span class="n">loc</span><span class="p">)</span>
+</span><span data-line="21">    <span class="k">return</span> <span class="n">coreai</span><span class="o">.</span><span class="n">broadcasting_add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">scaled_y</span><span class="p">,</span> <span class="n">loc</span><span class="o">=</span><span class="n">loc</span><span class="p">)</span>
+</span><span data-line="22">
+</span><span data-line="23"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">exported</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="24"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p><strong>Example — override a built-in ATen op lowering:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai._compiler.dialects</span><span class="w"> </span><span class="kn">import</span> <span class="n">coreai</span>
+</span><span data-line="3"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch._utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_operand</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="nd">@converter</span><span class="o">.</span><span class="n">register_torch_lowering</span><span class="p">(</span><span class="s2">&quot;aten::_adaptive_avg_pool2d.default&quot;</span><span class="p">,</span> <span class="n">allow_override</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span data-line="8"><span class="k">def</span><span class="w"> </span><span class="nf">lower_adaptive_avg_pool2d_static</span><span class="p">(</span><span class="n">values_map</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">loc</span><span class="p">):</span>
+</span><span data-line="9">    <span class="n">x</span> <span class="o">=</span> <span class="n">get_operand</span><span class="p">(</span><span class="n">values_map</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">loc</span><span class="p">)</span>
+</span><span data-line="10">    <span class="n">output_h</span><span class="p">,</span> <span class="n">output_w</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+</span><span data-line="11">    <span class="n">input_h</span><span class="p">,</span> <span class="n">input_w</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">x</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+</span><span data-line="12">    <span class="n">stride_h</span><span class="p">,</span> <span class="n">stride_w</span> <span class="o">=</span> <span class="n">input_h</span> <span class="o">//</span> <span class="n">output_h</span><span class="p">,</span> <span class="n">input_w</span> <span class="o">//</span> <span class="n">output_w</span>
+</span><span data-line="13">    <span class="n">kernel_h</span> <span class="o">=</span> <span class="n">input_h</span> <span class="o">-</span> <span class="p">(</span><span class="n">output_h</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">stride_h</span>
+</span><span data-line="14">    <span class="n">kernel_w</span> <span class="o">=</span> <span class="n">input_w</span> <span class="o">-</span> <span class="p">(</span><span class="n">output_w</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">stride_w</span>
+</span><span data-line="15">    <span class="k">return</span> <span class="n">coreai</span><span class="o">.</span><span class="n">broadcasting_divide</span><span class="p">(</span>
+</span><span data-line="16">        <span class="n">coreai</span><span class="o">.</span><span class="n">sumpool2d</span><span class="p">(</span>
+</span><span data-line="17">            <span class="n">x</span><span class="p">,</span>
+</span><span data-line="18">            <span class="n">kernel_size</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">kernel_h</span><span class="p">,</span> <span class="n">kernel_w</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">),</span>
+</span><span data-line="19">            <span class="n">strides</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">stride_h</span><span class="p">,</span> <span class="n">stride_w</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">),</span>
+</span><span data-line="20">            <span class="n">dilation</span><span class="o">=</span><span class="n">coreai</span><span class="o">.</span><span class="n">constant</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">),</span>
+</span><span data-line="21">        <span class="p">),</span>
+</span><span data-line="22">        <span class="n">coreai</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">kernel_h</span> <span class="o">*</span> <span class="n">kernel_w</span><span class="p">),</span> <span class="n">x</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">element_type</span><span class="p">),</span>
+</span><span data-line="23">    <span class="p">)</span>
+</span><span data-line="24">
+</span><span data-line="25"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">exported</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="26"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="register-custom-kernels">
+<h3><code class="docutils literal notranslate"><span class="pre">register_custom_kernels</span></code><a class="headerlink" href="#register-custom-kernels" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">register_custom_kernels</span><span class="p">(</span>
+</span><span data-line="2">    <span class="bp">self</span><span class="p">,</span>
+</span><span data-line="3">    <span class="n">kernels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">TorchMetalKernel</span><span class="p">],</span>
+</span><span data-line="4"><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TorchConverter</span>
+</span></pre></div>
+</div>
+<p>Registers one or more <code class="docutils literal notranslate"><span class="pre">TorchMetalKernel</span></code> objects so the converter can convert them into Core AI operations during conversion. Call this <strong>before</strong> <code class="docutils literal notranslate"><span class="pre">add_exported_program()</span></code>.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">kernels</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Sequence[TorchMetalKernel]</span></code></p></td>
+<td><p>—</p></td>
+<td><p>The custom Metal kernels used in the model.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Returns:</strong> <code class="docutils literal notranslate"><span class="pre">self</span></code> — the same <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> instance, for chaining.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">TorchConverter</span><span class="p">,</span> <span class="n">TorchMetalKernel</span><span class="p">,</span> <span class="n">MetalParameter</span><span class="p">,</span> <span class="n">get_decomp_table</span>
+</span><span data-line="3">
+</span><span data-line="4">
+</span><span data-line="5"><span class="k">def</span><span class="w"> </span><span class="nf">torch_add</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+</span><span data-line="6">    <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span>
+</span><span data-line="7">
+</span><span data-line="8">
+</span><span data-line="9"><span class="n">kernel</span> <span class="o">=</span> <span class="n">TorchMetalKernel</span><span class="p">(</span>
+</span><span data-line="10">    <span class="s2">&quot;vector_add&quot;</span><span class="p">,</span>
+</span><span data-line="11">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">],</span>
+</span><span data-line="12">    <span class="n">result_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">],</span>
+</span><span data-line="13">    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;output[id] = x[id] + y[id];&quot;</span><span class="p">,</span>
+</span><span data-line="14">    <span class="n">torch_defn</span><span class="o">=</span><span class="n">torch_add</span><span class="p">,</span>
+</span><span data-line="15">    <span class="n">metal_params</span><span class="o">=</span><span class="p">[</span><span class="n">MetalParameter</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">,</span> <span class="s2">&quot;uint&quot;</span><span class="p">,</span> <span class="s2">&quot;thread_position_in_grid&quot;</span><span class="p">)],</span>
+</span><span data-line="16"><span class="p">)</span>
+</span><span data-line="17">
+</span><span data-line="18"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span>
+</span><span data-line="19"><span class="n">converter</span><span class="o">.</span><span class="n">register_custom_kernels</span><span class="p">([</span><span class="n">kernel</span><span class="p">])</span>
+</span><span data-line="20">
+</span><span data-line="21"><span class="n">exported</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_inputs</span><span class="p">)</span>
+</span><span data-line="22"><span class="n">exported</span> <span class="o">=</span> <span class="n">exported</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
+</span><span data-line="23"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">exported</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="24"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p>See the <a class="reference internal" href="../guides/custom-metal-kernels.html"><span class="doc">Custom Metal Kernels</span></a> guide for a full walkthrough.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="standalone-functions">
+<h2>Standalone functions<a class="headerlink" href="#standalone-functions" title="Link to this heading">¶</a></h2>
+<section id="get-decomp-table">
+<h3><code class="docutils literal notranslate"><span class="pre">get_decomp_table</span></code><a class="headerlink" href="#get-decomp-table" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_decomp_table</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="k">def</span><span class="w"> </span><span class="nf">get_decomp_table</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span>
+</span></pre></div>
+</div>
+<p>Returns the default PyTorch ATen decomposition table minus the operations that <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> lowers as composite ops, so those operations are preserved in the exported graph rather than being decomposed into lower-level primitives.</p>
+<p>Each call returns a fresh copy of the table — mutating it does not affect other callers.</p>
+<p><strong>Returns:</strong> <code class="docutils literal notranslate"><span class="pre">dict</span></code> — a decomposition table suitable for <code class="docutils literal notranslate"><span class="pre">ExportedProgram.run_decompositions()</span></code>.</p>
+<p><strong>With <code class="docutils literal notranslate"><span class="pre">add_exported_program</span></code></strong> (caller runs decompositions manually):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">TorchConverter</span><span class="p">,</span> <span class="n">get_decomp_table</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="n">ep</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_inputs</span><span class="p">)</span>
+</span><span data-line="5"><span class="n">ep</span> <span class="o">=</span> <span class="n">ep</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
+</span><span data-line="6"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">ep</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="7"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p><strong>With <code class="docutils literal notranslate"><span class="pre">add_pytorch_module</span></code></strong>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">TorchConverter</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">coreai_program</span> <span class="o">=</span> <span class="p">(</span>
+</span><span data-line="4">    <span class="n">TorchConverter</span><span class="p">()</span>
+</span><span data-line="5">    <span class="o">.</span><span class="n">add_pytorch_module</span><span class="p">(</span>
+</span><span data-line="6">        <span class="n">model</span><span class="p">,</span>
+</span><span data-line="7">        <span class="n">export_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_inputs</span><span class="p">)</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span>
+</span><span data-line="8">            <span class="n">coreai_torch</span><span class="o">.</span><span class="n">get_decomp_table</span><span class="p">()</span>
+</span><span data-line="9">        <span class="p">),</span>
+</span><span data-line="10">    <span class="p">)</span>
+</span><span data-line="11">    <span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="12"><span class="p">)</span>
+</span><span data-line="13"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="io-naming">
+<h2>IO naming<a class="headerlink" href="#io-naming" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">input_names</span></code>, <code class="docutils literal notranslate"><span class="pre">output_names</span></code>, and <code class="docutils literal notranslate"><span class="pre">state_names</span></code> parameters control the names of the graph’s inputs and outputs. These names propagate to the Core AI runtime descriptor (<code class="docutils literal notranslate"><span class="pre">desc.input_names</span></code>, <code class="docutils literal notranslate"><span class="pre">desc.output_names</span></code>, <code class="docutils literal notranslate"><span class="pre">desc.state_names</span></code>).</p>
+<section id="parameters">
+<h3>Parameters<a class="headerlink" href="#parameters" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Controls</p></th>
+<th class="head"><p>Scope</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">input_names</span></code></p></td>
+<td><p>Non-stateful <code class="docutils literal notranslate"><span class="pre">forward()</span></code> arguments</p></td>
+<td><p>Inputs that are read but not mutated</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">output_names</span></code></p></td>
+<td><p>Return values from <code class="docutils literal notranslate"><span class="pre">forward()</span></code></p></td>
+<td><p>Outputs that are not mutation side-effects</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">state_names</span></code></p></td>
+<td><p>Mutable state (buffers + mutated user inputs)</p></td>
+<td><p>A single name per state, applied to both the input and its corresponding mutation output</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><strong>What counts as state (no opt-out).</strong> The converter treats two things as state:</p>
+<ol class="arabic simple">
+<li><p><strong>Mutable buffers</strong> registered via <code class="docutils literal notranslate"><span class="pre">self.register_buffer(...)</span></code> and mutated in-place inside <code class="docutils literal notranslate"><span class="pre">forward()</span></code> (e.g., <code class="docutils literal notranslate"><span class="pre">self.buf.add_(x)</span></code>).</p></li>
+<li><p><strong>User inputs mutated in-place</strong> inside <code class="docutils literal notranslate"><span class="pre">forward()</span></code> (e.g., <code class="docutils literal notranslate"><span class="pre">x.mul_(2)</span></code> on a <code class="docutils literal notranslate"><span class="pre">forward()</span></code> arg).</p></li>
+</ol>
+<p>Both are detected from the exported program’s graph signature. There is <strong>no flag</strong> to opt a mutated user input out of state — it follows directly from how the model mutates its inputs and buffers.</p>
+<p>If you don’t want a <code class="docutils literal notranslate"><span class="pre">forward()</span></code> argument treated as state, eliminate the in-place mutation from your model — clone first (<code class="docutils literal notranslate"><span class="pre">x_local</span> <span class="pre">=</span> <span class="pre">x.clone();</span> <span class="pre">x_local.mul_(2)</span></code>) or use the out-of-place form (<code class="docutils literal notranslate"><span class="pre">x_scaled</span> <span class="pre">=</span> <span class="pre">x</span> <span class="pre">*</span> <span class="pre">2</span></code>). The mutation then disappears from the exported graph and the argument becomes a regular non-state input.</p>
+</div>
+</section>
+<section id="default-names">
+<h3>Default names<a class="headerlink" href="#default-names" title="Link to this heading">¶</a></h3>
+<p>When a naming parameter is not provided, the converter uses names derived from the FX graph:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Category</p></th>
+<th class="head"><p>FX graph source</p></th>
+<th class="head"><p>Relates to</p></th>
+<th class="head"><p>Example</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Input</strong></p></td>
+<td><p>Placeholder <code class="docutils literal notranslate"><span class="pre">node.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">forward()</span></code> arg name</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">def</span> <span class="pre">forward(self,</span> <span class="pre">x,</span> <span class="pre">z)</span></code> → <code class="docutils literal notranslate"><span class="pre">&quot;x&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;z&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Output</strong></p></td>
+<td><p>Output node’s input <code class="docutils literal notranslate"><span class="pre">node.name</span></code></p></td>
+<td><p>Internal op name</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">return</span> <span class="pre">a</span> <span class="pre">+</span> <span class="pre">b,</span> <span class="pre">c</span> <span class="pre">*</span> <span class="pre">d</span></code> → <code class="docutils literal notranslate"><span class="pre">&quot;add&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;mul&quot;</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>State (buffer)</strong></p></td>
+<td><p>Placeholder <code class="docutils literal notranslate"><span class="pre">node.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;b_&quot;</span></code> + <code class="docutils literal notranslate"><span class="pre">register_buffer</span></code> attr</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">self.register_buffer(&quot;kv_cache&quot;,</span> <span class="pre">...)</span></code> → <code class="docutils literal notranslate"><span class="pre">&quot;b_kv_cache&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>State (mutated user input)</strong></p></td>
+<td><p>Placeholder <code class="docutils literal notranslate"><span class="pre">node.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">forward()</span></code> arg name</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">def</span> <span class="pre">forward(self,</span> <span class="pre">y):</span> <span class="pre">y.mul_(2)</span></code> → <code class="docutils literal notranslate"><span class="pre">&quot;y&quot;</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>These naming conventions are observed behavior from the FX graph, not a stable contract from PyTorch. They may change across PyTorch versions. Always provide explicit names for production use.</p>
+</div>
+</section>
+<section id="ordering">
+<h3>Ordering<a class="headerlink" href="#ordering" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Order follows</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">input_names</span></code></p></td>
+<td><p>Non-mutated <code class="docutils literal notranslate"><span class="pre">forward()</span></code> args in signature order</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">output_names</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">return</span></code> values in tuple order</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">state_names</span></code></p></td>
+<td><p>Mutable buffers (<code class="docutils literal notranslate"><span class="pre">register_buffer</span></code> registration order), then mutated user inputs (<code class="docutils literal notranslate"><span class="pre">forward()</span></code> signature order)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The ordering of <code class="docutils literal notranslate"><span class="pre">state_names</span></code> (buffers first, then mutated user inputs) is based on observed FX graph behavior, not a stable PyTorch contract. The converter asserts that the number of state inputs matches state outputs, but cannot detect silent reordering. Always verify state ordering when upgrading PyTorch versions.</p>
+</div>
+</section>
+<section id="examples">
+<h3>Examples<a class="headerlink" href="#examples" title="Link to this heading">¶</a></h3>
+<p><strong>Stateless model</strong> — only <code class="docutils literal notranslate"><span class="pre">input_names</span></code> and <code class="docutils literal notranslate"><span class="pre">output_names</span></code> apply:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">class</span><span class="w"> </span><span class="nc">Linear</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span data-line="2">    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span><span data-line="3">        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+</span><span data-line="4">        <span class="bp">self</span><span class="o">.</span><span class="n">fc</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+</span><span data-line="5">
+</span><span data-line="6">    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+</span><span data-line="7">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">fc</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</span><span data-line="8">
+</span><span data-line="9"><span class="n">ep</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">Linear</span><span class="p">()</span><span class="o">.</span><span class="n">eval</span><span class="p">(),</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">8</span><span class="p">),))</span>
+</span><span data-line="10"><span class="n">ep</span> <span class="o">=</span> <span class="n">ep</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
+</span><span data-line="11">
+</span><span data-line="12"><span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span>
+</span><span data-line="13">    <span class="n">ep</span><span class="p">,</span>
+</span><span data-line="14">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;features&quot;</span><span class="p">],</span>
+</span><span data-line="15">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;logits&quot;</span><span class="p">],</span>
+</span><span data-line="16"><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p><strong>Stateful model</strong> — all three parameters:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">class</span><span class="w"> </span><span class="nc">KVCache</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span data-line="2">    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span><span data-line="3">        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+</span><span data-line="4">        <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="s2">&quot;kv_cache&quot;</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>   <span class="c1"># state[0]</span>
+</span><span data-line="5">        <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="s2">&quot;pos_idx&quot;</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>       <span class="c1"># state[1]</span>
+</span><span data-line="6">
+</span><span data-line="7">    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+</span><span data-line="8">        <span class="bp">self</span><span class="o">.</span><span class="n">kv_cache</span><span class="o">.</span><span class="n">add_</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>       <span class="c1"># buffer mutation</span>
+</span><span data-line="9">        <span class="bp">self</span><span class="o">.</span><span class="n">pos_idx</span><span class="o">.</span><span class="n">add_</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>        <span class="c1"># buffer mutation</span>
+</span><span data-line="10">        <span class="n">y</span><span class="o">.</span><span class="n">mul_</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>                   <span class="c1"># state[2]: mutated user input</span>
+</span><span data-line="11">        <span class="c1"># non-mutated: x -&gt; input[0], z -&gt; input[1]</span>
+</span><span data-line="12">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">kv_cache</span> <span class="o">+</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span> <span class="o">*</span> <span class="mi">3</span>
+</span><span data-line="13">
+</span><span data-line="14"><span class="n">ep</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span>
+</span><span data-line="15">    <span class="n">KVCache</span><span class="p">()</span><span class="o">.</span><span class="n">eval</span><span class="p">(),</span>
+</span><span data-line="16">    <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">)),</span>
+</span><span data-line="17"><span class="p">)</span>
+</span><span data-line="18"><span class="n">ep</span> <span class="o">=</span> <span class="n">ep</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
+</span><span data-line="19">
+</span><span data-line="20"><span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span>
+</span><span data-line="21">    <span class="n">ep</span><span class="p">,</span>
+</span><span data-line="22">    <span class="n">state_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;kv_cache&quot;</span><span class="p">,</span> <span class="s2">&quot;pos_idx&quot;</span><span class="p">,</span> <span class="s2">&quot;y_state&quot;</span><span class="p">],</span>
+</span><span data-line="23">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;query&quot;</span><span class="p">,</span> <span class="s2">&quot;context&quot;</span><span class="p">],</span>
+</span><span data-line="24">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;attn_out&quot;</span><span class="p">,</span> <span class="s2">&quot;scaled&quot;</span><span class="p">],</span>
+</span><span data-line="25"><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p>The converter applies these names to the graph’s inputs and outputs: mutated buffers and mutated user inputs become model state (in <code class="docutils literal notranslate"><span class="pre">state_names</span></code> order), followed by the non-mutated <code class="docutils literal notranslate"><span class="pre">input_names</span></code> and the returned <code class="docutils literal notranslate"><span class="pre">output_names</span></code>.</p>
+</section>
+</section>
+<section id="notices">
+<h2>Notices<a class="headerlink" href="#notices" title="Link to this heading">¶</a></h2>
+<p>PyTorch is a trademark of Meta Platforms, Inc.</p>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="../guides/externalization.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Externalization</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="composite-ops.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Composite ops API reference</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2026, Apple Inc.</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials">
+<a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/shibuya.js?v=50760d75"></script>
+      <script src="../_static/copy-page-button.js?v=d5e0191b"></script></body>
+</html>

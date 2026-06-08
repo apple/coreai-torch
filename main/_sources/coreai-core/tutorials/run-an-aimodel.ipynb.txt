@@ -1,0 +1,345 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "intro",
+   "metadata": {},
+   "source": [
+    "# Running an `.aimodel` with `coreai.runtime`\n",
+    "\n",
+    "This notebook loads an `.aimodel` asset and runs inference on it. We will use\n",
+    "four public types:\n",
+    "\n",
+    "- **`AIModelAsset`** — the on-disk representation of a saved program\n",
+    "  (from `coreai.authoring`).\n",
+    "- **`InferenceFunction`** — a callable function inside the model (here, `main`).\n",
+    "- **`NDArray`** — the runtime's multi-dimensional array type, used to pass\n",
+    "  inputs in and read outputs back.\n",
+    "- **`SpecializationOptions`** — for advanced device/configuration tuning\n",
+    "  (covered briefly at the end).\n",
+    "\n",
+    "Inside the `async with` block you will also see an `AIModel` — the runnable\n",
+    "handle yielded by the asset's `executable()` context manager. It is the type\n",
+    "you call `load_function` on, but you do not import or construct it directly.\n",
+    "\n",
+    "We assume you have already produced a `hello.aimodel` from the previous\n",
+    "tutorial (*Constructing a CoreAI Graph*). The setup cell below recreates it\n",
+    "if it is missing, so this notebook is also safe to run standalone."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "setup-md",
+   "metadata": {},
+   "source": [
+    "## Setup\n",
+    "\n",
+    "Import the asset and runtime types. Inference is asynchronous, so we will\n",
+    "use `await` and `async with` directly inside cells (Jupyter runs each cell\n",
+    "in an event loop)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "imports",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:09.233244Z",
+     "iopub.status.busy": "2026-06-04T23:13:09.232818Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.445952Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.444672Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Dev installation detected. Using local Core AI Framework.\n"
+     ]
+    }
+   ],
+   "source": [
+    "from pathlib import Path\n",
+    "\n",
+    "import numpy as np\n",
+    "\n",
+    "from coreai.authoring import AIModelAsset\n",
+    "from coreai.runtime import InferenceFunction, NDArray\n",
+    "\n",
+    "asset_path = Path(\"./hello-run.aimodel\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "ensure-md",
+   "metadata": {},
+   "source": [
+    "### Ensure `hello.aimodel` exists\n",
+    "\n",
+    "If the asset from the previous tutorial is not on disk, build a fresh copy\n",
+    "now. The build path mirrors the construction shown in *Constructing a CoreAI\n",
+    "Graph*. We're going to go ahead and recreate the asset path."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "ensure",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.447569Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.447413Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.473679Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.473128Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "created hello-run.aimodel\n"
+     ]
+    }
+   ],
+   "source": [
+    "from shutil import rmtree\n",
+    "from typing import Annotated\n",
+    "\n",
+    "from coreai.authoring import AIProgram, Module, TensorSpec\n",
+    "# Pending re-export from coreai.authoring; see the previous tutorial.\n",
+    "from coreai._compiler.dialects import coreai as ops\n",
+    "from coreai._compiler.ir import Value\n",
+    "\n",
+    "# Reconstruct asset.\n",
+    "if asset_path.exists():\n",
+    "    rmtree(asset_path)\n",
+    "\n",
+    "module = Module.create()\n",
+    "with module:\n",
+    "\n",
+    "    @ops.graph\n",
+    "    def main(\n",
+    "        x: Annotated[Value, TensorSpec(shape=[2, 3], dtype=np.float32)],\n",
+    "    ) -> Annotated[Value, TensorSpec(shape=[2, 3], dtype=np.float32, name=\"y\")]:\n",
+    "        return ops.add(x, x)\n",
+    "\n",
+    "AIProgram(module).save_asset(asset_path)\n",
+    "print(f\"created {asset_path}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "open-asset-md",
+   "metadata": {},
+   "source": [
+    "## Open the asset\n",
+    "\n",
+    "`AIModelAsset.load` reads the `.aimodel` directory header from disk so you\n",
+    "can inspect it; it does not yet compile the program for inference. That work\n",
+    "happens lazily inside the `executable()` async context manager used in the\n",
+    "next section.\n",
+    "\n",
+    ":::{note}\n",
+    "**Two ways to load a model.** This tutorial uses `AIModelAsset.load(path)`\n",
+    "followed by `async with asset.executable() as model:` — the resource-managed\n",
+    "form, which gives you explicit control over when the compiled model is\n",
+    "released. There is also a one-shot `await AIModel.load(path)` that returns\n",
+    "a runnable `AIModel` directly; reach for it when you want a long-lived\n",
+    "model handle without the `async with` block (e.g. inside an application\n",
+    "object that owns the model for its full lifetime).\n",
+    ":::"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "open-asset",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.475086Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.474967Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.477296Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.476906Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "asset = AIModelAsset.load(asset_path)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "run-md",
+   "metadata": {},
+   "source": [
+    "## Open the model and run inference\n",
+    "\n",
+    "`asset.executable()` returns an async context manager that yields an\n",
+    "`AIModel` — a runnable handle to the compiled program. Resources are released\n",
+    "when the `async with` block exits, so all model usage happens inside it.\n",
+    "\n",
+    "Inside the block we do five things in order:\n",
+    "\n",
+    "1. list the functions exposed by the model,\n",
+    "2. look up `main` and inspect its `desc` (name, input names, output names),\n",
+    "3. build the input dict — each name from the signature maps to an `NDArray`\n",
+    "   (which accepts a NumPy array, a PyTorch tensor, or a Python list, wrapping\n",
+    "   the data without a copy where possible),\n",
+    "4. `await` the call to get back a `dict` keyed by output name, and\n",
+    "5. copy the result out as NumPy so we can inspect it after exiting the\n",
+    "   context."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "run",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.478555Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.478462Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.505717Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.505274Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "functions: ['main']\n",
+      "name:    main\n",
+      "inputs:  ['x']\n",
+      "outputs: ['y']\n",
+      "input x:\n",
+      "[[1.5 1.5 1.5]\n",
+      " [1.5 1.5 1.5]]\n",
+      "output keys: ['y']\n"
+     ]
+    }
+   ],
+   "source": [
+    "async with asset.executable() as model:\n",
+    "    print(f\"functions: {model.function_names}\")\n",
+    "\n",
+    "    function: InferenceFunction = model.load_function(\"main\")\n",
+    "    desc = function.desc\n",
+    "    print(f\"name:    {desc.name}\")\n",
+    "    print(f\"inputs:  {desc.input_names}\")\n",
+    "    print(f\"outputs: {desc.output_names}\")\n",
+    "\n",
+    "    x = np.full((2, 3), 1.5, dtype=np.float32)\n",
+    "    inputs = {\"x\": NDArray(x)}\n",
+    "    print(f\"input x:\\n{x}\")\n",
+    "\n",
+    "    outputs = await function(inputs)\n",
+    "    print(f\"output keys: {list(outputs.keys())}\")\n",
+    "\n",
+    "    # Materialize the result inside the block — the model's backing buffers\n",
+    "    # are only guaranteed valid until the context exits.\n",
+    "    result = outputs[\"y\"].numpy()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "inspect-md",
+   "metadata": {},
+   "source": [
+    "## Inspect the output\n",
+    "\n",
+    "`.numpy()` was called inside the `async with` block to ensure the result was\n",
+    "materialized before the model's buffers could be released. We can now inspect\n",
+    "the array freely. Our `main` function computes `x + x`, so for an input of\n",
+    "all `1.5`s we expect all `3.0`s back."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "inspect",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-06-04T23:13:12.506908Z",
+     "iopub.status.busy": "2026-06-04T23:13:12.506825Z",
+     "iopub.status.idle": "2026-06-04T23:13:12.509068Z",
+     "shell.execute_reply": "2026-06-04T23:13:12.508740Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "shape: (2, 3)\n",
+      "dtype: float32\n",
+      "value:\n",
+      "[[3. 3. 3.]\n",
+      " [3. 3. 3.]]\n",
+      "OK — inference produced expected output shape and dtype\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(f\"shape: {result.shape}\")\n",
+    "print(f\"dtype: {result.dtype}\")\n",
+    "print(f\"value:\\n{result}\")\n",
+    "\n",
+    "assert result.shape == (2, 3)\n",
+    "assert result.dtype == np.float32\n",
+    "print(\"OK — inference produced expected output shape and dtype\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "advanced-md",
+   "metadata": {},
+   "source": [
+    "## What's next\n",
+    "\n",
+    "You now have the core loop: **load** an asset, **enter** its executable,\n",
+    "**build** inputs, **await** the call, and **read** the outputs back as NumPy.\n",
+    "\n",
+    "For more advanced configuration, two types in `coreai.runtime` are worth\n",
+    "knowing about:\n",
+    "\n",
+    "- **`SpecializationOptions`** — pass to `asset.executable(options)` to pin the\n",
+    "  preferred compute unit (CPU / GPU / Neural Engine) or enable debug mode.\n",
+    "  *(macOS only.)*\n",
+    "- **`StorageKind`** — passed to `NDArray(data, backing=...)` to choose\n",
+    "  byte-backed, IOSurface-backed, or Metal-backed storage. The default\n",
+    "  (`StorageKind.BYTES`) is what you want unless you are interoperating with\n",
+    "  graphics or camera buffers.\n",
+    "\n",
+    "Both are importable from `coreai.runtime`, e.g.:\n",
+    "\n",
+    "```python\n",
+    "from coreai.runtime import SpecializationOptions, StorageKind\n",
+    "```"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": ".venv",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.11.13"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}

@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="indigo" data-content_root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Custom Op Lowering - coreai-torch documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Custom Metal Kernels" href="custom-metal-kernels.html" /><link rel="prev" title="Conversion Workflows" href="conversion-workflows.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d88b86f9" />
+    <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=9454f7d5" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=05f3bbaf" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    
+  <meta property="og:type" content="website"/><meta property="og:title" content="Custom Op Lowering"/>
+    <meta name="twitter:card" content="summary"/>
+  <script>
+  var defined_VERSIONS = [{"name": "main", "version": "main"}];
+  var defined_VERSION_MATCH = "main";
+</script>
+<script src="../_static/version-switcher.js" defer></script>
+<script>
+  // Override Shibuya's 3-state toggle (auto/light/dark) with a 2-state toggle (light/dark)
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.querySelector(".js-theme");
+    if (!btn) return;
+
+    // Remove Shibuya's click listener by cloning the button
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    function getEffectiveMode() {
+      var mode = document.documentElement.getAttribute("data-color-mode") || "auto";
+      if (mode === "auto") {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      return mode;
+    }
+
+    newBtn.addEventListener("click", function () {
+      var next = getEffectiveMode() === "dark" ? "light" : "dark";
+      if (typeof setColorMode === "function") {
+        setColorMode(next);
+      }
+      localStorage._theme = next;
+      var label = newBtn.getAttribute("data-aria-" + next);
+      if (label) newBtn.setAttribute("aria-label", label);
+    });
+  });
+</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../index.html">
+      
+      
+      <strong>coreai-torch</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"><ul><li class="link"><a href="../getting-started/installation.html">Getting Started</a></li><li class="link"><a href="conversion-workflows.html">Guides</a></li><li class="link"><a href="../api/TorchConverter.html">API</a></li><li class="link"><a href="../coreai-core/index.html">coreai-core</a></li></ul></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../getting-started/installation.html">Installing coreai-torch</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../getting-started/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../whats-new.html">What&#8217;s new</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Guides</span></p>
+<ul class="current">
+<li class="toctree-l1 _expand"><a class="reference internal" href="conversion-workflows.html">Conversion Workflows</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Custom Op Lowering</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="custom-metal-kernels.html">Custom Metal Kernels</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="composite-ops.html">Composite Ops Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="externalization.html">Externalization</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/TorchConverter.html">TorchConverter API reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/composite-ops.html">Composite ops API reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/composite-ops/module-class.html">Module-class composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/gather-mm.html">GatherMM</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/gated-delta-update.html">GatedDeltaUpdate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/rms-norm.html">RMSNormImpl</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/rope.html">RoPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/sdpa.html">SDPA</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api/composite-ops/aten-derived.html">ATen-derived composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/batch-norm.html">batch_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/group-norm.html">group_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/hard-sigmoid.html">hard_sigmoid</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/instance-norm.html">instance_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/layer-norm.html">layer_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/linalg-vector-norm.html">linalg_vector_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/log-softmax.html">log_softmax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/composite-ops/pixel-shuffle.html">pixel_shuffle</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/generate-composite-decl.html">generate_composite_decl</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/ExternalizeSpec.html">ExternalizeSpec</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/TorchMetalKernel.html">TorchMetalKernel</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/supported-aten-ops.html">Supported ATen ops</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/debugging.html">Debugging</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Core AI (coreai-core)</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../coreai-core/index.html">Core AI (coreai-core)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/tutorials/construct-a-graph.html">Constructing a CoreAI Graph</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/tutorials/run-an-aimodel.html">Running an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> with <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../coreai-core/api/coreai.html">coreai</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">More</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../faq.html">Frequently asked questions</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../contributing.html">Contributing</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../resources.html">Resources</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../release-notes.html">Release notes</a></li>
+</ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#when-you-need-this">When You Need This</a></li>
+<li><a class="reference internal" href="#lowering-a-custom-torch-op">Lowering a custom torch Op</a><ul>
+<li><a class="reference internal" href="#step-1-define-the-custom-torch-op">Step 1 &#8212; Define the custom torch Op</a></li>
+<li><a class="reference internal" href="#step-2-use-the-op-in-a-model">Step 2 &#8212; Use the Op in a model</a></li>
+<li><a class="reference internal" href="#step-3-export-the-model">Step 3 &#8212; Export the model</a></li>
+<li><a class="reference internal" href="#step-4-register-the-coreai-lowering">Step 4 &#8212; Register the CoreAI lowering</a></li>
+<li><a class="reference internal" href="#step-5-convert">Step 5 &#8212; Convert</a></li>
+<li><a class="reference internal" href="#step-6-inspect-the-generated-coreai-graph">Step 6 &#8212; Inspect the generated CoreAI graph</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#overriding-built-in-lowerings">Overriding built-in lowerings</a></li>
+<li><a class="reference internal" href="#notes">Notes</a></li>
+<li><a class="reference internal" href="#next-steps">Next Steps</a></li>
+<li><a class="reference internal" href="#notices">Notices</a></li>
+</ul>
+</div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">coreai-torch</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Custom Op Lowering</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12"><div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="custom-op-lowering.html.md"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem" data-url="custom-op-lowering.html.md">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="custom-op-lowering.html.md" target="_blank" rel="nofollow">
+          <span class="iconify-icon">
+            <img src="../_static/icons/markdown.svg" alt="" width="14" height="14">
+          </span>
+          <span>View as Markdown</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div><article class="yue" role="main">
+          <section class="tex2jax_ignore mathjax_ignore" id="custom-op-lowering">
+<h1>Custom Op Lowering<a class="headerlink" href="#custom-op-lowering" title="Link to this heading">¶</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> maps standard ATen ops to CoreAI graphs automatically. This guide shows how to register lowerings for custom or unsupported ops.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Writing a lowering uses authoring APIs from <code class="docutils literal notranslate"><span class="pre">coreai-core</span></code> (such as <code class="docutils literal notranslate"><span class="pre">coreai._compiler.dialects</span></code>). The leading underscore on <code class="docutils literal notranslate"><span class="pre">_compiler</span></code> marks this as private upstream API — it may move or change without notice across <code class="docutils literal notranslate"><span class="pre">coreai-core</span></code> releases.</p>
+</div>
+<section id="when-you-need-this">
+<h2>When You Need This<a class="headerlink" href="#when-you-need-this" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Your model calls a custom torch op (registered via <code class="docutils literal notranslate"><span class="pre">torch.library</span></code>) that the converter does not recognize.</p></li>
+<li><p>You want to replace the built-in lowering for a standard ATen op with a specialized implementation.</p></li>
+</ul>
+</section>
+<hr class="docutils" />
+<section id="lowering-a-custom-torch-op">
+<h2>Lowering a custom torch Op<a class="headerlink" href="#lowering-a-custom-torch-op" title="Link to this heading">¶</a></h2>
+<section id="step-1-define-the-custom-torch-op">
+<h3>Step 1 — Define the custom torch Op<a class="headerlink" href="#step-1-define-the-custom-torch-op" title="Link to this heading">¶</a></h3>
+<p>Use <code class="docutils literal notranslate"><span class="pre">&#64;torch.library.custom_op</span></code> to register the op with the PyTorch dispatcher, and <code class="docutils literal notranslate"><span class="pre">register_fake</span></code> to provide the abstract implementation needed by <code class="docutils literal notranslate"><span class="pre">torch.export</span></code>.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+</span><span data-line="2">
+</span><span data-line="3">
+</span><span data-line="4"><span class="nd">@torch</span><span class="o">.</span><span class="n">library</span><span class="o">.</span><span class="n">custom_op</span><span class="p">(</span><span class="s2">&quot;my_lib::scaled_add&quot;</span><span class="p">,</span> <span class="n">mutates_args</span><span class="o">=</span><span class="p">())</span>
+</span><span data-line="5"><span class="k">def</span><span class="w"> </span><span class="nf">scaled_add</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">scale</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+</span><span data-line="6"><span class="w">    </span><span class="sd">&quot;&quot;&quot;Eager implementation: runs on CPU during normal PyTorch inference.&quot;&quot;&quot;</span>
+</span><span data-line="7">    <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">y</span>
+</span><span data-line="8">
+</span><span data-line="9">
+</span><span data-line="10"><span class="nd">@scaled_add</span><span class="o">.</span><span class="n">register_fake</span>
+</span><span data-line="11"><span class="k">def</span><span class="w"> </span><span class="nf">_</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">scale</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+</span><span data-line="12"><span class="w">    </span><span class="sd">&quot;&quot;&quot;Abstract implementation: called by torch.export to infer output shapes.&quot;&quot;&quot;</span>
+</span><span data-line="13">    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+<p>The eager body runs during regular PyTorch execution. The <code class="docutils literal notranslate"><span class="pre">register_fake</span></code> body is called by the exporter’s shape-propagation machinery; it only needs to return a tensor with the correct shape and dtype.</p>
+</section>
+<section id="step-2-use-the-op-in-a-model">
+<h3>Step 2 — Use the Op in a model<a class="headerlink" href="#step-2-use-the-op-in-a-model" title="Link to this heading">¶</a></h3>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+</span><span data-line="2"><span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span data-line="3">
+</span><span data-line="4">
+</span><span data-line="5"><span class="k">class</span><span class="w"> </span><span class="nc">ScaledAddModel</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span data-line="6">    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+</span><span data-line="7">        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">my_lib</span><span class="o">.</span><span class="n">scaled_add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="step-3-export-the-model">
+<h3>Step 3 — Export the model<a class="headerlink" href="#step-3-export-the-model" title="Link to this heading">¶</a></h3>
+<p>Export and run decompositions as usual. Custom ops are not touched by the decomposition pass, so <code class="docutils literal notranslate"><span class="pre">my_lib::scaled_add</span></code> remains as a single node in the graph.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_decomp_table</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="n">model</span> <span class="o">=</span> <span class="n">ScaledAddModel</span><span class="p">()</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+</span><span data-line="5"><span class="n">example_inputs</span> <span class="o">=</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">))</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="n">exported</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_inputs</span><span class="p">)</span>
+</span><span data-line="8"><span class="n">exported</span> <span class="o">=</span> <span class="n">exported</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="step-4-register-the-coreai-lowering">
+<h3>Step 4 — Register the CoreAI lowering<a class="headerlink" href="#step-4-register-the-coreai-lowering" title="Link to this heading">¶</a></h3>
+<p>Create a <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code>, then use <code class="docutils literal notranslate"><span class="pre">register_torch_lowering</span></code> as a decorator. The lowering function receives:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Argument</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">values_map</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dict[str,</span> <span class="pre">Value]</span></code></p></td>
+<td><p>Maps FX node names to their CoreAI <code class="docutils literal notranslate"><span class="pre">Value</span></code>s. Use this to look up tensor operands.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">node</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">torch.fx.Node</span></code></p></td>
+<td><p>The FX node being lowered. Tensor args are <code class="docutils literal notranslate"><span class="pre">fx.Node</span></code> objects; scalar args are plain Python values.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">loc</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Location</span></code></p></td>
+<td><p>CoreAI Location. Pass to CoreAI op constructors.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The op’s qualified name in the FX graph always carries the overload suffix <code class="docutils literal notranslate"><span class="pre">.default</span></code>, so register it as <code class="docutils literal notranslate"><span class="pre">&quot;my_lib::scaled_add.default&quot;</span></code>.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai._compiler.dialects</span><span class="w"> </span><span class="kn">import</span> <span class="n">coreai</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">TorchConverter</span>
+</span><span data-line="4"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch._utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_operands</span>
+</span><span data-line="5">
+</span><span data-line="6"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span>
+</span><span data-line="7">
+</span><span data-line="8">
+</span><span data-line="9"><span class="nd">@converter</span><span class="o">.</span><span class="n">register_torch_lowering</span><span class="p">(</span><span class="s2">&quot;my_lib::scaled_add.default&quot;</span><span class="p">)</span>
+</span><span data-line="10"><span class="k">def</span><span class="w"> </span><span class="nf">lower_scaled_add</span><span class="p">(</span><span class="n">values_map</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">loc</span><span class="p">):</span>
+</span><span data-line="11">    <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">get_operands</span><span class="p">(</span><span class="n">values_map</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">loc</span><span class="p">)</span>
+</span><span data-line="12">    <span class="n">scale</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>  <span class="c1"># plain Python float</span>
+</span><span data-line="13">
+</span><span data-line="14">    <span class="n">scale_val</span> <span class="o">=</span> <span class="n">coreai</span><span class="o">.</span><span class="n">constant</span><span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">element_type</span><span class="p">)</span>
+</span><span data-line="15">    <span class="n">scaled_y</span> <span class="o">=</span> <span class="n">coreai</span><span class="o">.</span><span class="n">broadcasting_mul</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">scale_val</span><span class="p">,</span> <span class="n">loc</span><span class="o">=</span><span class="n">loc</span><span class="p">)</span>
+</span><span data-line="16">    <span class="k">return</span> <span class="n">coreai</span><span class="o">.</span><span class="n">broadcasting_add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">scaled_y</span><span class="p">,</span> <span class="n">loc</span><span class="o">=</span><span class="n">loc</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="step-5-convert">
+<h3>Step 5 — Convert<a class="headerlink" href="#step-5-convert" title="Link to this heading">¶</a></h3>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span>
+</span><span data-line="2">    <span class="n">exported</span><span class="p">,</span>
+</span><span data-line="3">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">],</span>
+</span><span data-line="4">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;result&quot;</span><span class="p">],</span>
+</span><span data-line="5"><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="6"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="step-6-inspect-the-generated-coreai-graph">
+<h3>Step 6 — Inspect the generated CoreAI graph<a class="headerlink" href="#step-6-inspect-the-generated-coreai-graph" title="Link to this heading">¶</a></h3>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">coreai_program</span><span class="p">))</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="overriding-built-in-lowerings">
+<h2>Overriding built-in lowerings<a class="headerlink" href="#overriding-built-in-lowerings" title="Link to this heading">¶</a></h2>
+<p>To replace the built-in lowering for a standard ATen op, pass <code class="docutils literal notranslate"><span class="pre">allow_override=True</span></code>. This is useful when you know your model’s runtime constraints allow a simpler implementation.</p>
+<p>For example, the default lowering for <code class="docutils literal notranslate"><span class="pre">aten._adaptive_avg_pool2d</span></code> handles dynamic input shapes and non-divisible output sizes. If your model always runs with static shapes and an output size that evenly divides the input (e.g., ResNet’s final <code class="docutils literal notranslate"><span class="pre">adaptive_avg_pool2d(output_size=(1,</span> <span class="pre">1))</span></code>), you can replace it with a simpler <code class="docutils literal notranslate"><span class="pre">sumpool2d</span></code> + divide:</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+</span><span data-line="2"><span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+</span><span data-line="3"><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch._utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_operand</span>
+</span><span data-line="6">
+</span><span data-line="7">
+</span><span data-line="8"><span class="c1"># A model that uses adaptive_avg_pool2d</span>
+</span><span data-line="9"><span class="k">class</span><span class="w"> </span><span class="nc">PoolModel</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+</span><span data-line="10">    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+</span><span data-line="11">        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">adaptive_avg_pool2d</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+</span><span data-line="12">
+</span><span data-line="13">
+</span><span data-line="14"><span class="n">pool_model</span> <span class="o">=</span> <span class="n">PoolModel</span><span class="p">()</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+</span><span data-line="15"><span class="n">pool_input</span> <span class="o">=</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">),)</span>
+</span><span data-line="16"><span class="n">pool_exported</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">pool_model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">pool_input</span><span class="p">)</span>
+</span><span data-line="17"><span class="n">pool_exported</span> <span class="o">=</span> <span class="n">pool_exported</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
+</span><span data-line="18">
+</span><span data-line="19"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span>
+</span><span data-line="20">
+</span><span data-line="21">
+</span><span data-line="22"><span class="nd">@converter</span><span class="o">.</span><span class="n">register_torch_lowering</span><span class="p">(</span>
+</span><span data-line="23">    <span class="s2">&quot;aten::_adaptive_avg_pool2d.default&quot;</span><span class="p">,</span> <span class="n">allow_override</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="24"><span class="p">)</span>
+</span><span data-line="25"><span class="k">def</span><span class="w"> </span><span class="nf">lower_adaptive_avg_pool2d_static</span><span class="p">(</span><span class="n">values_map</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">loc</span><span class="p">):</span>
+</span><span data-line="26">    <span class="n">x</span> <span class="o">=</span> <span class="n">get_operand</span><span class="p">(</span><span class="n">values_map</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">loc</span><span class="p">)</span>
+</span><span data-line="27">    <span class="n">output_h</span><span class="p">,</span> <span class="n">output_w</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+</span><span data-line="28">    <span class="n">input_h</span><span class="p">,</span> <span class="n">input_w</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">x</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+</span><span data-line="29">    <span class="n">stride_h</span><span class="p">,</span> <span class="n">stride_w</span> <span class="o">=</span> <span class="n">input_h</span> <span class="o">//</span> <span class="n">output_h</span><span class="p">,</span> <span class="n">input_w</span> <span class="o">//</span> <span class="n">output_w</span>
+</span><span data-line="30">    <span class="n">kernel_h</span> <span class="o">=</span> <span class="n">input_h</span> <span class="o">-</span> <span class="p">(</span><span class="n">output_h</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">stride_h</span>
+</span><span data-line="31">    <span class="n">kernel_w</span> <span class="o">=</span> <span class="n">input_w</span> <span class="o">-</span> <span class="p">(</span><span class="n">output_w</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">stride_w</span>
+</span><span data-line="32">    <span class="k">return</span> <span class="n">coreai</span><span class="o">.</span><span class="n">broadcasting_divide</span><span class="p">(</span>
+</span><span data-line="33">        <span class="n">coreai</span><span class="o">.</span><span class="n">sumpool2d</span><span class="p">(</span>
+</span><span data-line="34">            <span class="n">x</span><span class="p">,</span>
+</span><span data-line="35">            <span class="n">kernel_size</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">kernel_h</span><span class="p">,</span> <span class="n">kernel_w</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">),</span>
+</span><span data-line="36">            <span class="n">strides</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">stride_h</span><span class="p">,</span> <span class="n">stride_w</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">),</span>
+</span><span data-line="37">            <span class="n">dilation</span><span class="o">=</span><span class="n">coreai</span><span class="o">.</span><span class="n">constant</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">),</span>
+</span><span data-line="38">        <span class="p">),</span>
+</span><span data-line="39">        <span class="n">coreai</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">kernel_h</span> <span class="o">*</span> <span class="n">kernel_w</span><span class="p">),</span> <span class="n">x</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">element_type</span><span class="p">),</span>
+</span><span data-line="40">    <span class="p">)</span>
+</span><span data-line="41">
+</span><span data-line="42">
+</span><span data-line="43"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">pool_exported</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="44"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span></pre></div>
+</div>
+</div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="notes">
+<h2>Notes<a class="headerlink" href="#notes" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><strong>Op name format.</strong> The qualified name must be <code class="docutils literal notranslate"><span class="pre">&quot;namespace::op_name.overload&quot;</span></code>. Custom ops defined with <code class="docutils literal notranslate"><span class="pre">&#64;custom_op</span></code> always use the <code class="docutils literal notranslate"><span class="pre">.default</span></code> overload.</p></li>
+<li><p><strong>Reserved namespaces.</strong> <code class="docutils literal notranslate"><span class="pre">aten</span></code>, <code class="docutils literal notranslate"><span class="pre">higher_order</span></code>, <code class="docutils literal notranslate"><span class="pre">coreai</span></code>, and <code class="docutils literal notranslate"><span class="pre">coreaix</span></code> are built-in. Overriding requires <code class="docutils literal notranslate"><span class="pre">allow_override=True</span></code>.</p></li>
+<li><p><strong>Per-instance registration.</strong> Lowerings are stored on the <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> instance and do not affect other converters or the global resolver tables.</p></li>
+<li><p><strong>Multiple return values.</strong> If your op returns a tuple, return a Python list of <code class="docutils literal notranslate"><span class="pre">Value</span></code>s from the lowering function. The converter stores them as <code class="docutils literal notranslate"><span class="pre">&quot;node_name#0&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;node_name#1&quot;</span></code>, etc. in <code class="docutils literal notranslate"><span class="pre">values_map</span></code>.</p></li>
+</ul>
+</section>
+<section id="next-steps">
+<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="../api/supported-aten-ops.html"><span class="doc">Supported ATen ops</span></a> — check the full built-in op coverage before writing a custom lowering.</p></li>
+<li><p><a class="reference internal" href="composite-ops.html"><span class="doc">Composite Ops Guide</span></a> — use <code class="docutils literal notranslate"><span class="pre">generate_composite_decl</span></code> to write composite op lowerings that dispatch to hardware-optimized kernels.</p></li>
+<li><p><a class="reference internal" href="../api/TorchConverter.html"><span class="doc">TorchConverter API reference</span></a> — <code class="docutils literal notranslate"><span class="pre">register_torch_lowering</span></code> API reference.</p></li>
+</ul>
+</section>
+<section id="notices">
+<h2>Notices<a class="headerlink" href="#notices" title="Link to this heading">¶</a></h2>
+<p>PyTorch is a trademark of Meta Platforms, Inc.</p>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="conversion-workflows.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Conversion Workflows</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="custom-metal-kernels.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Custom Metal Kernels</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2026, Apple Inc.</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials">
+<a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/shibuya.js?v=50760d75"></script>
+      <script src="../_static/copy-page-button.js?v=d5e0191b"></script></body>
+</html>

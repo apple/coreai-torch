@@ -1,0 +1,286 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "0",
+   "metadata": {},
+   "source": [
+    "# Custom Metal Kernels\n",
+    "\n",
+    "This guide shows how to author inline Metal GPU kernels and convert them through `TorchConverter`. Custom Metal kernels let you write raw Metal shader code, wrap it as a PyTorch op, and compile it into CoreAI operations for on-device execution.\n",
+    "\n",
+    "```{warning}\n",
+    "Authoring Metal kernels uses APIs from `coreai-core` (such as `coreai.authoring`). These APIs are experimental and subject to change in future releases.\n",
+    "```\n",
+    "\n",
+    "## When You Need This\n",
+    "\n",
+    "- You need a GPU kernel that is not available as a standard PyTorch or CoreAI op.\n",
+    "- You want to fuse multiple operations into a single Metal dispatch for performance.\n",
+    "- You need fine-grained control over thread dispatch, shared memory, or Metal-specific features."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "1",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Step 1 — Define the Metal Kernel\n",
+    "\n",
+    "Use `TorchMetalKernel` from `coreai_torch` to specify the kernel. You provide:\n",
+    "\n",
+    "- A **name** for the kernel.\n",
+    "- **Input and result names** that match the variables in your Metal source.\n",
+    "- The **Metal shader body** (the code inside the `[[kernel]]` function — the signature is generated automatically).\n",
+    "- A **torch reference implementation** used during `torch.export` for shape inference.\n",
+    "- **Metal parameters** like `thread_position_in_grid` for indexing."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "2",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "from coreai.authoring import MetalParameter\n",
+    "\n",
+    "from coreai_torch import TorchMetalKernel\n",
+    "\n",
+    "\n",
+    "def torch_add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:\n",
+    "    \"\"\"Reference implementation for shape inference during export.\"\"\"\n",
+    "    return x + y\n",
+    "\n",
+    "\n",
+    "custom_add = TorchMetalKernel(\n",
+    "    \"vector_add\",\n",
+    "    input_names=[\"x\", \"y\"],\n",
+    "    result_names=[\"output\"],\n",
+    "    src=\"output[id] = x[id] + y[id];\",\n",
+    "    torch_defn=torch_add,\n",
+    "    metal_params=[\n",
+    "        MetalParameter(\"id\", \"uint\", \"thread_position_in_grid\"),\n",
+    "    ],\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "3",
+   "metadata": {},
+   "source": [
+    "The `src` string is the body of the Metal `[[kernel]]` function. The function signature — buffer bindings, thread attributes, and `#include <metal_stdlib>` — is generated automatically from `input_names`, `result_names`, and `metal_params`.\n",
+    "\n",
+    "`TorchMetalKernel` wraps your kernel as a PyTorch op, so you can call it directly inside an `nn.Module`.\n",
+    "\n",
+    "## Step 2 — Use the Kernel in a Model\n",
+    "\n",
+    "Call the kernel inside an `nn.Module`. You must specify `threads_per_grid`, `threads_per_thread_group`, and `result_shapes` at each call site."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "4",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "\n",
+    "\n",
+    "class AddModel(nn.Module):\n",
+    "    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:\n",
+    "        return custom_add(\n",
+    "            x,\n",
+    "            y,\n",
+    "            threads_per_grid=(x.shape[0], 1, 1),\n",
+    "            threads_per_thread_group=(1, 1, 1),\n",
+    "            result_shapes=[list(x.shape)],\n",
+    "        )"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5",
+   "metadata": {},
+   "source": [
+    "## Step 3 — Export and Decompose\n",
+    "\n",
+    "Export the model as usual. Custom kernel ops are preserved through `run_decompositions()` — they are not decomposed."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "6",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "from coreai_torch import get_decomp_table\n",
+    "\n",
+    "model = AddModel().eval()\n",
+    "example_inputs = (torch.randn(16), torch.randn(16))\n",
+    "\n",
+    "exported = torch.export.export(model, args=example_inputs)\n",
+    "exported = exported.run_decompositions(get_decomp_table())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "7",
+   "metadata": {},
+   "source": [
+    "## Step 4 — Register Kernels and Convert\n",
+    "\n",
+    "Use `register_custom_kernels()` to tell the converter how to lower the kernel ops. This must be called **before** `add_exported_program()`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "8",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from coreai_torch import TorchConverter\n",
+    "\n",
+    "converter = TorchConverter()\n",
+    "converter.register_custom_kernels([custom_add])\n",
+    "converter.add_exported_program(\n",
+    "    exported,\n",
+    "    input_names=[\"x\", \"y\"],\n",
+    "    output_names=[\"result\"],\n",
+    ")\n",
+    "coreai_program = converter.to_coreai()\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "9",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Dtype Templating\n",
+    "\n",
+    "Use `template_dtypes` to write a single kernel that works across multiple data types. Placeholder strings in the Metal source are replaced with the actual Metal type at compile time."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "10",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "\n",
+    "def torch_matmul(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:\n",
+    "    return torch.matmul(x, y)\n",
+    "\n",
+    "\n",
+    "custom_matmul = TorchMetalKernel(\n",
+    "    \"matmul\",\n",
+    "    input_names=[\"A\", \"B\"],\n",
+    "    result_names=[\"C\"],\n",
+    "    src=\"\"\"\n",
+    "        const uint K = A.get_extent(0);\n",
+    "        const uint M = A.get_extent(1);\n",
+    "        const uint N = B.get_extent(0);\n",
+    "        if (gid.x >= N || gid.y >= M) return;\n",
+    "        TYPE sum = 0.0f;\n",
+    "        for (uint k = 0; k < K; ++k) {\n",
+    "            sum += A[k, gid.y] * B[gid.x, k];\n",
+    "        }\n",
+    "        C[gid.x, gid.y] = sum;\n",
+    "    \"\"\",\n",
+    "    torch_defn=torch_matmul,\n",
+    "    metal_params=[\n",
+    "        MetalParameter(\"gid\", \"uint2\", \"thread_position_in_grid\"),\n",
+    "    ],\n",
+    "    # \"A\" is the input whose dtype determines the substitution;\n",
+    "    # every occurrence of \"TYPE\" in src is replaced with the\n",
+    "    # corresponding Metal type (e.g. \"half\", \"float\", \"bfloat\").\n",
+    "    template_dtypes={\"A\": \"TYPE\"},\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "11",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "\n",
+    "def torch_sincos(x: torch.Tensor) -> list[torch.Tensor]:\n",
+    "    return [torch.sin(x), torch.cos(x)]\n",
+    "\n",
+    "\n",
+    "sincos_kernel = TorchMetalKernel(\n",
+    "    \"sincos\",\n",
+    "    input_names=[\"x\"],\n",
+    "    result_names=[\"out_sin\", \"out_cos\"],\n",
+    "    src=\"out_sin[id] = sin(x[id]); out_cos[id] = cos(x[id]);\",\n",
+    "    torch_defn=torch_sincos,\n",
+    "    metal_params=[MetalParameter(\"id\", \"uint\", \"thread_position_in_grid\")],\n",
+    ")\n",
+    "\n",
+    "\n",
+    "class SinCosModel(nn.Module):\n",
+    "    def forward(self, x: torch.Tensor) -> torch.Tensor:\n",
+    "        results = sincos_kernel(\n",
+    "            x,\n",
+    "            threads_per_grid=(x.shape[0], 1, 1),\n",
+    "            threads_per_thread_group=(1, 1, 1),\n",
+    "            result_shapes=[list(x.shape), list(x.shape)],\n",
+    "        )\n",
+    "        return results[0] + results[1]  # sin(x) + cos(x)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "12",
+   "metadata": {},
+   "source": [
+    "## Next Steps\n",
+    "\n",
+    "- {doc}`../guides/custom-op-lowering` — a simpler alternative for ops that can be expressed using standard Core AI operations.\n",
+    "- {doc}`../api/TorchMetalKernel` — full `TorchMetalKernel` API reference.\n",
+    "- {doc}`../api/TorchConverter` — `register_custom_kernels` API reference."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "13",
+   "metadata": {},
+   "source": [
+    "## Notices\n",
+    "\n",
+    "PyTorch is a trademark of Meta Platforms, Inc.\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "name": "python",
+   "version": "3.10.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}

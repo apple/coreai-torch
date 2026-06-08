@@ -1,0 +1,337 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Quickstart\n",
+    "\n",
+    "Convert a PyTorch model to Core AI format, compile it, and run inference.\n",
+    "\n",
+    "This tutorial walks through the full conversion pipeline for a simple PyTorch model — from export to on-device inference. By the end, you have a working end-to-end pipeline you can adapt for your own models. For a production-scale example, see [Real-World Model: MobileNetV2](#real-world-model-mobilenetv2) at the end of this tutorial."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Define a Model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "\n",
+    "\n",
+    "class SimpleModel(nn.Module):\n",
+    "    def __init__(self):\n",
+    "        super().__init__()\n",
+    "        self.linear1 = nn.Linear(10, 20)\n",
+    "        self.relu = nn.ReLU()\n",
+    "        self.linear2 = nn.Linear(20, 5)\n",
+    "\n",
+    "    def forward(self, x):\n",
+    "        x = self.linear1(x)\n",
+    "        x = self.relu(x)\n",
+    "        x = self.linear2(x)\n",
+    "        return x\n",
+    "\n",
+    "\n",
+    "model = SimpleModel()\n",
+    "model.eval()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Always call `.eval()` before exporting. Layers such as `BatchNorm` and `Dropout` behave differently in training mode and produce a different graph."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Export\n",
+    "\n",
+    "Use `torch.export.export` to capture the computation graph as an `ExportedProgram`. The result is shape- and dtype-specialized to the provided example input."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "\n",
+    "example_input = (torch.randn(1, 10),)\n",
+    "exported = torch.export.export(model, args=example_input)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Decompose\n",
+    "\n",
+    "`get_decomp_table()` returns the default PyTorch ATen decomposition table minus the operations that `TorchConverter` lowers as composite ops, so those operations are preserved in the exported graph rather than being decomposed into lower-level primitives."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from coreai_torch import get_decomp_table\n",
+    "\n",
+    "exported = exported.run_decompositions(get_decomp_table())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "```{warning}\n",
+    "This call is required when using `add_exported_program()`. Skipping it will leave ops in the graph that have no lowering rule.\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Convert\n",
+    "\n",
+    "`TorchConverter` walks the FX graph node-by-node and emits CoreAI operations, returning a `AIProgram`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from coreai_torch import TorchConverter\n",
+    "\n",
+    "converter = TorchConverter()\n",
+    "coreai_program = converter.add_exported_program(\n",
+    "    exported,\n",
+    "    input_names=[\"x\"],\n",
+    "    output_names=[\"out\"],\n",
+    ").to_coreai()\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Compile and Run\n",
+    "\n",
+    "The `AIProgram` must be compiled to a native executable before it can run inference. The full async function below saves the program to an `.aimodel` directory, loads the executable, runs the `main` function on the example input, and compares the result to PyTorch."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import tempfile\n",
+    "import torch\n",
+    "from pathlib import Path\n",
+    "\n",
+    "import numpy as np\n",
+    "from coreai.runtime import NDArray\n",
+    "\n",
+    "\n",
+    "async def compile_and_run(coreai_program, example_input, model):\n",
+    "    with tempfile.TemporaryDirectory() as tmpdir:\n",
+    "        # Compile: save the AIProgram to an .aimodel directory on disk.\n",
+    "        asset = coreai_program.save_asset(Path(tmpdir) / \"quick_start_example.aimodel\")\n",
+    "\n",
+    "        # Load: open the executable and bind the `main` function.\n",
+    "        async with asset.executable() as ai_model:\n",
+    "            function = ai_model.load_function(\"main\")\n",
+    "\n",
+    "            # Run: invoke the function on the example input.\n",
+    "            coreai_outputs = await function({\"x\": NDArray(example_input[0])})\n",
+    "\n",
+    "            # Compare with PyTorch: run the same input through the original model.\n",
+    "            with torch.no_grad():\n",
+    "                pytorch_output = model(example_input[0])\n",
+    "\n",
+    "            coreai_output = coreai_outputs[\"out\"].numpy()\n",
+    "            pytorch_numpy = pytorch_output.numpy()\n",
+    "\n",
+    "            print(f\"PyTorch output shape: {pytorch_numpy.shape}\")\n",
+    "            print(f\"Core AI output shape: {coreai_output.shape}\")\n",
+    "            print(\n",
+    "                f\"Outputs match: {np.allclose(pytorch_numpy, coreai_output, atol=1e-4)}\"\n",
+    "            )\n",
+    "\n",
+    "\n",
+    "await compile_and_run(coreai_program, example_input, model)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Real-World Model: MobileNetV2\n",
+    "\n",
+    "````{note}\n",
+    "This example uses [torchvision](https://pytorch.org/vision/), which is not a dependency of coreai-torch. Install it into your environment first:\n",
+    "\n",
+    "```bash\n",
+    "pip install torchvision\n",
+    "```\n",
+    "````\n",
+    "\n",
+    "The same pattern works with production models. Here is the full pipeline for torchvision's MobileNetV2:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import torchvision.models as tv_models\n",
+    "\n",
+    "model = tv_models.mobilenet_v2(weights=None).eval()\n",
+    "example_input = (torch.randn(1, 3, 224, 224),)\n",
+    "\n",
+    "exported = torch.export.export(model, args=example_input)\n",
+    "exported = exported.run_decompositions(get_decomp_table())\n",
+    "\n",
+    "coreai_program = (\n",
+    "    TorchConverter()\n",
+    "    .add_exported_program(\n",
+    "        exported,\n",
+    "        input_names=[\"image\"],\n",
+    "        output_names=[\"logits\"],\n",
+    "    )\n",
+    "    .to_coreai()\n",
+    ")\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Compile and run the same way as above:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import tempfile\n",
+    "\n",
+    "\n",
+    "async def run():\n",
+    "    with tempfile.TemporaryDirectory() as tmpdir:\n",
+    "        asset = coreai_program.save_asset(Path(tmpdir) / \"mobilenet_v2_example.aimodel\")\n",
+    "        async with asset.executable() as ai_model:\n",
+    "            function = ai_model.load_function(\"main\")\n",
+    "            outputs = await function({\"image\": NDArray(example_input[0])})\n",
+    "            logits = outputs[\"logits\"].numpy()\n",
+    "            print(\"logits shape:\", logits.shape)  # (1, 1000)\n",
+    "\n",
+    "\n",
+    "await run()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "\n",
+    "## Alternative: `add_pytorch_module`\n",
+    "\n",
+    "`add_pytorch_module()` accepts an `nn.Module` directly. You still provide an `export_fn` that handles export and decomposition:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import torch\n",
+    "import coreai_torch\n",
+    "\n",
+    "model = SimpleModel().eval()\n",
+    "sample = (torch.randn(1, 10),)\n",
+    "\n",
+    "coreai_program = (\n",
+    "    TorchConverter()\n",
+    "    .add_pytorch_module(\n",
+    "        model,\n",
+    "        export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(\n",
+    "            coreai_torch.get_decomp_table()\n",
+    "        ),\n",
+    "    )\n",
+    "    .to_coreai()\n",
+    ")\n",
+    "coreai_program.optimize()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "This uses `add_pytorch_module` to wrap export and conversion in one call. See {doc}`../guides/conversion-workflows` for all options."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "20",
+   "metadata": {},
+   "source": [
+    "## Next Steps\n",
+    "\n",
+    "- {doc}`../guides/conversion-workflows` — when to use `add_exported_program` vs `add_pytorch_module`, and how to handle dynamic shapes.\n",
+    "- {doc}`../guides/composite-ops` — preserve ops like attention and RMSNorm so the compiler can dispatch them to hardware-optimized kernels.\n",
+    "- {doc}`../api/TorchConverter` — full API reference for `TorchConverter`."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Notices\n",
+    "\n",
+    "PyTorch and torchvision are trademarks of Meta Platforms, Inc.\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "name": "python",
+   "version": "3.10.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

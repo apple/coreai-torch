@@ -1,0 +1,6 @@
+# Frequently asked questions
+
+:::{admonition} Coming soon
+:class: note
+This page is a placeholder. Content is in development.
+:::

@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="indigo" data-content_root="../../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>coreai - coreai-torch documentation</title><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="Frequently asked questions" href="../../faq.html" /><link rel="prev" title="Running an .aimodel with coreai.runtime" href="../tutorials/run-an-aimodel.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d88b86f9" />
+    <link rel="stylesheet" type="text/css" href="../../_static/shibuya.css?v=9454f7d5" />
+    <link rel="stylesheet" type="text/css" href="../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="../../_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=05f3bbaf" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    
+  <meta property="og:type" content="website"/><meta property="og:title" content="coreai"/>
+    <meta name="twitter:card" content="summary"/>
+  <script>
+  var defined_VERSIONS = [{"name": "main", "version": "main"}];
+  var defined_VERSION_MATCH = "main";
+</script>
+<script src="../../_static/version-switcher.js" defer></script>
+<script>
+  // Override Shibuya's 3-state toggle (auto/light/dark) with a 2-state toggle (light/dark)
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.querySelector(".js-theme");
+    if (!btn) return;
+
+    // Remove Shibuya's click listener by cloning the button
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    function getEffectiveMode() {
+      var mode = document.documentElement.getAttribute("data-color-mode") || "auto";
+      if (mode === "auto") {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      return mode;
+    }
+
+    newBtn.addEventListener("click", function () {
+      var next = getEffectiveMode() === "dark" ? "light" : "dark";
+      if (typeof setColorMode === "function") {
+        setColorMode(next);
+      }
+      localStorage._theme = next;
+      var label = newBtn.getAttribute("data-aria-" + next);
+      if (label) newBtn.setAttribute("aria-label", label);
+    });
+  });
+</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../../index.html">
+      
+      
+      <strong>coreai-torch</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"><ul><li class="link"><a href="../../getting-started/installation.html">Getting Started</a></li><li class="link"><a href="../../guides/conversion-workflows.html">Guides</a></li><li class="link"><a href="../../api/TorchConverter.html">API</a></li><li class="link"><a href="../index.html">coreai-core</a></li></ul></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../getting-started/installation.html">Installing coreai-torch</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../getting-started/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../whats-new.html">What&#8217;s new</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/conversion-workflows.html">Conversion Workflows</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/custom-op-lowering.html">Custom Op Lowering</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/custom-metal-kernels.html">Custom Metal Kernels</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/composite-ops.html">Composite Ops Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../guides/externalization.html">Externalization</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/TorchConverter.html">TorchConverter API reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/composite-ops.html">Composite ops API reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../api/composite-ops/module-class.html">Module-class composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/gather-mm.html">GatherMM</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/gated-delta-update.html">GatedDeltaUpdate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/rms-norm.html">RMSNormImpl</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/rope.html">RoPE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/sdpa.html">SDPA</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/composite-ops/aten-derived.html">ATen-derived composite ops</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/batch-norm.html">batch_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/group-norm.html">group_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/hard-sigmoid.html">hard_sigmoid</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/instance-norm.html">instance_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/layer-norm.html">layer_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/linalg-vector-norm.html">linalg_vector_norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/log-softmax.html">log_softmax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../api/composite-ops/pixel-shuffle.html">pixel_shuffle</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/generate-composite-decl.html">generate_composite_decl</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/ExternalizeSpec.html">ExternalizeSpec</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/TorchMetalKernel.html">TorchMetalKernel</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/supported-aten-ops.html">Supported ATen ops</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../api/debugging.html">Debugging</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Core AI (coreai-core)</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">Core AI (coreai-core)</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/construct-a-graph.html">Constructing a CoreAI Graph</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/run-an-aimodel.html">Running an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> with <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code></a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">coreai</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">More</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../faq.html">Frequently asked questions</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../contributing.html">Contributing</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../resources.html">Resources</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../../release-notes.html">Release notes</a></li>
+</ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#coreai.MLAsset"><code class="docutils literal notranslate"><span class="pre">MLAsset</span></code></a></li>
+<li><a class="reference internal" href="#module-coreai.runtime">coreai.runtime</a><ul>
+<li><a class="reference internal" href="#coreai.runtime.InferenceFunction"><code class="docutils literal notranslate"><span class="pre">InferenceFunction</span></code></a><ul>
+<li><a class="reference internal" href="#coreai.runtime.InferenceFunction.desc"><code class="docutils literal notranslate">desc</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coreai.runtime.NDArray"><code class="docutils literal notranslate"><span class="pre">NDArray</span></code></a><ul>
+<li><a class="reference internal" href="#coreai.runtime.NDArray.dtype"><code class="docutils literal notranslate">dtype</span></code></a></li>
+<li><a class="reference internal" href="#coreai.runtime.NDArray.from_descriptor"><code class="docutils literal notranslate">from_descriptor()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.runtime.NDArray.numpy"><code class="docutils literal notranslate">numpy()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.runtime.NDArray.shape"><code class="docutils literal notranslate">shape</span></code></a></li>
+<li><a class="reference internal" href="#coreai.runtime.NDArray.strides"><code class="docutils literal notranslate">strides</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coreai.runtime.SpecializationOptions"><code class="docutils literal notranslate"><span class="pre">SpecializationOptions</span></code></a><ul>
+<li><a class="reference internal" href="#coreai.runtime.SpecializationOptions.allowed_compute_unit_kinds"><code class="docutils literal notranslate">allowed_compute_unit_kinds</span></code></a></li>
+<li><a class="reference internal" href="#coreai.runtime.SpecializationOptions.cpu_only"><code class="docutils literal notranslate">cpu_only()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.runtime.SpecializationOptions.default"><code class="docutils literal notranslate">default()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.runtime.SpecializationOptions.from_preferred_compute_unit_kind"><code class="docutils literal notranslate">from_preferred_compute_unit_kind()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.runtime.SpecializationOptions.preferred_compute_unit_kind"><code class="docutils literal notranslate">preferred_compute_unit_kind</span></code></a></li>
+<li><a class="reference internal" href="#coreai.runtime.SpecializationOptions.with_debug"><code class="docutils literal notranslate">with_debug()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coreai.runtime.StorageKind"><code class="docutils literal notranslate"><span class="pre">StorageKind</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-coreai.authoring">coreai.authoring</a><ul>
+<li><a class="reference internal" href="#coreai.authoring.AIModelAsset"><code class="docutils literal notranslate"><span class="pre">AIModelAsset</span></code></a><ul>
+<li><a class="reference internal" href="#coreai.authoring.AIModelAsset.executable"><code class="docutils literal notranslate">executable()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIModelAsset.is_valid"><code class="docutils literal notranslate">is_valid()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIModelAsset.load"><code class="docutils literal notranslate">load()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIModelAsset.metadata"><code class="docutils literal notranslate">metadata</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIModelAsset.path"><code class="docutils literal notranslate">path</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIModelAsset.program"><code class="docutils literal notranslate">program</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIModelAsset.summary"><code class="docutils literal notranslate">summary()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIModelAsset.update_metadata"><code class="docutils literal notranslate">update_metadata()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coreai.authoring.AIProgram"><code class="docutils literal notranslate"><span class="pre">AIProgram</span></code></a><ul>
+<li><a class="reference internal" href="#coreai.authoring.AIProgram.get_graph"><code class="docutils literal notranslate">get_graph()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIProgram.optimize"><code class="docutils literal notranslate">optimize()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIProgram.save_asset"><code class="docutils literal notranslate">save_asset()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIProgram.set_hardware_constraints"><code class="docutils literal notranslate">set_hardware_constraints()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AIProgram.set_static_shape_config"><code class="docutils literal notranslate">set_static_shape_config()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coreai.authoring.AllocationType"><code class="docutils literal notranslate"><span class="pre">AllocationType</span></code></a><ul>
+<li><a class="reference internal" href="#coreai.authoring.AllocationType.Heap"><code class="docutils literal notranslate">Heap</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AllocationType.IOSurface"><code class="docutils literal notranslate">IOSurface</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.AllocationType.MTLBuffer"><code class="docutils literal notranslate">MTLBuffer</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coreai.authoring.ContainerType"><code class="docutils literal notranslate"><span class="pre">ContainerType</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.Context"><code class="docutils literal notranslate"><span class="pre">Context</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.CustomMetalKernel"><code class="docutils literal notranslate"><span class="pre">CustomMetalKernel</span></code></a><ul>
+<li><a class="reference internal" href="#coreai.authoring.CustomMetalKernel.template_kernel_src"><code class="docutils literal notranslate">template_kernel_src()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.CustomMetalKernel.validate_and_set_dtype_templates"><code class="docutils literal notranslate">validate_and_set_dtype_templates()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coreai.authoring.FourCC"><code class="docutils literal notranslate"><span class="pre">FourCC</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.HardwareConstraints"><code class="docutils literal notranslate"><span class="pre">HardwareConstraints</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.ImageConstraints"><code class="docutils literal notranslate"><span class="pre">ImageConstraints</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.ImageSpec"><code class="docutils literal notranslate"><span class="pre">ImageSpec</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.MetalParameter"><code class="docutils literal notranslate"><span class="pre">MetalParameter</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.Module"><code class="docutils literal notranslate"><span class="pre">Module</span></code></a><ul>
+<li><a class="reference internal" href="#coreai.authoring.Module.as_string"><code class="docutils literal notranslate">as_string()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.Module.create"><code class="docutils literal notranslate">create()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.Module.dump"><code class="docutils literal notranslate">dump()</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.Module.verify"><code class="docutils literal notranslate">verify()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coreai.authoring.OSVersion"><code class="docutils literal notranslate"><span class="pre">OSVersion</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.TensorSpec"><code class="docutils literal notranslate"><span class="pre">TensorSpec</span></code></a><ul>
+<li><a class="reference internal" href="#coreai.authoring.TensorSpec.is_materialized"><code class="docutils literal notranslate">is_materialized</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.TensorSpec.rank"><code class="docutils literal notranslate">rank</span></code></a></li>
+<li><a class="reference internal" href="#coreai.authoring.TensorSpec.set_default_mtl_constraints"><code class="docutils literal notranslate">set_default_mtl_constraints()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../../index.html"><span itemprop="name">coreai-torch</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">Core AI (coreai-core)</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="2" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">coreai</strong>
+        <meta itemprop="position" content="3" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12"><div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="coreai.html.md"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem" data-url="coreai.html.md">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="../../_sources/coreai-core/api/coreai.md.txt" target="_blank" rel="nofollow">
+          <span class="iconify-icon">
+            <img src="../../_static/icons/markdown.svg" alt="" width="14" height="14">
+          </span>
+          <span>View as Markdown</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div><article class="yue" role="main">
+          <section class="tex2jax_ignore mathjax_ignore" id="module-coreai">
+<span id="coreai"></span><h1>coreai<a class="headerlink" href="#module-coreai" title="Link to this heading">¶</a></h1>
+<p>CoreAI high-level Python API.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.MLAsset">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.</span></span><span class="sig-name descname"><span class="pre">MLAsset</span></span><a class="headerlink" href="#coreai.MLAsset" title="Link to this definition">¶</a></dt>
+<dd><p>Container for a compiled CoreAI model asset.</p>
+</dd></dl>
+
+<section id="module-coreai.runtime">
+<span id="coreai-runtime"></span><h2>coreai.runtime<a class="headerlink" href="#module-coreai.runtime" title="Link to this heading">¶</a></h2>
+<p>CoreAI Runtime.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.runtime.InferenceFunction">
+<span class="property"><span class="k"><span class="pre">final</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.runtime.</span></span><span class="sig-name descname"><span class="pre">InferenceFunction</span></span><a class="headerlink" href="#coreai.runtime.InferenceFunction" title="Link to this definition">¶</a></dt>
+<dd><p>Represents a function in a model.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.runtime.InferenceFunction.desc">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">desc</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">InferenceFunctionDescriptor</span></span><a class="headerlink" href="#coreai.runtime.InferenceFunction.desc" title="Link to this definition">¶</a></dt>
+<dd><p>The descriptor for this function.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.runtime.NDArray">
+<span class="property"><span class="k"><span class="pre">final</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.runtime.</span></span><span class="sig-name descname"><span class="pre">NDArray</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">np.ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">torch.Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">backing</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#coreai.runtime.StorageKind" title="coreai.runtime.StorageKind"><span class="pre">StorageKind</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">StorageKind.BYTES</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.runtime.NDArray" title="Link to this definition">¶</a></dt>
+<dd><p>Represent a multi-dimensional array.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.runtime.NDArray.dtype">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">dtype</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#coreai.runtime.NDArray.dtype" title="Link to this definition">¶</a></dt>
+<dd><p>The type of scalars in the array.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.runtime.NDArray.from_descriptor">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_descriptor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">descriptor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArrayDescriptor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="headerlink" href="#coreai.runtime.NDArray.from_descriptor" title="Link to this definition">¶</a></dt>
+<dd><p>Allocates an NDArray from an NDArrayDescriptor.</p>
+<p>Will have the correct shape, dtype, and alignment.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.runtime.NDArray.numpy">
+<span class="sig-name descname"><span class="pre">numpy</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#coreai.runtime.NDArray.numpy" title="Link to this definition">¶</a></dt>
+<dd><p>Return the array as a NumPy array.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.runtime.NDArray.shape">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">shape</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#coreai.runtime.NDArray.shape" title="Link to this definition">¶</a></dt>
+<dd><p>The shape of the array.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.runtime.NDArray.strides">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">strides</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#coreai.runtime.NDArray.strides" title="Link to this definition">¶</a></dt>
+<dd><p>The strides.</p>
+<p>Describes the distance between elements across a given dimension.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.runtime.SpecializationOptions">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.runtime.</span></span><span class="sig-name descname"><span class="pre">SpecializationOptions</span></span><a class="headerlink" href="#coreai.runtime.SpecializationOptions" title="Link to this definition">¶</a></dt>
+<dd><p>Options for configuring model specialization.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.runtime.SpecializationOptions.allowed_compute_unit_kinds">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">allowed_compute_unit_kinds</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">ComputeUnitKind</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#coreai.runtime.SpecializationOptions.allowed_compute_unit_kinds" title="Link to this definition">¶</a></dt>
+<dd><p>Get the allowed compute unit kinds for this specialization.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.runtime.SpecializationOptions.cpu_only">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">cpu_only</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#coreai.runtime.SpecializationOptions" title="coreai.runtime._specialization_options.SpecializationOptions"><span class="pre">SpecializationOptions</span></a></span></span><a class="headerlink" href="#coreai.runtime.SpecializationOptions.cpu_only" title="Link to this definition">¶</a></dt>
+<dd><p>Specialization options restricted to CPU only.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.runtime.SpecializationOptions.default">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">default</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#coreai.runtime.SpecializationOptions" title="coreai.runtime._specialization_options.SpecializationOptions"><span class="pre">SpecializationOptions</span></a></span></span><a class="headerlink" href="#coreai.runtime.SpecializationOptions.default" title="Link to this definition">¶</a></dt>
+<dd><p>Default specialization options.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.runtime.SpecializationOptions.from_preferred_compute_unit_kind">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_preferred_compute_unit_kind</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">compute_unit_kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ComputeUnitKind</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#coreai.runtime.SpecializationOptions" title="coreai.runtime._specialization_options.SpecializationOptions"><span class="pre">SpecializationOptions</span></a></span></span><a class="headerlink" href="#coreai.runtime.SpecializationOptions.from_preferred_compute_unit_kind" title="Link to this definition">¶</a></dt>
+<dd><p>Create specialization options with a specific preferred compute unit kind.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.runtime.SpecializationOptions.preferred_compute_unit_kind">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">preferred_compute_unit_kind</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ComputeUnitKind</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#coreai.runtime.SpecializationOptions.preferred_compute_unit_kind" title="Link to this definition">¶</a></dt>
+<dd><p>Get the preferred compute unit for this specialization.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.runtime.SpecializationOptions.with_debug">
+<span class="sig-name descname"><span class="pre">with_debug</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">enabled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#coreai.runtime.SpecializationOptions" title="coreai.runtime._specialization_options.SpecializationOptions"><span class="pre">SpecializationOptions</span></a></span></span><a class="headerlink" href="#coreai.runtime.SpecializationOptions.with_debug" title="Link to this definition">¶</a></dt>
+<dd><p>Return a new SpecializationOptions instance with debugging toggled.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.runtime.StorageKind">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.runtime.</span></span><span class="sig-name descname"><span class="pre">StorageKind</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.runtime.StorageKind" title="Link to this definition">¶</a></dt>
+<dd><p>Backing buffer type for NDArray.</p>
+<p>Python analogue for CoreAI.NDArrayDescriptor.StorageKind.</p>
+</dd></dl>
+
+</section>
+<section id="module-coreai.authoring">
+<span id="coreai-authoring"></span><h2>coreai.authoring<a class="headerlink" href="#module-coreai.authoring" title="Link to this heading">¶</a></h2>
+<p>Authoring utilities for CoreAI.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.AIModelAsset">
+<span class="property"><span class="k"><span class="pre">final</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">AIModelAsset</span></span><a class="headerlink" href="#coreai.authoring.AIModelAsset" title="Link to this definition">¶</a></dt>
+<dd><p>A model asset.</p>
+<p>Represents an unspecialized source model asset on disk. Unlike a loaded
+<code class="docutils literal notranslate"><span class="pre">AIModel</span></code>, an asset cannot be used directly for inference — it is used to
+query model information such as function signatures, metadata, storage/compute
+types, and to manage derived compilation artifacts.
+The asset is a directory (typically with an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> extension) that
+contains an unspecialized model asset, along with any associated metadata.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIModelAsset.executable">
+<span class="sig-name descname"><span class="pre">executable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">specialization_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#coreai.runtime.SpecializationOptions" title="coreai.runtime.SpecializationOptions"><span class="pre">SpecializationOptions</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">AsyncGenerator</span><span class="p"><span class="pre">[</span></span><span class="pre">AIModel</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#coreai.authoring.AIModelAsset.executable" title="Link to this definition">¶</a></dt>
+<dd><p>Async context manager that loads this asset as a runnable <code class="docutils literal notranslate"><span class="pre">AIModel</span></code>.</p>
+<p>Loads the model on entry and releases its resources on exit. Use this
+instead of constructing an <code class="docutils literal notranslate"><span class="pre">AIModel</span></code> directly to ensure the model
+lifetime is scoped to the block:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">async</span> <span class="k">with</span> <span class="n">asset</span><span class="o">.</span><span class="n">executable</span><span class="p">()</span> <span class="k">as</span> <span class="n">model</span><span class="p">:</span>
+</span><span data-line="2">    <span class="n">outputs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">model</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Args:</dt><dd><dl class="simple">
+<dt>specialization_options: Optional specialization options for model</dt><dd><p>compilation. Only available on macOS.</p>
+</dd>
+</dl>
+</dd>
+<dt>Yields:</dt><dd><p>AIModel: A loaded model ready for inference.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIModelAsset.is_valid">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">is_valid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#coreai.authoring.AIModelAsset.is_valid" title="Link to this definition">¶</a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">True</span></code> if the path contains a valid model asset.</p>
+<p>Checks that the path is an existing directory with a known model extension
+and that it contains either a source program or a derived artifact.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIModelAsset.load">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#coreai.authoring.AIModelAsset" title="coreai.authoring.asset.AIModelAsset"><span class="pre">AIModelAsset</span></a></span></span><a class="headerlink" href="#coreai.authoring.AIModelAsset.load" title="Link to this definition">¶</a></dt>
+<dd><p>Load an existing model asset from disk.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>path: Path to the asset directory. The directory must already exist.</p>
+</dd>
+<dt>Raises:</dt><dd><p>RuntimeError: If the asset cannot be read or its metadata is malformed.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.authoring.AIModelAsset.metadata">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">metadata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">AIModelAssetMetadata</span></span><a class="headerlink" href="#coreai.authoring.AIModelAsset.metadata" title="Link to this definition">¶</a></dt>
+<dd><p>The asset metadata, loaded from <code class="docutils literal notranslate"><span class="pre">metadata.json</span></code>.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.authoring.AIModelAsset.path">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Path</span></span><a class="headerlink" href="#coreai.authoring.AIModelAsset.path" title="Link to this definition">¶</a></dt>
+<dd><p>The file-system path to the asset directory.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.authoring.AIModelAsset.program">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">program</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#coreai.authoring.AIProgram" title="coreai.authoring.asset.AIProgram"><span class="pre">AIProgram</span></a></span><a class="headerlink" href="#coreai.authoring.AIModelAsset.program" title="Link to this definition">¶</a></dt>
+<dd><p>Return an in-memory representation of the on-disk IR bytecode.</p>
+<p>Changes to this are not persisted to the on-disk asset.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIModelAsset.summary">
+<span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_statistics</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">AIModelAssetSummary</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.AIModelAsset.summary" title="Link to this definition">¶</a></dt>
+<dd><p>Return a summary of the model’s source program.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><dl class="simple">
+<dt>include_statistics: When <code class="docutils literal notranslate"><span class="pre">True</span></code>, also reads storage types, compute</dt><dd><p>types, and the operation distribution. This is considerably slower
+for large models. When <code class="docutils literal notranslate"><span class="pre">False</span></code>, only the function signatures are
+populated.</p>
+</dd>
+</dl>
+</dd>
+<dt>Returns:</dt><dd><p>An <code class="docutils literal notranslate"><span class="pre">AIModelAssetSummary</span></code>, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if no source bytecode exists.</p>
+</dd>
+<dt>Raises:</dt><dd><p>RuntimeError: If the bytecode file cannot be read or parsed.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIModelAsset.update_metadata">
+<span class="sig-name descname"><span class="pre">update_metadata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">updates</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">AIModelAssetMetadata</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.AIModelAsset.update_metadata" title="Link to this definition">¶</a></dt>
+<dd><p>Update the asset metadata atomically.</p>
+<p>Calls <code class="docutils literal notranslate"><span class="pre">updates</span></code> with the current <code class="docutils literal notranslate"><span class="pre">AIModelAssetMetadata</span></code> object, which
+must be mutated <strong>in-place</strong>. Changes are written to <code class="docutils literal notranslate"><span class="pre">metadata.json</span></code>
+after the callable returns.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The callback <strong>must mutate the object it receives</strong>, not reassign the
+local variable. Reassigning is silently ignored:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># WRONG — reassignment has no effect; the update is lost</span>
+</span><span data-line="2"><span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="n">m</span><span class="p">):</span>
+</span><span data-line="3">    <span class="n">m</span> <span class="o">=</span> <span class="n">AIModelAssetMetadata</span><span class="p">()</span>   <span class="c1"># rebinds local &#39;m&#39;, does nothing</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="c1"># CORRECT — mutate the received object in-place</span>
+</span><span data-line="6"><span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="n">m</span><span class="p">):</span>
+</span><span data-line="7">    <span class="n">m</span><span class="o">.</span><span class="n">author</span> <span class="o">=</span> <span class="s2">&quot;Alice&quot;</span>
+</span></pre></div>
+</div>
+</div>
+<dl>
+<dt>Args:</dt><dd><dl>
+<dt>updates: A callable that receives the current metadata and mutates it</dt><dd><p>in-place. Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">asset</span><span class="o">.</span><span class="n">update_metadata</span><span class="p">(</span><span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="nb">setattr</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="s2">&quot;author&quot;</span><span class="p">,</span> <span class="s2">&quot;Alice&quot;</span><span class="p">))</span>
+</span></pre></div>
+</div>
+</dd>
+</dl>
+</dd>
+<dt>Raises:</dt><dd><p>RuntimeError: If the updated metadata cannot be written to disk.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.AIProgram">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">AIProgram</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#coreai.authoring.Module" title="coreai.authoring.Module"><span class="pre">Module</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.AIProgram" title="Link to this definition">¶</a></dt>
+<dd><p>A machine-agnostic, deployable CoreAI program.</p>
+<p>Holds the CoreAI authoring representation that can be optimized and
+serialized into a deployable asset.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIProgram.get_graph">
+<span class="sig-name descname"><span class="pre">get_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entrypoint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">GraphOp</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.AIProgram.get_graph" title="Link to this definition">¶</a></dt>
+<dd><p>Get the GraphOp for the given name. Recurses into udml.namespace ops as required to try and find the graph.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIProgram.optimize">
+<span class="sig-name descname"><span class="pre">optimize</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.AIProgram.optimize" title="Link to this definition">¶</a></dt>
+<dd><p>Apply frontend-agnostic optimization passes to the program.</p>
+<p>Applies common optimization passes like CSE, DCE, canonicalize,
+and CoreAI-specific optimizations. Mutations are made in-place on the
+program.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIProgram.save_asset">
+<span class="sig-name descname"><span class="pre">save_asset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">AIModelAssetMetadata</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">minimum_os</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#coreai.authoring.OSVersion" title="coreai.authoring.asset.OSVersion"><span class="pre">OSVersion</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">OSVersion.v27</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#coreai.authoring.AIModelAsset" title="coreai.authoring.asset.AIModelAsset"><span class="pre">AIModelAsset</span></a></span></span><a class="headerlink" href="#coreai.authoring.AIProgram.save_asset" title="Link to this definition">¶</a></dt>
+<dd><p>Persist an AIProgram in AIModelAsset format.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIProgram.set_hardware_constraints">
+<span class="sig-name descname"><span class="pre">set_hardware_constraints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entrypoint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hw_constraint_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#coreai.authoring.HardwareConstraints" title="coreai._compiler.types.HardwareConstraints"><span class="pre">HardwareConstraints</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.AIProgram.set_hardware_constraints" title="Link to this definition">¶</a></dt>
+<dd><p>Rewrite the named entrypoint with harware constraints on the specified IO.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><dl class="simple">
+<dt>entrypoint<span class="classifier">str</span></dt><dd><p>Name of the <code class="docutils literal notranslate"><span class="pre">coreai.graph</span></code> to rewrite.</p>
+</dd>
+<dt>hw_constraint_config<span class="classifier">dict[str, HardwareConstraints]</span></dt><dd><p>Mapping of tensor name → hardware constraints to apply.
+Names not present in the dict are left with their original types.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.AIProgram.set_static_shape_config">
+<span class="sig-name descname"><span class="pre">set_static_shape_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entrypoint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shapes_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.AIProgram.set_static_shape_config" title="Link to this definition">¶</a></dt>
+<dd><p>Attach static input shape configurations to a graph’s argument attributes.</p>
+<section id="parameters">
+<h3>Parameters<a class="headerlink" href="#parameters" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>entrypoint<span class="classifier">str</span></dt><dd><p>Name of the <code class="docutils literal notranslate"><span class="pre">coreai.graph</span></code> to configure.</p>
+</dd>
+<dt>shapes_config<span class="classifier">dict[str, dict[str, tuple[int, …]]]</span></dt><dd><p>Mapping of new entrypoint name → (input name → static shape).
+Each input that appears in any entrypoint’s dict will receive a
+<code class="docutils literal notranslate"><span class="pre">coreai.enumerated_shapes</span></code> attribute enumerating all
+provided specializations for that input. Inputs not mentioned in
+any entrypoint dict are left unchanged.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.AllocationType">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">AllocationType</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.AllocationType" title="Link to this definition">¶</a></dt>
+<dd><p>Allocations for hardware constraints.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="coreai.authoring.AllocationType.Heap">
+<span class="sig-name descname"><span class="pre">Heap</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'Heap'</span></span><a class="headerlink" href="#coreai.authoring.AllocationType.Heap" title="Link to this definition">¶</a></dt>
+<dd><p>Use Heap for the allocation.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="coreai.authoring.AllocationType.IOSurface">
+<span class="sig-name descname"><span class="pre">IOSurface</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'IOSurface'</span></span><a class="headerlink" href="#coreai.authoring.AllocationType.IOSurface" title="Link to this definition">¶</a></dt>
+<dd><p>Use a IOSurface for the allocation.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="coreai.authoring.AllocationType.MTLBuffer">
+<span class="sig-name descname"><span class="pre">MTLBuffer</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'MTLBuffer'</span></span><a class="headerlink" href="#coreai.authoring.AllocationType.MTLBuffer" title="Link to this definition">¶</a></dt>
+<dd><p>Use a Metal buffer for the allocation.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.ContainerType">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">ContainerType</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.ContainerType" title="Link to this definition">¶</a></dt>
+<dd><p>Backing allocation.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.Context">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">Context</span></span><a class="headerlink" href="#coreai.authoring.Context" title="Link to this definition">¶</a></dt>
+<dd><p>A CoreAI authoring context.</p>
+<p>Holds the runtime state needed to build a CoreAI program. Use it as a
+context manager to make it active while constructing a program:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">with</span> <span class="n">Context</span><span class="p">():</span>
+</span><span data-line="2">    <span class="o">...</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.CustomMetalKernel">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">CustomMetalKernel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">result_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">src</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metal_params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#coreai.authoring.MetalParameter" title="coreai.authoring.metal.MetalParameter"><span class="pre">MetalParameter</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">helper_src</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">template_dtypes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.CustomMetalKernel" title="Link to this definition">¶</a></dt>
+<dd><p>Specification class for metal kernels.</p>
+<p>Intended for use by coreai-torch. The invocation path (_construct_kernel_op)
+is intentionally private in 0.1.0; do not call directly from end-user code.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.CustomMetalKernel.template_kernel_src">
+<span class="sig-name descname"><span class="pre">template_kernel_src</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kernel_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">TensorMeta</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">result_metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">TensorMeta</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#coreai.authoring.CustomMetalKernel.template_kernel_src" title="Link to this definition">¶</a></dt>
+<dd><p>Template the kernel signature based on the provided IO types.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.CustomMetalKernel.validate_and_set_dtype_templates">
+<span class="sig-name descname"><span class="pre">validate_and_set_dtype_templates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">templates</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.CustomMetalKernel.validate_and_set_dtype_templates" title="Link to this definition">¶</a></dt>
+<dd><p>Validate and set dtype template dict.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.FourCC">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">FourCC</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.FourCC" title="Link to this definition">¶</a></dt>
+<dd><p>Four character code denoting image type.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.HardwareConstraints">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">HardwareConstraints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">allocation_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#coreai.authoring.AllocationType" title="coreai._compiler.types.AllocationType"><span class="pre">AllocationType</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">alignments</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interleave</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.HardwareConstraints" title="Link to this definition">¶</a></dt>
+<dd><p>Hardware constraints attribute.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.ImageConstraints">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">ImageConstraints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">four_cc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#coreai.authoring.FourCC" title="coreai._compiler.types.FourCC"><span class="pre">FourCC</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">backing</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#coreai.authoring.ContainerType" title="coreai._compiler.types.ContainerType"><span class="pre">ContainerType</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">row_alignments_per_plane</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.ImageConstraints" title="Link to this definition">¶</a></dt>
+<dd><p>Tensor encoding attribute describing an image encoding.</p>
+<section id="id1">
+<h3>Parameters<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>four_cc: FourCC</dt><dd><ul class="simple">
+<li><p>Four-character code denoting image type.</p></li>
+</ul>
+</dd>
+<dt>backing: ContainerType</dt><dd><ul class="simple">
+<li><p>Backing buffer type.</p></li>
+</ul>
+</dd>
+<dt>row_alignments_per_plane: list[int]</dt><dd><ul class="simple">
+<li><p>Minimum row alignment for each row in the image.</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.ImageSpec">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">ImageSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fourcc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">constraints</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#coreai.authoring.ImageConstraints" title="coreai._compiler.types.ImageConstraints"><span class="pre">ImageConstraints</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.ImageSpec" title="Link to this definition">¶</a></dt>
+<dd><p>Image spec describing an image input/output for graph functions.</p>
+<section id="examples">
+<h3>Examples<a class="headerlink" href="#examples" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.authoring</span><span class="w"> </span><span class="kn">import</span> <span class="n">FourCC</span><span class="p">,</span> <span class="n">ImageSpec</span><span class="p">,</span> <span class="n">TensorSpec</span>
+</span><span data-line="5">
+</span><span data-line="6"><span class="c1"># An RGBA image input and a uint8 tensor output, used as</span>
+</span><span data-line="7"><span class="c1"># Annotated metadata on a graph function&#39;s signature.</span>
+</span><span data-line="8"><span class="n">image_in</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">object</span><span class="p">,</span> <span class="n">ImageSpec</span><span class="p">(</span><span class="n">FourCC</span><span class="o">.</span><span class="n">RGBA</span><span class="p">,</span> <span class="mi">224</span><span class="p">,</span> <span class="mi">224</span><span class="p">,</span> <span class="s2">&quot;input&quot;</span><span class="p">)]</span>
+</span><span data-line="9"><span class="n">tensor_out</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">object</span><span class="p">,</span> <span class="n">TensorSpec</span><span class="p">((</span><span class="mi">224</span><span class="p">,</span> <span class="mi">224</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">,</span> <span class="s2">&quot;output&quot;</span><span class="p">)]</span>
+</span></pre></div>
+</div>
+</section>
+<section id="id2">
+<h3>Parameters<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>fourcc: coreai.authoring.FourCC</dt><dd><ul class="simple">
+<li><p>The image format (e.g. <code class="docutils literal notranslate"><span class="pre">FourCC.RGBA</span></code>)</p></li>
+</ul>
+</dd>
+<dt>height: int</dt><dd><ul class="simple">
+<li><p>The height of the image in pixels</p></li>
+</ul>
+</dd>
+<dt>width: int</dt><dd><ul class="simple">
+<li><p>The width of the image in pixels</p></li>
+</ul>
+</dd>
+<dt>name: str (optional)</dt><dd><ul class="simple">
+<li><p>Name of the image input/output</p></li>
+</ul>
+</dd>
+<dt>constraints: ImageConstraints (optional)</dt><dd><ul class="simple">
+<li><p>Any image-specific constraints (CVPixelBuffer vs MTLTexture, etc.)</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.MetalParameter">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">MetalParameter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.MetalParameter" title="Link to this definition">¶</a></dt>
+<dd><p>Specification class for metal parameters.</p>
+<p>This class is to be used to specify metal parameters that are not the input tensors
+and their associated metadata. This should be used to specify parameters like
+<cite>thread_position_in_grid</cite>.</p>
+<p>name: variable name to be included in parameters.
+dtype: variable type, e.g. uint2, etc.
+attr: metal attribute type, e.g. <cite>thread_position_in_grid</cite>, etc.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.Module">
+<span class="property"><span class="k"><span class="pre">final</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">Module</span></span><a class="headerlink" href="#coreai.authoring.Module" title="Link to this definition">¶</a></dt>
+<dd><p>A CoreAI authoring module that holds the IR being constructed.</p>
+<ul class="simple">
+<li><p>Create a <code class="docutils literal notranslate"><span class="pre">Module</span></code> with <code class="docutils literal notranslate"><span class="pre">Module.create()</span></code>; a default context and
+source-line location are bootstrapped for you.</p></li>
+<li><p>Use the <code class="docutils literal notranslate"><span class="pre">Module</span></code> as a context manager to append operations to the module body.</p></li>
+<li><p>Inspect the constructed IR with <code class="docutils literal notranslate"><span class="pre">verify</span></code>, <code class="docutils literal notranslate"><span class="pre">dump</span></code>, and <code class="docutils literal notranslate"><span class="pre">as_string</span></code>.</p></li>
+</ul>
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.Module.as_string">
+<span class="sig-name descname"><span class="pre">as_string</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#coreai.authoring.Module.as_string" title="Link to this definition">¶</a></dt>
+<dd><p>Return the IR as a string.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.Module.create">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="headerlink" href="#coreai.authoring.Module.create" title="Link to this definition">¶</a></dt>
+<dd><p>Create a Module.</p>
+<p>Bootstraps a context and an active location if they do not exist.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.Module.dump">
+<span class="sig-name descname"><span class="pre">dump</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.Module.dump" title="Link to this definition">¶</a></dt>
+<dd><p>Print the IR to stderr (useful for debugging).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.Module.verify">
+<span class="sig-name descname"><span class="pre">verify</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.Module.verify" title="Link to this definition">¶</a></dt>
+<dd><p>Verify the constructed IR for correctness. Raises on error.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.OSVersion">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">OSVersion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.OSVersion" title="Link to this definition">¶</a></dt>
+<dd><p>Operating system version to serialize for.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="coreai.authoring.TensorSpec">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">coreai.authoring.</span></span><span class="sig-name descname"><span class="pre">TensorSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shape</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">type</span><span class="p"><span class="pre">[</span></span><span class="pre">np.generic</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Type</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">encoding</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#coreai.authoring.HardwareConstraints" title="coreai.authoring.HardwareConstraints"><span class="pre">HardwareConstraints</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#coreai.authoring.ImageConstraints" title="coreai.authoring.ImageConstraints"><span class="pre">ImageConstraints</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#coreai.authoring.TensorSpec" title="Link to this definition">¶</a></dt>
+<dd><p>Tensor spec describing a tensor’s shape, dtype, and constraints.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.authoring.TensorSpec.is_materialized">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">is_materialized</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><a class="headerlink" href="#coreai.authoring.TensorSpec.is_materialized" title="Link to this definition">¶</a></dt>
+<dd><p>Check if shape and dtype info is available.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="coreai.authoring.TensorSpec.rank">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">rank</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#coreai.authoring.TensorSpec.rank" title="Link to this definition">¶</a></dt>
+<dd><p>Get rank of tensor.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="coreai.authoring.TensorSpec.set_default_mtl_constraints">
+<span class="sig-name descname"><span class="pre">set_default_mtl_constraints</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#coreai.authoring.TensorSpec.set_default_mtl_constraints" title="Link to this definition">¶</a></dt>
+<dd><p>Set metal constraints with default alignments and interleave.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="../tutorials/run-an-aimodel.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">Running an <code class="docutils literal notranslate"><span class="pre">.aimodel</span></code> with <code class="docutils literal notranslate"><span class="pre">coreai.runtime</span></code></div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="../../faq.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Frequently asked questions</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2026, Apple Inc.</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div>
+      <div class="sy-foot-socials">
+<a href="https://github.com/apple/coreai-torch" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../_static/shibuya.js?v=50760d75"></script>
+      <script src="../../_static/copy-page-button.js?v=d5e0191b"></script></body>
+</html>
