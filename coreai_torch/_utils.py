@@ -1552,7 +1552,7 @@ def _dynamic_shapes_from_node(node: fx.Node) -> tuple[dict[int, Dim] | None, ...
         dims = {
             j: _dim_for_sym(s, cache)
             for j, s in enumerate(val.shape)
-            if isinstance(s, torch.SymInt)
+            if isinstance(s, torch.SymInt) and not s.node.expr.is_number
         }
         result.append(dims or None)
     return tuple(result)
