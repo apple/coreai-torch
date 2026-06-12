@@ -3065,7 +3065,7 @@ def test_externalize_rms_norm_with_quantized_linears_ir() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     sample = (torch.randn(2, 24),)
 
@@ -3153,7 +3153,7 @@ async def test_externalize_rms_norm_with_quantized_linears() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     sample = (torch.randn(2, 24),)
 
@@ -3217,7 +3217,7 @@ def test_externalize_gather_mm_with_quantized_rhs_ir() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     x = torch.randn(2, 1, 1, in_dim)
     indices = torch.tensor([[0, 2], [1, 3]], dtype=torch.int16)
@@ -3318,7 +3318,7 @@ async def test_externalize_gather_mm_with_quantized_rhs() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     x = torch.randn(2, 1, 1, in_dim)
     indices = torch.tensor([[0, 2], [1, 3]], dtype=torch.int16)
@@ -3390,7 +3390,7 @@ def test_externalize_multiple_composites_with_quantized_weights_ir() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     sample = (torch.randn(1, 4, embed_dim),)
 
@@ -3484,7 +3484,7 @@ async def test_externalize_multiple_composites_with_quantized_weights() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     sample = (torch.randn(1, 4, embed_dim),)
 
@@ -3553,7 +3553,7 @@ def test_externalize_gather_mm_combined_with_rms_norm_ir() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     x = torch.randn(2, in_dim)
     indices = torch.tensor([[0, 2], [1, 3]], dtype=torch.int16)
@@ -3637,7 +3637,7 @@ async def test_externalize_gather_mm_combined_with_rms_norm() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     x = torch.randn(2, in_dim)
     indices = torch.tensor([[0, 2], [1, 3]], dtype=torch.int16)
