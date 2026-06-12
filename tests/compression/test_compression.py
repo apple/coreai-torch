@@ -14,7 +14,6 @@ import pytest
 import torch
 from coreai.authoring import AIProgram
 from coreai.runtime import AIModel, NDArray
-
 from torch import nn
 from torch.export.exported_program import ExportedProgram
 
