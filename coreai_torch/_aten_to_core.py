@@ -2245,11 +2245,29 @@ def replace_remainder(
 
 def replace_repeat(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     x = _get_operand(values_map, node, 0)
-    repeats = np.array(node.args[1], dtype=np.uint32)
-    extra_dims = len(repeats) - x.type.rank
+    repeat_args = list(node.args[1])
+    extra_dims = len(repeat_args) - x.type.rank
     if extra_dims > 0:
         x = coreai.expand_dims(x, list(range(extra_dims)))
-    return coreai.tile(x, repeats)
+
+    if all(isinstance(r, int) for r in repeat_args):
+        return coreai.tile(x, np.array(repeat_args, dtype=np.uint32))
+
+    # At least one repeat is a SymInt fx.Node — build a rank-1 uint32 dim
+    # vector at runtime, with per-axis constants for plain ints and the
+    # resolved Value (cast to uint32, lifted to rank-1 if scalar) for
+    # SymInts. coreai.tile accepts a runtime Value for its dims.
+    chunks: list[Value] = []
+    for r in repeat_args:
+        if isinstance(r, int):
+            chunks.append(coreai.constant([r], dtype=np.uint32))
+        else:
+            assert isinstance(r, fx.Node)
+            v = coreai.cast(values_map[r.name], dtype=np.uint32)
+            if v.type.rank == 0:
+                v = coreai.reshape(v, [1])
+            chunks.append(v)
+    return coreai.tile(x, coreai.concat(0, chunks))
 
 
 def replace_round_decimals(

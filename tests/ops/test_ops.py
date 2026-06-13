@@ -3132,6 +3132,61 @@ async def test_repeat(x: Tensor, repeats: tuple[int, ...], dynamic: bool) -> Non
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
+class TestRepeat:
+    @pytest.mark.ir
+    def test_symint_arg_lowers_ir(self) -> None:
+        """``aten.repeat`` with a SymInt entry in the repeats list (i.e. a
+        ``torch.fx.Node``, not a plain int) must lower to a dynamic
+        ``coreai.tile`` whose dim vector is built at runtime."""
+
+        class RepeatModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return x.repeat(y.shape[0], 1)
+
+        x = torch.rand(2, 3)
+        y = torch.rand(4, 8)
+        batch = torch.export.Dim("batch", min=1, max=16)
+        program = torch.export.export(
+            RepeatModel(), args=(x, y), dynamic_shapes=({}, {0: batch})
+        ).run_decompositions()
+
+        coreai_program = TorchConverter().add_exported_program(program).to_coreai()
+        filecheck_pattern(
+            str(coreai_program),
+            check_file="""
+                // CHECK-LABEL: coreai.graph @main
+                // CHECK-SAME:    %arg0: tensor<2x3xf32>
+                // CHECK-SAME:    %arg1: tensor<?x8xf32>
+                // CHECK:         %[[SHAPE:.+]] = coreai.get_shape %arg1 : tensor<?x8xf32> -> tensor<2xui32>
+                // CHECK:         %[[SLICE:.+]] = coreai.slice %[[SHAPE]]
+                // CHECK-SAME:      -> tensor<1xui32>
+                // CHECK:         %[[ONE:.+]] = coreai.constant dense<1> : tensor<1xui32>
+                // CHECK:         %[[DIMS:.+]] = coreai.concat {{.*}}, %{{.+}}, %[[ONE]]
+                // CHECK-SAME:      -> tensor<2xui32>
+                // CHECK:         %[[OUT:.+]] = coreai.tile %arg0, %[[DIMS]]
+                // CHECK:         coreai.output %[[OUT]]
+            """,
+        )
+
+    async def test_symint_arg_numerical(self) -> None:
+        """Numerical validation: ``aten.repeat`` with a SymInt entry in the
+        repeats list must produce the same result as ``torch.repeat``."""
+
+        class RepeatModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return x.repeat(y.shape[0], 1)
+
+        x = torch.rand(2, 3)
+        y = torch.rand(4, 8)
+        batch = torch.export.Dim("batch", min=1, max=16)
+        await validate_numerical_output(
+            model=RepeatModel().eval(),
+            x=x,
+            y=y,
+            dynamic_shapes=({}, {0: batch}),
+        )
+
+
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
     "x",
