@@ -99,6 +99,7 @@ def repeat_tensor_as(tensor: torch.Tensor, target_shape: torch.Size) -> torch.Te
             )
     return repeated_tensor
 
+
 def wrap_for_parametrization(
     compression_module_class: type[torch.nn.Module],
 ) -> type[torch.nn.Module]:
