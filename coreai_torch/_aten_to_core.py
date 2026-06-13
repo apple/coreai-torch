@@ -974,7 +974,26 @@ def replace_cat(values_map: dict[str, Value], node: fx.Node, loc: Location) -> V
             for a in range(rank)
         ]
         if new_shape != list(inp.type.shape):
-            inp = coreai.reshape(inp, new_shape)
+            if all(s != dyn for s in new_shape):
+                # All axes static post-promotion: list-form reshape packs
+                # the shape into an int32 constant tensor.
+                inp = coreai.reshape(inp, new_shape)
+            else:
+                # Mixed static / dynamic post-promotion: build the shape
+                # vector at runtime by mixing the input's actual sizes
+                # (via coreai.get_shape) for the still-dynamic axes with
+                # constants for the promoted axes.
+                runtime_shape = coreai.cast(coreai.get_shape(inp), dtype=np.int32)
+                parts = [
+                    coreai.constant([s], dtype=np.int32)
+                    if s != dyn
+                    else coreai.slice_(runtime_shape, [a], [a + 1], [1])
+                    for a, s in enumerate(new_shape)
+                ]
+                result_type = RankedTensorType.get(new_shape, inp.type.element_type)
+                inp = coreai.ReshapeOp(
+                    inp, coreai.concat(0, parts), results=[result_type]
+                ).result
         promoted.append(inp)
     inputs = promoted
 

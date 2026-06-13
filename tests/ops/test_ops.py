@@ -1024,6 +1024,32 @@ class TestCat:
             dynamic_shapes=({1: torch.export.Dim.AUTO}, {}),
         )
 
+    async def test_partial_static_promotion_with_dynamic_axes(self) -> None:
+        """A cat input has one non-concat axis that is statically known
+        via a sibling AND another non-concat axis that is dynamic on every
+        input. After promoting the first axis to its static size, the
+        second axis remains dynamic, so the lowering must build the
+        reshape's shape vector at runtime."""
+
+        class CatModel(nn.Module):
+            def forward(self, a: Tensor, b: Tensor) -> Tensor:
+                return torch.cat([a, b], dim=2)
+
+        a = torch.rand(2, 4, 5, 6)
+        b = torch.rand(2, 4, 7, 6)
+        # Mark dim 1 of `a` dynamic (sibling `b` has static 4 there → must be
+        # promoted) and dim 0 of both inputs dynamic (no static sibling →
+        # remains dynamic post-promotion, forcing the runtime-shape path).
+        await validate_numerical_output(
+            model=CatModel().eval(),
+            a=a,
+            b=b,
+            dynamic_shapes=(
+                {0: torch.export.Dim.AUTO, 1: torch.export.Dim.AUTO},
+                {0: torch.export.Dim.AUTO},
+            ),
+        )
+
 
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
