@@ -3032,10 +3032,12 @@ def test_derive_composite_io_names_middle_optional_skipped() -> None:
 
 @pytest.mark.ir
 @pytest.mark.flaky(reruns=3)
-@pytest.mark.skip(reason=(
-    "transform_with_custom_compression_ops has been deprecated. Consider removing "
-    "these tests or use an alternative way to generate quantized weights"
-))
+@pytest.mark.skip(
+    reason=(
+        "transform_with_custom_compression_ops has been deprecated. Consider removing "
+        "these tests or use an alternative way to generate quantized weights"
+    )
+)
 def test_externalize_rms_norm_with_quantized_linears_ir() -> None:
     """IR check: Quantized (int4) weights retain si4 dtype when externalization re-exports the model."""
 
@@ -3065,7 +3067,7 @@ def test_externalize_rms_norm_with_quantized_linears_ir() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     sample = (torch.randn(2, 24),)
 
@@ -3109,10 +3111,12 @@ def test_externalize_rms_norm_with_quantized_linears_ir() -> None:
 
 
 @pytest.mark.flaky(reruns=3)
-@pytest.mark.skip(reason=(
-    "transform_with_custom_compression_ops has been deprecated. Consider removing "
-    "these tests or use an alternative way to generate quantized weights"
-))
+@pytest.mark.skip(
+    reason=(
+        "transform_with_custom_compression_ops has been deprecated. Consider removing "
+        "these tests or use an alternative way to generate quantized weights"
+    )
+)
 async def test_externalize_rms_norm_with_quantized_linears() -> None:
     """Quantized (int4) weights retain si4 dtype when externalization re-exports the model.
 
@@ -3153,7 +3157,7 @@ async def test_externalize_rms_norm_with_quantized_linears() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     sample = (torch.randn(2, 24),)
 
@@ -3176,10 +3180,12 @@ async def test_externalize_rms_norm_with_quantized_linears() -> None:
 
 @pytest.mark.ir
 @pytest.mark.flaky(reruns=3)
-@pytest.mark.skip(reason=(
-    "transform_with_custom_compression_ops has been deprecated. Consider removing "
-    "these tests or use an alternative way to generate quantized weights"
-))
+@pytest.mark.skip(
+    reason=(
+        "transform_with_custom_compression_ops has been deprecated. Consider removing "
+        "these tests or use an alternative way to generate quantized weights"
+    )
+)
 def test_externalize_gather_mm_with_quantized_rhs_ir() -> None:
     """IR check: Quantized expert weight flows as rhs into an externalized GatherMM composite."""
     num_experts = 4
@@ -3217,7 +3223,7 @@ def test_externalize_gather_mm_with_quantized_rhs_ir() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     x = torch.randn(2, 1, 1, in_dim)
     indices = torch.tensor([[0, 2], [1, 3]], dtype=torch.int16)
@@ -3263,10 +3269,12 @@ def test_externalize_gather_mm_with_quantized_rhs_ir() -> None:
 
 
 @pytest.mark.flaky(reruns=3)
-@pytest.mark.skip(reason=(
-    "transform_with_custom_compression_ops has been deprecated. Consider removing "
-    "these tests or use an alternative way to generate quantized weights"
-))
+@pytest.mark.skip(
+    reason=(
+        "transform_with_custom_compression_ops has been deprecated. Consider removing "
+        "these tests or use an alternative way to generate quantized weights"
+    )
+)
 async def test_externalize_gather_mm_with_quantized_rhs() -> None:
     """Quantized expert weight flows as rhs into an externalized GatherMM composite.
 
@@ -3318,7 +3326,7 @@ async def test_externalize_gather_mm_with_quantized_rhs() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     x = torch.randn(2, 1, 1, in_dim)
     indices = torch.tensor([[0, 2], [1, 3]], dtype=torch.int16)
@@ -3345,10 +3353,12 @@ async def test_externalize_gather_mm_with_quantized_rhs() -> None:
 
 @pytest.mark.ir
 @pytest.mark.flaky(reruns=3)
-@pytest.mark.skip(reason=(
-    "transform_with_custom_compression_ops has been deprecated. Consider removing "
-    "these tests or use an alternative way to generate quantized weights"
-))
+@pytest.mark.skip(
+    reason=(
+        "transform_with_custom_compression_ops has been deprecated. Consider removing "
+        "these tests or use an alternative way to generate quantized weights"
+    )
+)
 def test_externalize_multiple_composites_with_quantized_weights_ir() -> None:
     """IR check: Multiple composite ops (RMSNorm + SDPA) externalized with quantized linears."""
     head_dim = 16
@@ -3390,7 +3400,7 @@ def test_externalize_multiple_composites_with_quantized_weights_ir() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     sample = (torch.randn(1, 4, embed_dim),)
 
@@ -3433,10 +3443,12 @@ def test_externalize_multiple_composites_with_quantized_weights_ir() -> None:
 
 
 @pytest.mark.flaky(reruns=3)
-@pytest.mark.skip(reason=(
-    "transform_with_custom_compression_ops has been deprecated. Consider removing "
-    "these tests or use an alternative way to generate quantized weights"
-))
+@pytest.mark.skip(
+    reason=(
+        "transform_with_custom_compression_ops has been deprecated. Consider removing "
+        "these tests or use an alternative way to generate quantized weights"
+    )
+)
 async def test_externalize_multiple_composites_with_quantized_weights() -> None:
     """Multiple composite ops (RMSNorm + SDPA) externalized with quantized linears.
 
@@ -3484,7 +3496,7 @@ async def test_externalize_multiple_composites_with_quantized_weights() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     sample = (torch.randn(1, 4, embed_dim),)
 
@@ -3512,10 +3524,12 @@ async def test_externalize_multiple_composites_with_quantized_weights() -> None:
 
 
 @pytest.mark.ir
-@pytest.mark.skip(reason=(
-    "transform_with_custom_compression_ops has been deprecated. Consider removing "
-    "these tests or use an alternative way to generate quantized weights"
-))
+@pytest.mark.skip(
+    reason=(
+        "transform_with_custom_compression_ops has been deprecated. Consider removing "
+        "these tests or use an alternative way to generate quantized weights"
+    )
+)
 def test_externalize_gather_mm_combined_with_rms_norm_ir() -> None:
     """IR check: GatherMM + RMSNorm both externalized alongside quantized weights."""
     num_experts = 4
@@ -3553,7 +3567,7 @@ def test_externalize_gather_mm_combined_with_rms_norm_ir() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     x = torch.randn(2, in_dim)
     indices = torch.tensor([[0, 2], [1, 3]], dtype=torch.int16)
@@ -3590,10 +3604,13 @@ def test_externalize_gather_mm_combined_with_rms_norm_ir() -> None:
     """
     filecheck_pattern(ir, check_file=pattern)
 
-@pytest.mark.skip(reason=(
-    "transform_with_custom_compression_ops has been deprecated. Consider removing "
-    "these tests or use an alternative way to generate quantized weights"
-))
+
+@pytest.mark.skip(
+    reason=(
+        "transform_with_custom_compression_ops has been deprecated. Consider removing "
+        "these tests or use an alternative way to generate quantized weights"
+    )
+)
 async def test_externalize_gather_mm_combined_with_rms_norm() -> None:
     """GatherMM + RMSNorm both externalized alongside quantized weights.
 
@@ -3637,7 +3654,7 @@ async def test_externalize_gather_mm_combined_with_rms_norm() -> None:
     )
     quantizer = PostTrainingQuantizer(model, quantization_config)
     model = cast("nn.Module", quantizer.compress())
-    transform_with_custom_compression_ops(model)
+    transform_with_custom_compression_ops(model)  # noqa: F821
 
     x = torch.randn(2, in_dim)
     indices = torch.tensor([[0, 2], [1, 3]], dtype=torch.int16)

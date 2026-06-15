@@ -14,7 +14,6 @@ import pytest
 import torch
 from coreai.authoring import AIProgram
 from coreai.runtime import AIModel, NDArray
-
 from torch import nn
 from torch.export.exported_program import ExportedProgram
 
@@ -29,6 +28,7 @@ from ..utils import TemporaryModelAsset, filecheck_pattern
 
 # We add "./tests/coreai" path, in order to use some existing utils
 sys.path.append(str(Path(__file__).parents[2]))
+
 
 def _scale_shape(
     input_shape: tuple[int, ...],
@@ -57,6 +57,7 @@ async def lower_to_coreai(
     converter = TorchConverter().add_exported_program(coreaten_program)
     return converter.to_coreai()
 
+
 async def _validate_execution(
     coreai_program: AIProgram,
     torch_out: torch.Tensor,
@@ -81,6 +82,7 @@ async def _validate_execution(
             rtol=rtol,
             atol=atol,
         )
+
 
 @pytest.mark.parametrize(
     "nbits",
@@ -1056,9 +1058,7 @@ class TestActivationQuantizationLinear:
             "" if granularity == "per_tensor" else f"{activation_shape[axis]}x"
         )
 
-        msg = (
-            "TODO: reshape on consts such as offset and scale is not const eliminated"
-        )
+        msg = "TODO: reshape on consts such as offset and scale is not const eliminated"
         pytest.xfail(reason=msg)
         truth = f"""
         // CHECK-LABEL: coreai.graph @main
