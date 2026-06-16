@@ -2038,6 +2038,46 @@ def replace_logical_not(
     return coreai.not_(x)
 
 
+def replace_masked_scatter(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """Lowers aten.masked_scatter.default to:
+
+        out_flat = where(mask, source[cumsum(mask) - 1], self)
+
+    Out-of-range indices at False positions are harmless — where()
+    discards them.
+    """
+    self_, mask, source = _get_operands(values_map, node, [0, 1, 2])
+
+    self_flat = coreai.reshape(self_, [-1])
+    if mask.type.shape != self_.type.shape:
+        target_shape = (
+            coreai.get_shape(self_)
+            if any(d < 0 for d in self_.type.shape)
+            else list(self_.type.shape)
+        )
+        mask = coreai.broadcast_to(mask, target_shape)
+    mask_flat = coreai.reshape(mask, [-1])
+    source_flat = coreai.reshape(source, [-1])
+
+    if source_flat.type.element_type != self_flat.type.element_type:
+        source_flat = coreai.cast(source_flat, self_flat.type.element_type)
+
+    mask_int = coreai.cast(mask_flat, np.int32)
+    idx = coreai.scan(mask_int, np.uint32(0), False, combiner="sum")
+    idx = coreai.broadcasting_sub(idx, coreai.constant(1, dtype=np.int32))
+    gathered = coreai.gather_along_axis(source_flat, idx, 0)
+
+    out_flat = coreai.broadcasting_where(mask_flat, gathered, self_flat)
+    out_shape = (
+        coreai.get_shape(self_)
+        if any(d < 0 for d in self_.type.shape)
+        else list(self_.type.shape)
+    )
+    return coreai.reshape(out_flat, out_shape)
+
+
 def replace_maxpool2d_with_indices(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> OpResultList:
@@ -3480,6 +3520,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "max.default": replace_max_default,
     "max.dim": replace_max_dim,
     "maximum.default": replace_binary_ops,
+    "masked_scatter.default": replace_masked_scatter,
     "mean.default": replace_mean_default,
     "mean.dim": replace_mean_dim,
     "min.default": replace_min_default,

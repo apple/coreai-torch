@@ -4322,6 +4322,165 @@ async def test_scatter(
         )
 
 
+class TestMaskedScatter:
+    """Tests for aten.masked_scatter.default → coreai flatten / cumsum-1 /
+    gather / where lowering.
+    """
+
+    class _Model(nn.Module):
+        def forward(self, self_: Tensor, mask: Tensor, src: Tensor) -> Tensor:
+            return torch.masked_scatter(self_, mask, src)
+
+    @staticmethod
+    def _shared_dynamic_shapes(self_: Tensor, src: Tensor) -> dict:
+        """Build dynamic_shapes where self_ and mask share dim objects
+        (torch.export emits an equality guard when traced shapes match)
+        and src has its own independent dim.
+        """
+        dims = {i: torch.export.Dim(f"d{i}", min=1) for i in range(self_.dim())}
+        return {
+            "self_": dims,
+            "mask": dims,
+            "src": {0: torch.export.Dim("s0", min=1)}
+            if src.dim() == 1
+            else _all_dims_dynamic(src, "s"),
+        }
+
+    @pytest.mark.ir
+    def test_lowers_ir_static(self) -> None:
+        """Pin the full operand chain on a static shape."""
+        self_ = torch.zeros(2, 3)
+        mask = torch.tensor([[True, False, True], [False, True, False]])
+        src = torch.arange(1.0, 7.0)
+        program = torch.export.export(
+            self._Model(), args=(self_, mask, src)
+        ).run_decompositions()
+        coreai_program = TorchConverter().add_exported_program(program).to_coreai()
+        filecheck_pattern(
+            str(coreai_program),
+            check_file="""
+                // CHECK-LABEL: coreai.graph @main
+                // CHECK-SAME:    %arg0: tensor<2x3xf32>
+                // CHECK-SAME:    %arg1: tensor<2x3xi1>
+                // CHECK-SAME:    %arg2: tensor<6xf32>
+                // CHECK:         %[[SF:.+]] = coreai.reshape %arg0, %{{.+}} : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<6xf32>
+                // CHECK:         %[[MF:.+]] = coreai.reshape %arg1, %{{.+}} : (tensor<2x3xi1>, tensor<1xsi32>) -> tensor<6xi1>
+                // CHECK:         %[[VF:.+]] = coreai.reshape %arg2, %{{.+}} : (tensor<6xf32>, tensor<1xsi32>) -> tensor<6xf32>
+                // CHECK:         %[[MI:.+]] = coreai.cast %[[MF]] : tensor<6xi1> to tensor<6xsi32>
+                // CHECK:         %[[CS:.+]] = coreai.scan %[[MI]], %{{.+}}, %{{.+}} combiner = <sum> : (tensor<6xsi32>, tensor<ui32>, tensor<i1>) -> tensor<6xsi32>
+                // CHECK:         %[[IDX:.+]] = coreai.decomposable.broadcasting_sub %[[CS]], %{{.+}} : (tensor<6xsi32>, tensor<si32>) -> tensor<6xsi32>
+                // CHECK:         %[[G:.+]] = coreai.gather_along_axis %[[VF]] at %[[IDX]] along %{{.+}} : (tensor<6xf32>, tensor<6xsi32>, tensor<si32>) to tensor<6xf32>
+                // CHECK:         %[[W:.+]] = coreai.decomposable.broadcasting_where %[[MF]], %[[G]], %[[SF]] : (tensor<6xi1>, tensor<6xf32>, tensor<6xf32>) -> tensor<6xf32>
+                // CHECK:         %[[OUT:.+]] = coreai.reshape %[[W]], %{{.+}} : (tensor<6xf32>, tensor<2xsi32>) -> tensor<2x3xf32>
+                // CHECK:         coreai.output %[[OUT]]
+            """,
+        )
+
+    @pytest.mark.ir
+    def test_lowers_ir_dynamic(self) -> None:
+        """Confirm the same op chain appears under dynamic shapes — shapes
+        become symbolic, but cast/scan/sub/gather/where/reshape order is
+        preserved.
+        """
+        self_ = torch.zeros(2, 3)
+        mask = torch.zeros(2, 3, dtype=torch.bool)
+        src = torch.arange(6.0)
+        dynamic_shapes = self._shared_dynamic_shapes(self_, src)
+        program = torch.export.export(
+            self._Model(), args=(self_, mask, src), dynamic_shapes=dynamic_shapes
+        ).run_decompositions()
+        coreai_program = TorchConverter().add_exported_program(program).to_coreai()
+        filecheck_pattern(
+            str(coreai_program),
+            check_file="""
+                // CHECK-LABEL: coreai.graph @main
+                // CHECK:       coreai.reshape
+                // CHECK:       coreai.reshape
+                // CHECK:       coreai.reshape
+                // CHECK:       coreai.cast {{.+}} to tensor<{{.*}}xsi32>
+                // CHECK:       coreai.scan {{.+}} combiner = <sum>
+                // CHECK:       coreai.decomposable.broadcasting_sub
+                // CHECK:       coreai.gather_along_axis
+                // CHECK:       coreai.decomposable.broadcasting_where
+                // CHECK:       coreai.reshape
+                // CHECK:       coreai.output
+            """,
+        )
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.int32])
+    async def test_basic(self, dtype: torch.dtype, dynamic: bool) -> None:
+        """self.shape == mask.shape, src is 1-D of length mask.numel()."""
+        self_ = torch.zeros(2, 3, dtype=dtype)
+        mask = torch.tensor([[True, False, True], [False, True, False]])
+        src = torch.arange(1, 7, dtype=dtype)
+        dynamic_shapes = self._shared_dynamic_shapes(self_, src) if dynamic else None
+        await validate_numerical_output(
+            model=self._Model().eval(),
+            self_=self_,
+            mask=mask,
+            src=src,
+            dynamic_shapes=dynamic_shapes,
+        )
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    async def test_all_false_mask(self, dynamic: bool) -> None:
+        """No positions selected — output must equal self unchanged."""
+        self_ = torch.arange(6.0).reshape(2, 3)
+        mask = torch.zeros(2, 3, dtype=torch.bool)
+        src = torch.full((6,), -1.0)
+        dynamic_shapes = self._shared_dynamic_shapes(self_, src) if dynamic else None
+        await validate_numerical_output(
+            model=self._Model().eval(),
+            self_=self_,
+            mask=mask,
+            src=src,
+            dynamic_shapes=dynamic_shapes,
+        )
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    async def test_all_true_mask(self, dynamic: bool) -> None:
+        """All positions selected — output must equal src reshaped to
+        self.shape, with self values fully overwritten.
+        """
+        self_ = torch.zeros(2, 3)
+        mask = torch.ones(2, 3, dtype=torch.bool)
+        src = torch.arange(1.0, 7.0)
+        dynamic_shapes = self._shared_dynamic_shapes(self_, src) if dynamic else None
+        await validate_numerical_output(
+            model=self._Model().eval(),
+            self_=self_,
+            mask=mask,
+            src=src,
+            dynamic_shapes=dynamic_shapes,
+        )
+
+    async def test_src_larger_than_mask_sum(self) -> None:
+        """src may carry more elements than mask.sum(); only the leading
+        mask.sum() are consumed (read flat). The rest are unused.
+        """
+        self_ = torch.zeros(2, 3)
+        mask = torch.tensor([[True, False, True], [False, True, False]])
+        # 10 elements, only first 3 are needed (mask has 3 True positions)
+        src = torch.arange(1.0, 11.0)
+        await validate_numerical_output(
+            model=self._Model().eval(), self_=self_, mask=mask, src=src
+        )
+
+    async def test_broadcast_mask_lower_rank(self) -> None:
+        """mask is rank-1 (3,) and self is rank-2 (2, 3) — mask is
+        right-aligned and broadcasts across the leading dim. Exercises
+        the broadcast_to branch in the lowering.
+        """
+        self_ = torch.zeros(2, 3)
+        mask = torch.tensor([True, False, True])
+        # mask broadcasts to (2, 3) with 4 True positions
+        src = torch.arange(1.0, 5.0)
+        await validate_numerical_output(
+            model=self._Model().eval(), self_=self_, mask=mask, src=src
+        )
+
+
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
     "x,dim,index",
