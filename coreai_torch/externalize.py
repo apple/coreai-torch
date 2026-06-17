@@ -431,6 +431,18 @@ class _PreparedModules:
             name: str = mod._externalize_name  # type: ignore[attr-defined]
             op_name: str = mod._externalize_op_name  # type: ignore[attr-defined]
             parent_ep = _find_program_for(name, op_name, self._programs)
+            if parent_ep is None:
+                # Marked submodule is not invoked in the exported graph.
+                # Skip it; its forward will be restored by _restore_externalized.
+                warnings.warn(
+                    f"\n[WARN] coreai_torch.externalize: skipping unused submodule '{name}'.\n"
+                    f"       It matched an externalize_modules target class but is not "
+                    f"reachable from the exported graph.\n"
+                    f"       Action: remove it from the model passed to add_pytorch_module, "
+                    f"or ignore if intentional.\n",
+                    stacklevel=2,
+                )
+                continue
             preps = _prepare_module_export(mod, parent_ep)
             for prep in preps:
                 prep._program_registry = self

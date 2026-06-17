@@ -3683,3 +3683,108 @@ async def test_externalize_gather_mm_combined_with_rms_norm() -> None:
     await _validate_numerics(
         coreai_program, model, sample, input_names=("x", "indices")
     )
+
+
+@pytest.mark.ir
+def test_externalize_unused_submodule_ir() -> None:
+    """An externalizable submodule that the model's forward never calls is skipped.
+
+    Previously, a registered submodule that did not appear in the exported graph
+    caused the externalize pipeline to raise ``ValueError: Custom op for ...
+    not found in any ancestor program``. The pipeline should instead warn and
+    proceed, lowering the rest of the model normally.
+    """
+
+    class InnerModule(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(4, 4)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return torch.relu(self.fc(x))
+
+    class OuterModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.pre = nn.Linear(4, 4)
+            # Registered as a submodule but intentionally never invoked.
+            self.unused = InnerModule()
+            self.post = nn.Linear(4, 4)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.post(self.pre(x))
+
+    torch.manual_seed(42)
+    model = OuterModel().eval()
+    sample = (torch.randn(2, 4),)
+
+    with pytest.warns(UserWarning, match="skipping unused submodule"):
+        converter = TorchConverter().add_pytorch_module(
+            model,
+            export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+                get_decomp_table()
+            ),
+            externalize_modules=[InnerModule],
+        )
+        coreai_program = converter.to_coreai()
+
+    check_file = """
+        // CHECK-LABEL: module {
+        // CHECK-NOT: coreai.graph noinline
+        // CHECK: coreai.graph @main(
+        // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: tensor<2x4xf32> {coreai.name = "x"}
+        // CHECK-SAME: ) -> (tensor<2x4xf32>
+        // CHECK: %[[MM0:[0-9a-z_]+]] = coreai.decomposable.broadcasting_batch_matmul %[[ARG0]],
+        // CHECK-SAME: : (tensor<2x4xf32>, tensor<4x4xf32>) -> tensor<2x4xf32>
+        // CHECK: %[[ADD0:[0-9a-z_]+]] = coreai.decomposable.broadcasting_add %[[MM0]],
+        // CHECK-SAME: : (tensor<2x4xf32>, tensor<4xf32>) -> tensor<2x4xf32>
+        // CHECK: %[[MM1:[0-9a-z_]+]] = coreai.decomposable.broadcasting_batch_matmul %[[ADD0]],
+        // CHECK-SAME: : (tensor<2x4xf32>, tensor<4x4xf32>) -> tensor<2x4xf32>
+        // CHECK: %[[ADD1:[0-9a-z_]+]] = coreai.decomposable.broadcasting_add %[[MM1]],
+        // CHECK-SAME: : (tensor<2x4xf32>, tensor<4xf32>) -> tensor<2x4xf32>
+        // CHECK-NOT: coreai.invoke
+        // CHECK-NOT: coreai.relu
+        // CHECK: coreai.output %[[ADD1]] : tensor<2x4xf32>
+        // CHECK: }
+        // CHECK-NOT: coreai.graph
+        // CHECK: }
+    """
+    filecheck_pattern(str(coreai_program), check_file=check_file)
+
+
+async def test_externalize_unused_submodule_numerics() -> None:
+    """Numerics: unused externalizable submodule does not affect output."""
+
+    class InnerModule(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(4, 4)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return torch.relu(self.fc(x))
+
+    class OuterModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.pre = nn.Linear(4, 4)
+            self.unused = InnerModule()
+            self.post = nn.Linear(4, 4)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.post(self.pre(x))
+
+    torch.manual_seed(42)
+    model = OuterModel().eval()
+    sample = (torch.randn(2, 4),)
+
+    with pytest.warns(UserWarning, match="skipping unused submodule"):
+        converter = TorchConverter().add_pytorch_module(
+            model,
+            export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+                get_decomp_table()
+            ),
+            externalize_modules=[InnerModule],
+        )
+        coreai_program = converter.to_coreai()
+
+    await _validate_numerics(coreai_program, model, sample)

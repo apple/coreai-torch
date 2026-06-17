@@ -1596,15 +1596,15 @@ def _find_program_for(
     name: str,
     op_name: str,
     programs: dict[str, ExportedProgram],
-) -> ExportedProgram:
-    """Find the nearest ancestor program that contains *op_name*."""
+) -> ExportedProgram | None:
+    """Find the nearest ancestor program that contains *op_name*, or ``None``."""
     for ancestor in _ancestor_paths(name):
         if (
             ancestor in programs
             and _find_custom_op_node(programs[ancestor], op_name) is not None
         ):
             return programs[ancestor]
-    raise ValueError(f"Custom op for '{name}' not found in any ancestor program")
+    return None
 
 
 def _reverse_lookup(mapping: dict[str, str], value: str) -> str | None:
