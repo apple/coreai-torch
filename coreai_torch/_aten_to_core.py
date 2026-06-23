@@ -2649,6 +2649,96 @@ def replace_prod_dim_int(
     return result if keepdim else coreai.shrink_dims(result, [axis])
 
 
+def _stable_softplus(x: Value) -> Value:
+    """Numerically stable softplus: max(x, 0) + log(1 + exp(-|x|)).
+
+    Since -|x| <= 0, exp(-|x|) is always in (0, 1], so no overflow occurs
+    in any precision.  This prevents the fp16 discontinuity at x ≈ 10.4
+    on Apple Neural Engine.
+
+    See apple/coremltools#2687 and apple/coreai-torch#21.
+    """
+    abs_x = coreai.abs_(x)
+    neg_abs_x = coreai.neg(abs_x)
+    exp_val = coreai.exp(neg_abs_x)
+    one = coreai.constant(1.0, dtype=x.type.element_type)
+    log_val = coreai.log(coreai.broadcasting_add(one, exp_val))
+    zero = coreai.constant(0.0, dtype=x.type.element_type)
+    max_val = coreai.maximum(x, zero)
+    return coreai.broadcasting_add(max_val, log_val)
+
+
+def replace_softplus(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """Numerically stable softplus with threshold support.
+
+    softplus(x) = max(x, 0) + log(1 + exp(-|x|))
+
+    For beta != 1: softplus(x) = (1/beta) * softplus(beta * x)
+    For beta * x > threshold: return x directly (matching PyTorch semantics).
+    """
+    x = _get_operand(values_map, node, 0)
+    beta = node.args[1] if len(node.args) > 1 else 1
+    threshold = node.args[2] if len(node.args) > 2 else 20.0
+
+    if beta == 1:
+        sp = _stable_softplus(x)
+        threshold_val = coreai.constant(float(threshold), dtype=x.type.element_type)
+        cond = coreai.greater(x, threshold_val)
+    else:
+        beta_val = coreai.constant(float(beta), dtype=x.type.element_type)
+        beta_x = coreai.broadcasting_mul(beta_val, x)
+        inv_beta = coreai.constant(1.0 / float(beta), dtype=x.type.element_type)
+        sp = coreai.broadcasting_mul(inv_beta, _stable_softplus(beta_x))
+        threshold_val = coreai.constant(float(threshold), dtype=x.type.element_type)
+        cond = coreai.greater(beta_x, threshold_val)
+
+    return coreai.select(cond, x, sp)
+
+
+def replace_mish(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """Numerically stable mish: x * tanh(softplus_stable(x)).
+
+    Uses _stable_softplus to avoid fp16 overflow in the softplus component.
+    """
+    x = _get_operand(values_map, node, 0)
+    sp = _stable_softplus(x)
+    return coreai.broadcasting_mul(x, coreai.tanh(sp))
+
+
+def replace_logsumexp(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """Numerically stable logsumexp via max-shift.
+
+    logsumexp(x) = max(x) + log(sum(exp(x - max(x))))
+
+    Since x_i - max(x) <= 0, exp(x_i - max(x)) is in (0, 1], preventing
+    overflow.
+    """
+    x = _get_operand(values_map, node, 0)
+    dim = node.args[1]
+    keepdim = node.args[2] if len(node.args) > 2 else False
+
+    if isinstance(dim, int):
+        dim = [dim]
+    dim = [d + x.type.rank if d < 0 else d for d in dim]
+
+    max_x = coreai.reduce_max(x, dim)
+    x_shifted = coreai.broadcasting_sub(x, max_x)
+    exp_shifted = coreai.exp(x_shifted)
+    sum_exp = coreai.reduce_sum(exp_shifted, dim)
+    log_sum_exp = coreai.log(sum_exp)
+    result = coreai.broadcasting_add(max_x, log_sum_exp)
+
+    if not keepdim:
+        result = coreai.shrink_dims(result, dim)
+    return result
+
+
 def replace_log_softmax(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
@@ -3419,6 +3509,7 @@ def replace_sdpa(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
 _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "_local_scalar_dense.default": replace_local_scalar_dense,
     "_log_softmax.default": replace_log_softmax,
+    "mish.default": replace_mish,
     "_native_batch_norm_legit_no_training.default": replace_batch_norm,
     "_softmax.default": replace_softmax,
     "_to_copy.default": replace_to_copy,
@@ -3506,6 +3597,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "leaky_relu.default": replace_leaky_relu,
     "lift_fresh_copy.default": replace_lift_fresh_copy,
     "linalg_vector_norm.default": replace_linalg_vector_norm,
+    "logsumexp.default": replace_logsumexp,
     "log.default": replace_unary_ops,
     "log10.default": replace_log10,
     "log1p.default": replace_log1p,
@@ -3567,6 +3659,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "select.int": replace_select_int,
     "sigmoid.default": replace_unary_ops,
     "silu.default": replace_unary_ops,
+    "softplus.default": replace_softplus,
     "sign.default": replace_sign,
     "sin.default": replace_unary_ops,
     "sinh.default": replace_unary_ops,
