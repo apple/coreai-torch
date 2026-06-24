@@ -36,7 +36,6 @@ async def _create_coreai_program_from_model(
     converter: TorchConverter = TorchConverter()
     converter._debug_info_recorder.config = _DebugInfoRecorder.Config(
         include_stack_trace=True,
-        options=_DebugInfoRecorder.Options.DEBUGINFO,
         verify_debuginfo_locations=True,
     )
     converter.add_exported_program(exported_program, entrypoint_name="main")
@@ -580,7 +579,6 @@ def _modify_nth_operation(
     return found_count[0]
 
 
-@pytest.mark.xfail(reason="Fails after coreai update", strict=False)
 @pytest.mark.skipif(sys.platform != "darwin", reason="Test only runs on macOS")
 async def test_comparator_catches_modified_ops_at_different_positions() -> None:
     """Test that comparator correctly identifies modified operations at different positions."""

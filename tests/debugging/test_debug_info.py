@@ -14,14 +14,18 @@ import torch
 from coreai.authoring import AIProgram
 from coreai.runtime import AIModel
 
+from coreai_torch._debug_locations import _get_nested_operations, _is_debuginfo_location
 from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
-from coreai_torch.debugging.debug_info import DebugInfoRecord, parse_debug_infos
+from coreai_torch.debugging.debug_info import (
+    DebugInfoRecord,
+    parse_debug_infos,
+    strip_debug_info,
+)
 
 from .test_model import LinearMulAddModel, get_example_inputs
 
 
-@pytest.fixture
-async def simple_coreai_program() -> AIProgram:
+def _create_debug_program() -> AIProgram:
     """Create a coreai_program program with debug info from a simple torch model."""
     model = LinearMulAddModel().eval()
     example_inputs = get_example_inputs(LinearMulAddModel)
@@ -31,12 +35,16 @@ async def simple_coreai_program() -> AIProgram:
     converter: TorchConverter = TorchConverter()
     converter._debug_info_recorder.config = _DebugInfoRecorder.Config(
         include_stack_trace=True,
-        options=_DebugInfoRecorder.Options.DEBUGINFO,
         verify_debuginfo_locations=True,
     )
     converter.add_exported_program(exported_program, entrypoint_name="main")
-    coreai_program = converter.to_coreai()
-    return coreai_program
+    return converter.to_coreai()
+
+
+@pytest.fixture
+async def simple_coreai_program() -> AIProgram:
+    """Fixture providing a coreai_program with debug info."""
+    return _create_debug_program()
 
 
 def _verify_debug_info_record(record: DebugInfoRecord) -> None:
@@ -122,3 +130,24 @@ async def test_aimodel_debug_infos(
 
         # Verify structure
         _verify_debug_info_record(debug_info_records[0])
+
+
+@pytest.mark.asyncio
+async def test_strip_debug_info() -> None:
+    """Test that strip_debug_info removes source locations and assigns fresh IDs."""
+    coreai_program = _create_debug_program()
+
+    # Strip debug info from the program
+    strip_debug_info(coreai_program)
+
+    module_op = coreai_program._mlir_module.operation
+
+    # Verify module location is a valid debuginfo location
+    assert _is_debuginfo_location(module_op.location)
+
+    # Verify all nested operations have debuginfo locations
+    for nested_op in _get_nested_operations(module_op):
+        assert _is_debuginfo_location(nested_op.location), (
+            f"Expected debuginfo location on {nested_op.name}, "
+            f"got: {nested_op.location}"
+        )

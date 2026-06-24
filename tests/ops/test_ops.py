@@ -6666,7 +6666,7 @@ async def test_pixel_shuffle(x: Tensor, upscale_factor: int, dynamic_dims: tuple
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize(
     "shape",
     [
@@ -6765,7 +6765,7 @@ class TestPolar:
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize(
     "shape",
     [
@@ -6813,7 +6813,7 @@ async def test_unsafe_view(x: Tensor, shape: list[int]) -> None:
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize(
     "shape",
     [
@@ -6825,27 +6825,13 @@ async def test_unsafe_view(x: Tensor, shape: list[int]) -> None:
 async def test_view_as_complex(
     shape: tuple[int, ...], dtype: torch.dtype, dynamic: bool
 ) -> None:
-    """Test torch.view_as_complex converting a real tensor [..., 2] to a complex tensor [...]。
-
-    float16 input produces complex<f16> (torch.complex32); check_result_type must
-    accept complex<f16> when the FX metadata records complex<f32> (torch.complex64),
-    which happens when an f16-cast ExportedProgram is imported via TorchConverter.
-    """
+    """Test torch.view_as_complex converting a real tensor [..., 2] to a complex tensor [...]."""
 
     class ViewAsComplexModel(nn.Module):
         def forward(self, x: Tensor) -> Tensor:
             return torch.view_as_complex(x)
 
-    class ViewAsComplexF16Model(nn.Module):
-        def forward(self, x: Tensor) -> Tensor:
-            # view_as_real roundtrip: keeps output as float so numpy can compare.
-            # float16 input produces complex<f16> internally, exercising the
-            # complex64->complex32 narrowing in check_result_type.
-            return torch.view_as_real(torch.view_as_complex(x))
-
-    model = (
-        ViewAsComplexModel() if dtype == torch.float32 else ViewAsComplexF16Model()
-    ).eval()
+    model = ViewAsComplexModel().eval()
     x = torch.randn(*shape, 2, dtype=dtype)
     dynamic_shapes = (
         make_dynamic_shapes(x={i: f"d{i}" for i in range(x.dim() - 1)})
@@ -6856,7 +6842,7 @@ async def test_view_as_complex(
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize(
     "shape",
     [

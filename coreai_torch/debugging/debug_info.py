@@ -11,6 +11,21 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+import coreai._compiler._mlir_libs._coreaiIR._bindings.mlir as _mlir
+from coreai._compiler._mlir_libs._coreaiIR._bindings.mlir import (
+    set_block_arg_location,
+    set_op_location,
+)
+from coreai._compiler.ir import Location, Operation, WalkResult
+from coreai.authoring import AIProgram
+
+from coreai_torch._debug_locations import (
+    OperationID,
+    _create_unknown_location,
+    _create_unknown_location_with_operation_id,
+    _get_nested_operations,
+)
+
 
 @dataclass
 class SourceInfo:
@@ -245,11 +260,9 @@ class DebugInfo:
                 return m.value
         return None
 
-    def get_op_id(self, level: str) -> int | str | None:
+    def get_op_id(self, level: str) -> int | None:
         """
-        Get operation ID for a given dialect level.
-
-        New format: metadata with key "op_id" containing dictionary {"type": "<dialect>", "value": <id>}
+        Get the first operation ID for a given dialect level.
 
         Args:
         ----
@@ -260,29 +273,46 @@ class DebugInfo:
             Operation ID if present, None otherwise
 
         """
-        # Look for all metadata with key "op_id"
+        ids = self.get_op_ids(level)
+        return ids[0] if ids else None
+
+    def get_op_ids(self, level: str) -> list[int]:
+        """
+        Get all operation IDs for a given dialect level.
+
+        Collects every "op_id" metadata entry whose "type" field matches
+        *level* and returns the corresponding "value" fields. Only integer
+        values are produced (see :meth:`_get_int_field`).
+
+        Args:
+        ----
+            level: Dialect level name (e.g., "torch", "coreai")
+
+        Returns:
+        -------
+            List of operation IDs matching the given level
+
+        """
+        ids: list[int] = []
         for metadata in self.metadatas:
             if metadata.key != "op_id":
                 continue
 
-            # Check if value is a dictionary
             if metadata.value.value_type != "dictionary" or not isinstance(
                 metadata.value.value,
                 dict,
             ):
                 continue
 
-            # Check if "type" field matches the level
             type_field = self._get_str_field(metadata.value.value, "type")
             if type_field != level:
                 continue
 
-            # Return the "value" field
             value_field = self._get_int_field(metadata.value.value, "value")
             if value_field is not None:
-                return value_field
+                ids.append(value_field)
 
-        return None
+        return ids
 
     def get_source(self) -> str | None:
         """Get source identifier if present."""
@@ -381,12 +411,31 @@ class DebugInfo:
             target_output=tgt_output,
         )
 
+    def get_all_metadata(self, key: str) -> list[Metadata.Value]:
+        """Get all metadata values matching the given key.
+
+        Unlike :meth:`get_metadata` which returns only the first match,
+        this method collects every ``Metadata`` entry whose key equals
+        *key* and returns the corresponding values.
+
+        Args:
+        ----
+            key: Metadata key to search for.
+
+        Returns:
+        -------
+            List of matching :class:`Metadata.Value` instances (may be empty).
+
+        """
+        return [m.value for m in self.metadatas if m.key == key]
+
     def get_output_mappings(self, source_level: str) -> list[OutputMapping]:
         """
         Get output mappings from source level by parsing metadata.
 
-        Parses metadata with key "output_maps" containing an array of dictionaries,
-        each with 'source' and 'target' fields containing level, output, and id.
+        Parses all metadata entries with key "output_maps" containing an
+        array of dictionaries, each with 'source' and 'target' fields
+        containing level, output, and id.
 
         Args:
         ----
@@ -397,20 +446,18 @@ class DebugInfo:
             List of OutputMapping objects
 
         """
-        output_maps_metadata = self.get_metadata("output_maps")
-        if (
-            not output_maps_metadata
-            or output_maps_metadata.value_type != "array"
-            or not isinstance(output_maps_metadata.value, list)
-        ):
-            return []
+        mappings: list[OutputMapping] = []
+        for output_maps_metadata in self.get_all_metadata("output_maps"):
+            if output_maps_metadata.value_type != "array" or not isinstance(
+                output_maps_metadata.value, list
+            ):
+                continue
 
-        mappings = []
-        for elem in output_maps_metadata.value:
-            if elem.value_type == "dictionary" and isinstance(elem.value, dict):
-                mapping = self._parse_mapping_from_dict(elem.value, source_level)
-                if mapping:
-                    mappings.append(mapping)
+            for elem in output_maps_metadata.value:
+                if elem.value_type == "dictionary" and isinstance(elem.value, dict):
+                    mapping = self._parse_mapping_from_dict(elem.value, source_level)
+                    if mapping:
+                        mappings.append(mapping)
 
         return mappings
 
@@ -463,3 +510,63 @@ def parse_debug_infos(debug_infos_bytes: bytes) -> list[DebugInfoRecord]:
     debug_infos_data = json.loads(debug_infos_str)
 
     return [DebugInfoRecord.from_dict(item) for item in debug_infos_data]
+
+
+def _build_coreai_op_map(program: AIProgram) -> dict[int, "Operation"]:
+    """Build a mapping from coreai operation ID to MLIR ``Operation``.
+
+    Walks all operations in *program* and collects each one that carries
+    a ``"coreai"`` operation ID in its debug location metadata.
+
+    Args:
+        program: The AIProgram to inspect.
+
+    Returns:
+        Dictionary mapping coreai op ID to the MLIR ``Operation``.
+    """
+    op_map: dict[int, Operation] = {}
+
+    def _collect(operation: Operation) -> WalkResult:
+        op_id = _mlir.get_operation_id(operation.location, "coreai")
+        if op_id is not None:
+            op_map[op_id.value] = operation
+        return WalkResult.ADVANCE
+
+    program._mlir_module.operation.walk(_collect)
+    return op_map
+
+
+def strip_debug_info(program: AIProgram) -> None:
+    """Strip debugging information from all operations in the program.
+
+    This is useful for reducing asset size when full debug traces are
+    no longer needed.
+
+    Args:
+        program: The AIProgram to strip debug info from. Modified in place.
+    """
+    module = program._mlir_module
+    module_op = module.operation
+    context = module_op.context
+
+    # Create a shared unknown source location for reuse
+    unknown_src = Location.file(filename="", line=0, col=0, context=context)
+
+    # Set module operation location (no operation ID for the module itself)
+    module_location = _create_unknown_location(unknown_src, context)
+    set_op_location(module_op, module_location)
+
+    # Walk all nested operations and assign fresh sequential IDs
+    operation_id = 0
+    for nested_op in _get_nested_operations(module_op):
+        op_id = OperationID(type="coreai", value=operation_id)
+        operation_id += 1
+
+        loc = _create_unknown_location_with_operation_id(op_id, unknown_src, context)
+        set_op_location(nested_op, loc)
+
+        # Update block argument locations
+        for region in nested_op.regions:
+            for block in region:
+                for arg in block.arguments:
+                    set_block_arg_location(arg, loc)

@@ -1034,6 +1034,20 @@ def get_operands(
     return [get_operand(values_map, node, i, loc) for i in indices]
 
 
+def scalar_constant(py_type: type, value: Any) -> Value:
+    """Create a coreai.constant for a scalar kernel arg with the natural dtype.
+
+    Bypasses the fp16 promotion :func:`get_operand` applies to Python floats so
+    the MSL parameter ends up as ``constant float&`` even when the surrounding
+    tensors are fp16. Bool widens to ui8 because ``i1`` is rejected by the
+    metal4_kernel verifier; the MSL signature still emits ``constant bool&``
+    via :class:`~coreai_torch._torch_metal_kernel.TorchMetalKernel`'s
+    metal_dtype override.
+    """
+    np_dtype = {bool: np.uint8, int: np.int32, float: np.float32}[py_type]
+    return coreai.constant(np.array(value, dtype=np_dtype))
+
+
 def build_shape_tensor(
     values_map: dict[str, Value],
     shape: list[int | fx.Node],
@@ -1840,19 +1854,6 @@ def _resolve_io_names(
             fx_to_output[graph_output_names[i]] = out_name
 
     return graph_input_names, resolved_output_names, fx_to_output
-
-
-def _get_debug_info_enabled() -> bool:
-    """Get debug info enable flag from ENABLE_DEBUG_INFO environment variable.
-
-    By default, debug info is not enabled for performance reasons.
-    Set ENABLE_DEBUG_INFO=true to enable debug information generation.
-
-    Returns:
-        True if debug info should be enabled, False otherwise.
-        Defaults to False if environment variable is not set.
-    """
-    return os.getenv("ENABLE_DEBUG_INFO", "false").lower() in ("true", "1", "yes", "on")
 
 
 def _get_verify_debuginfo_locations_enabled() -> bool:

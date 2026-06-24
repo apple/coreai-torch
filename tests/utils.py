@@ -37,7 +37,7 @@ if platform.system() == "Darwin":
         SpecializationOptions,
     )
 
-_ML_ASSET_EXTENSION = "mlasset"
+_ML_ASSET_EXTENSION = "aimodel"
 
 # Compute unit selection driven by the --compute-unit-kind pytest option (see tests/conftest.py).
 # Default is "interpreter" so a plain `pytest` run still works.
@@ -203,9 +203,14 @@ def _init_runtime_state(
     """
     state: dict[str, NDArray] = {}
     for name in desc.state_names:
-        state[name] = NDArray.from_descriptor(
-            descriptor=desc.state_descriptor(name=name)
-        )
+        # `NDArray.from_descriptor` only sizes the buffer; on Linux the backing
+        # storage isn't zeroed, so buffer-state reads return garbage on the
+        # first call. Allocate a zero-filled numpy array of the right shape and
+        # dtype instead so initial state matches the model's `register_buffer`
+        # value (assumed zero — same assumption tests already make).
+        d = desc.state_descriptor(name=name)
+        shape = tuple(s if s is not None else 1 for s in d.shape)
+        state[name] = NDArray(np.zeros(shape, dtype=np.dtype(d.dtype)))
 
     user_mut_names = list(sig.user_inputs_to_mutate.values())
     num_buf_muts = len(sig.buffers_to_mutate)

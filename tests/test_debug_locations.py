@@ -86,7 +86,6 @@ async def test_debug_locations() -> None:
     converter: TorchConverter = TorchConverter()
     debug_config = _DebugInfoRecorder.Config(
         include_stack_trace=True,
-        options=_DebugInfoRecorder.Options.DEBUGINFO,
         verify_debuginfo_locations=True,
     )
     converter._debug_info_recorder = _DebugInfoRecorder(config=debug_config)
@@ -118,7 +117,6 @@ def test_debug_locations_multiple_programs() -> None:
     converter: TorchConverter = TorchConverter()
     debug_config = _DebugInfoRecorder.Config(
         include_stack_trace=True,
-        options=_DebugInfoRecorder.Options.DEBUGINFO,
         verify_debuginfo_locations=True,
     )
     converter._debug_info_recorder = _DebugInfoRecorder(config=debug_config)

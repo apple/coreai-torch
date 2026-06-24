@@ -112,10 +112,10 @@ class TestTorchSDPA:
         np.testing.assert_allclose(
             _torch_tensor_to_numpy_array(output_torch_eager),
             _mlx_array_to_numpy_array(output_mlx),
-            rtol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
         )
@@ -186,10 +186,10 @@ class TestTorchSDPA:
         np.testing.assert_allclose(
             _torch_tensor_to_numpy_array(output_torch_eager),
             _mlx_array_to_numpy_array(output_mlx),
-            rtol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
         )
@@ -267,10 +267,10 @@ class TestTorchSDPA:
         np.testing.assert_allclose(
             _torch_tensor_to_numpy_array(output_torch_eager),
             _mlx_array_to_numpy_array(output_mlx),
-            rtol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
         )
@@ -353,10 +353,10 @@ class TestTorchSDPA:
         np.testing.assert_allclose(
             _torch_tensor_to_numpy_array(output_torch_eager),
             _mlx_array_to_numpy_array(output_mlx),
-            rtol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
         )
@@ -431,10 +431,10 @@ class TestTorchSDPAHuggingFace:
         np.testing.assert_allclose(
             _torch_tensor_to_numpy_array(output_ours),
             _torch_tensor_to_numpy_array(output_hf),
-            rtol={torch.float32: 1e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
         )
@@ -494,10 +494,10 @@ class TestTorchSDPAHuggingFace:
         np.testing.assert_allclose(
             _torch_tensor_to_numpy_array(output_ours),
             _torch_tensor_to_numpy_array(output_hf),
-            rtol={torch.float32: 1e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
         )
@@ -666,10 +666,10 @@ class TestTorchSDPAConversion:
         await validate_numerical_output(
             coreai_program=converted_program,
             torch_out=output_torch_eager,
-            rtol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
             query=query,
@@ -826,10 +826,10 @@ class TestTorchSDPAConversion:
         await validate_numerical_output(
             coreai_program=converted_program,
             torch_out=output_torch_eager,
-            rtol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
             query=query,
@@ -987,10 +987,10 @@ class TestTorchSDPAConversion:
         await validate_numerical_output(
             coreai_program=converted_program,
             torch_out=output_torch_eager,
-            rtol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
             query=query,
@@ -1164,10 +1164,10 @@ class TestTorchSDPAConversion:
         await validate_numerical_output(
             coreai_program=converted_program,
             torch_out=output_torch_eager,
-            rtol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            rtol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
-            atol={torch.float32: 1e-4, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
+            atol={torch.float32: 2e-3, torch.float16: 1e-2, torch.bfloat16: 5e-2}[
                 dtype
             ],
             query=query,

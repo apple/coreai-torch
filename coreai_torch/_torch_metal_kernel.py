@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import inspect
+import math
 from collections import Counter
 from collections.abc import Sequence
 from functools import wraps
@@ -20,6 +21,19 @@ from typing_extensions import Self
 
 # We're allowing for int, bool, and float scalar inputs.
 _ALLOWED_SCALARS = {int, float, bool}
+
+# MSL parameter types for scalar inputs, indexed by Python type. The IR-level
+# element type for a bool scalar is widened to ui8 (i1 isn't accepted by the
+# metal4_kernel verifier), so we override the MSL signature here to keep the
+# user-facing dtype `bool` rather than `uint8_t`.
+_SCALAR_METAL_DTYPE = {bool: "bool", int: "int", float: "float"}
+
+# Range of MSL's 32-bit `int`. Int scalars are baked into the kernel body as
+# literals and the IR-side constant is built as ``np.int32``; values outside
+# this range would wrap (IR side) or overflow the MSL literal, so they are
+# rejected up front.
+_INT32_MIN = -(2**31)
+_INT32_MAX = 2**31 - 1
 
 # Threads-per-grid / threads-per-threadgroup must be 3-tuples per the Metal
 # `dispatchThreads` API.
@@ -40,6 +54,19 @@ class TorchMetalKernel(CustomMetalKernel):
     """
 
     torch_custom_op: CustomOpDef
+    # Map from kernel input name to Python scalar type (``int``, ``float``, or
+    # ``bool``) for inputs whose ``torch_defn`` annotation is a scalar. Read by
+    # ``register_custom_kernels`` to convert FX scalar args with the natural
+    # dtype, and by :meth:`_validate_and_segregate_inputs` to set the MSL
+    # parameter dtype.
+    _scalar_input_types: dict[str, type]
+    # Per-distinct-scalar-values kernel caches. Scalar-bearing kernels bake the
+    # literal into the body, so the base class's single cache keyed only on
+    # ``(rank, dtype)`` would let call sites with different scalar values
+    # collide. Each frozen scalar-values tuple gets its own sub-cache so that
+    # identical ``(scalar_values, rank, dtype)`` call sites still share a PSO.
+    # See :meth:`_construct_kernel_op`.
+    _scalar_kernel_caches: dict[tuple[tuple[str, Any], ...], dict[Any, Any]]
 
     def __init__(  # noqa: PLR0913
         self: Self,
@@ -80,6 +107,12 @@ class TorchMetalKernel(CustomMetalKernel):
         torch_sig = inspect.signature(torch_defn, eval_str=True)
         self._validate_torch_inputs(torch_sig)
         self._validate_torch_returns(torch_sig)
+        self._scalar_input_types = {
+            input_names[i]: param.annotation
+            for i, param in enumerate(torch_sig.parameters.values())
+            if param.annotation in _ALLOWED_SCALARS
+        }
+        self._scalar_kernel_caches = {}
         self.torch_custom_op = self._construct_torch_custom_op(torch_defn)
 
         super().__init__(
@@ -275,6 +308,103 @@ class TorchMetalKernel(CustomMetalKernel):
             return res
 
         return torch_custom_op
+
+    # ------------------------------------------------------------------
+    # Scalar-aware override
+    # ------------------------------------------------------------------
+
+    def _validate_and_segregate_inputs(self: Self, input_values: list[Any]) -> Any:
+        """Run the parent's segregation, then patch metal_dtype for scalar inputs.
+
+        The IR-level element type for a bool scalar is ui8 (i1 isn't accepted
+        by the metal4_kernel verifier), so the parent class would emit the MSL
+        parameter as ``constant uint8_t&``. Override that to ``constant bool&``
+        — and similarly pin int/float scalar dtypes to their natural Python
+        names — using the per-kernel scalar type map captured in ``__init__``.
+        """
+        segregated = super()._validate_and_segregate_inputs(input_values)
+        for _val, meta in segregated.kernel_inputs:
+            if meta.rank == 0 and meta.name in self._scalar_input_types:
+                py_type = self._scalar_input_types[meta.name]
+                meta.metal_dtype = _SCALAR_METAL_DTYPE[py_type]
+        return segregated
+
+    def _construct_kernel_op(
+        self: Self,
+        input_values: list[Any],
+        result_types: list[Any],
+    ) -> Any:
+        """Bake scalar values into the kernel body, then delegate to the base op.
+
+        The runtime binds rank-0 inputs as ``MTLTensor`` resource handles, so a
+        ``constant T&`` parameter declared in the kernel source can't be
+        dereferenced as a value — it would read from the handle, not the
+        scalar's storage. Workaround: keep the parameter declaration intact
+        (the IR contract still surfaces ``constant T& <name>``) but shadow it
+        inside the body with a local variable initialized to the literal,
+        so the user-written body still resolves the name to the right value.
+        """
+        scalar_values: dict[str, Any] = getattr(self, "_scalar_values_for_call", {})
+        if not scalar_values:
+            return super()._construct_kernel_op(input_values, result_types)
+
+        original_src = self.src
+        original_cache = self.kernel_cache
+        # Inject first so an invalid scalar raises before we touch any cache.
+        injected_src = self._inject_scalar_locals(original_src, scalar_values)
+        # The base cache is keyed only on (rank, dtype), so two call sites with
+        # different scalar values — and therefore different baked source — would
+        # collide. Rather than discard the cache (which also forfeits legitimate
+        # reuse), give each distinct set of scalar values its own persistent
+        # sub-cache: identical (scalar_values, rank, dtype) call sites then share
+        # a single templated kernel / PSO, while differing scalar values stay
+        # isolated. Sorting makes the key order-independent; names are unique so
+        # values are never compared across types.
+        scalar_key = tuple(sorted(scalar_values.items()))
+        self.src = injected_src
+        self.kernel_cache = self._scalar_kernel_caches.setdefault(scalar_key, {})
+        try:
+            return super()._construct_kernel_op(input_values, result_types)
+        finally:
+            self.src = original_src
+            self.kernel_cache = original_cache
+
+    def _inject_scalar_locals(
+        self: Self,
+        src: str,
+        scalar_values: dict[str, Any],
+    ) -> str:
+        """Prepend ``T name = literal;`` declarations that shadow scalar params."""
+        decls: list[str] = []
+        for name, value in scalar_values.items():
+            py_type = self._scalar_input_types[name]
+            msl_type = _SCALAR_METAL_DTYPE[py_type]
+            if py_type is bool:
+                literal = "true" if value else "false"
+            elif py_type is int:
+                int_value = int(value)
+                if not (_INT32_MIN <= int_value <= _INT32_MAX):
+                    err = (
+                        f"int scalar {name!r}={int_value!r} is outside the "
+                        f"32-bit int range that MSL `int` supports"
+                    )
+                    raise ValueError(err)
+                literal = str(int_value)
+            else:
+                float_value = float(value)
+                if not math.isfinite(float_value):
+                    err = (
+                        f"float scalar {name!r}={float_value!r} is not finite; "
+                        "NaN/Inf scalars are not supported"
+                    )
+                    raise ValueError(err)
+                literal = f"{float_value!r}f"
+            decls.append(f"{msl_type} {name} = {literal};")
+        # Wrap the body in a nested block so the locals can shadow the
+        # function parameters (a same-scope redeclaration would be illegal).
+        # Use newline separators so a trailing line comment in `src` cannot
+        # accidentally swallow the closing brace.
+        return "{\n" + "\n".join(decls) + "\n" + src + "\n}"
 
     # ------------------------------------------------------------------
     # Callable interface
