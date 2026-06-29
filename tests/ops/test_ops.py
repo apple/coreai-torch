@@ -347,7 +347,20 @@ class TestArange:
         x = torch.zeros(2, 8)
         await validate_numerical_output(model=model, x=x)
 
-    async def test_symint_end_with_float_start_step(self) -> None:
+    async def test_mixed_int_float_operands(self) -> None:
+        """Regression: arange with mixed int/float operands must not truncate.
+
+        torch.arange(0, 5, 0.5) has int start/end but float step. The lowering
+        must not cast step to si32 (which would truncate 0.5 → 0 and produce a
+        degenerate range); it must fall back to the float path instead.
+        """
+
+        class ArangeMixedScalars(nn.Module):
+            def forward(self) -> Tensor:
+                return torch.arange(0, 5, 0.5, dtype=torch.float32)
+
+        await validate_numerical_output(model=ArangeMixedScalars().eval())
+
         """Regression for ``replace_arange_start_step``: when ``end`` is
         SymInt-derived (carrying f32 element type from a sym_size cast)
         and ``start`` / ``step`` come in as scalar si32, ``coreai.range_``
