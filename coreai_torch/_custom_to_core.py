@@ -295,11 +295,11 @@ def _replace_quantize_or_dequantize(
         quant_elem_type = input_type.element_type  # dequantize: quant→float
         float_elem_type = result_elem_type
 
-    # Extract axis; normalize negative axis the same way the C++ lowering does.
+    # Extract axis; normalize a negative axis the same way the eager op does.
     axis_val = _get_optional_int_arg(node, axis_idx, default=0)
     input_rank = len(input_type.shape)
     if axis_val < 0:
-        axis_val = axis_val + input_rank - 1
+        axis_val = axis_val + input_rank
 
     axis = coreai.constant(np.array(axis_val, dtype=np.int32), loc=loc)
 
