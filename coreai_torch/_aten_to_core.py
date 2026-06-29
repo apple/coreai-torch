@@ -644,16 +644,21 @@ def replace_arange_start_step(
         else coreai.constant(1, dtype=start.type.element_type)
     )
 
-    # Keep operands as integers so coreai.range_ can infer a static shape;
-    # cast the result to the requested dtype afterward.
+    # When operands are integer-typed, keep them as si32 so coreai.range_ can
+    # infer a static output shape, then cast the result to the requested dtype.
+    # For float operands the count isn't statically determinable anyway, so
+    # cast everything to target_type and let range_ return a dynamic shape.
     target_type = get_output_element_type_from_node(node)
     si32 = IntegerType.get_signed(32)
+    range_type = (
+        si32 if isinstance(start.type.element_type, IntegerType) else target_type
+    )
 
     def to_scalar(v: Value) -> Value:
         if v.type.rank > 0:
             v = coreai.shrink_dims(v, list(range(v.type.rank)))
-        if v.type.element_type != si32:
-            v = coreai.cast(v, si32)
+        if v.type.element_type != range_type:
+            v = coreai.cast(v, range_type)
         return v
 
     result = coreai.range_(to_scalar(start), to_scalar(end), to_scalar(step))
