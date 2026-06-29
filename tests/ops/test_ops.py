@@ -608,6 +608,80 @@ async def test_argmax(
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
+class TestAtan2:
+    """Tests for torch.atan2(y, x) — angle from the positive x-axis to the point (x, y)."""
+
+    class Atan2Model(nn.Module):
+        def forward(self, y: Tensor, x: Tensor) -> Tensor:
+            return torch.atan2(y, x)
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (4,),
+            (3, 4),
+            (2, 3, 4),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    async def test_basic(
+        self, shape: tuple[int, ...], dtype: torch.dtype, dynamic: bool
+    ) -> None:
+        model = self.Atan2Model().eval()
+        y = torch.randn(shape, dtype=dtype)
+        x = torch.randn(shape, dtype=dtype)
+        dynamic_shapes = (
+            {"y": _all_dims_dynamic(y), "x": _all_dims_dynamic(x)} if dynamic else None
+        )
+        await validate_numerical_output(
+            model=model, y=y, x=x, dynamic_shapes=dynamic_shapes
+        )
+
+    async def test_x_zero(self) -> None:
+        """x = 0 should yield ±π/2 depending on sign of y; (0, 0) → 0 by convention."""
+        model = self.Atan2Model().eval()
+        y = torch.tensor([1.0, -1.0, 2.0, -2.0, 0.0])
+        x = torch.zeros(5)
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_y_zero(self) -> None:
+        """y = 0 with x > 0 → 0, x < 0 → π."""
+        model = self.Atan2Model().eval()
+        y = torch.zeros(4)
+        x = torch.tensor([1.0, -1.0, 2.0, -2.0])
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_all_quadrants(self) -> None:
+        """Cover all four quadrants and axes."""
+        model = self.Atan2Model().eval()
+        y = torch.tensor([1.0, 1.0, -1.0, -1.0, 0.0, 0.0, 1.0, -1.0])
+        x = torch.tensor([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 0.0, 0.0])
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_broadcast_shapes(self) -> None:
+        model = self.Atan2Model().eval()
+        y = torch.randn(3, 4)
+        x = torch.randn(4)
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_signed_zeros(self) -> None:
+        """IEEE-754 signed-zero cases: atan2(-0, x) and atan2(y, -0)."""
+        model = self.Atan2Model().eval()
+        # y = -0.0 with various x signs
+        y = torch.tensor([-0.0, -0.0, -0.0, 0.0])
+        x = torch.tensor([-1.0, 1.0, -0.0, -0.0])
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_infinities(self) -> None:
+        """IEEE-754 both-infinite cases: atan2(±inf, ±inf) → ±π/4 or ±3π/4."""
+        model = self.Atan2Model().eval()
+        inf = float("inf")
+        y = torch.tensor([inf, inf, -inf, -inf])
+        x = torch.tensor([inf, -inf, inf, -inf])
+        await validate_numerical_output(model=model, y=y, x=x)
+
+
 @pytest.mark.parametrize(
     "x",
     [
