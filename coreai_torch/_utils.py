@@ -1034,6 +1034,36 @@ def get_operands(
     return [get_operand(values_map, node, i, loc) for i in indices]
 
 
+def replace_pad_with_mode(
+    values_map: dict[str, Value], node: fx.Node, loc: Location, padding_mode: str
+) -> Value:
+    """aten.reflection_pad{1,2,3}d / replication_pad{1,2,3}d -> coreai.pad.
+
+    These modes only ever produce positive padding (torch has no negative
+    reflect/replicate), so unlike constant_pad_nd there is no cropping path.
+
+    PyTorch pad format: [pad_left_lastdim, pad_right_lastdim, ...]  (reversed)
+    Core AI pad format:  [pad_before_dim0, pad_after_dim0, ...]     (full rank)
+    """
+    x = get_operand(values_map, node, 0)
+    inverted_padding = node.args[1]
+    x_rank = x.type.rank
+
+    padding = [0] * (2 * x_rank)
+    for i in range(0, len(inverted_padding), 2):
+        dim = x_rank - (i // 2) - 1
+        padding[2 * dim] = inverted_padding[i]
+        padding[2 * dim + 1] = inverted_padding[i + 1]
+
+    # padding_value is ignored for non-constant modes, but the op requires one.
+    return coreai.pad(
+        x,
+        np.array(padding, dtype=np.uint32),
+        coreai.cast(0.0, x.type.element_type),
+        padding_mode=padding_mode,
+    )
+
+
 def scalar_constant(py_type: type, value: Any) -> Value:
     """Create a coreai.constant for a scalar kernel arg with the natural dtype.
 

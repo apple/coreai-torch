@@ -53,6 +53,9 @@ from ._utils import (
 from ._utils import (
     get_operands as _get_operands,
 )
+from ._utils import (
+    replace_pad_with_mode as _replace_pad_with_mode,
+)
 
 INT32_MAX: int = 2147483647
 
@@ -1115,6 +1118,20 @@ def replace_constant_pad_nd(
             coreai.cast(pad_value, x.type.element_type),
         )
     return result
+
+
+def replace_reflection_pad(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """aten.reflection_pad{1,2,3}d.default -> coreai.pad<reflect>."""
+    return _replace_pad_with_mode(values_map, node, loc, "reflect")
+
+
+def replace_replication_pad(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """aten.replication_pad{1,2,3}d.default -> coreai.pad<replicate>."""
+    return _replace_pad_with_mode(values_map, node, loc, "replicate")
 
 
 def _conv_transpose(
@@ -3559,8 +3576,14 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "prod.default": replace_prod_default,
     "prod.dim_int": replace_prod_dim_int,
     "reciprocal.default": replace_reciprocal,
+    "reflection_pad1d.default": replace_reflection_pad,
+    "reflection_pad2d.default": replace_reflection_pad,
+    "reflection_pad3d.default": replace_reflection_pad,
     "relu.default": replace_unary_ops,
     "remainder.Tensor": replace_remainder,
+    "replication_pad1d.default": replace_replication_pad,
+    "replication_pad2d.default": replace_replication_pad,
+    "replication_pad3d.default": replace_replication_pad,
     "round.default": replace_unary_ops,
     "round.decimals": replace_round_decimals,
     "round": replace_unary_ops,
