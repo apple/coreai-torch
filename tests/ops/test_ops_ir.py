@@ -10,6 +10,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+import coreai_torch
+
 from ..utils import _all_dims_dynamic, filecheck_pattern, get_ir
 
 
@@ -7238,3 +7240,85 @@ class TestWhileLoopIR:
                 // CHECK-NEXT:  }
             """,
         )
+
+
+class _PadModel(nn.Module):
+    def __init__(self, pad: tuple[int, ...], mode: str) -> None:
+        super().__init__()
+        self._pad = pad
+        self._mode = mode
+
+    def forward(self, x: Tensor) -> Tensor:
+        return torch.nn.functional.pad(x, self._pad, mode=self._mode)
+
+
+class TestPadModesIR:
+    """reflect/replicate padding must lower to coreai.pad, not coreai.gather_nd.
+
+    ``remove_decomps`` keeps the pad op in the graph exactly as
+    ``get_decomp_table()`` does in production, so the direct lowering is
+    exercised (otherwise torch decomposes it into index/gather ops).
+    """
+
+    @pytest.mark.parametrize(
+        "mode, aten_op, coreai_mode",
+        [
+            ("reflect", torch.ops.aten.reflection_pad2d.default, "reflect"),
+            ("replicate", torch.ops.aten.replication_pad2d.default, "replicate"),
+        ],
+    )
+    def test_lowers_to_coreai_pad_not_gather(
+        self, mode: str, aten_op, coreai_mode: str
+    ) -> None:
+        ir = get_ir(
+            _PadModel((2, 2, 2, 2), mode).eval(),
+            x=torch.rand(1, 3, 8, 8),
+            remove_decomps=[aten_op],
+        )
+        assert "coreai.pad" in ir, ir
+        assert f"mode = <{coreai_mode}>" in ir, ir
+        assert "gather_nd" not in ir, ir
+
+    def test_reflect_pad_ir_structure(self) -> None:
+        ir = get_ir(
+            _PadModel((2, 2, 2, 2), "reflect").eval(),
+            x=torch.rand(1, 3, 8, 8),
+            remove_decomps=[torch.ops.aten.reflection_pad2d.default],
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK-LABEL: coreai.graph @main
+                // CHECK:      %[[PAD:.*]] = coreai.pad %[[X:.*]], %{{.*}}, %{{.*}} mode = <reflect>
+                // CHECK-SAME:   -> tensor<1x3x12x12xf32>
+                // CHECK:      coreai.output %[[PAD]]
+            """,
+        )
+
+    def test_reflection_pad1d(self) -> None:
+        ir = get_ir(
+            _PadModel((2, 2), "reflect").eval(),
+            x=torch.rand(1, 3, 8),
+            remove_decomps=[torch.ops.aten.reflection_pad1d.default],
+        )
+        assert "coreai.pad" in ir, ir
+        assert "mode = <reflect>" in ir, ir
+        assert "gather_nd" not in ir, ir
+
+
+class TestPadDecompTable:
+    """The decomposition table must preserve the pad ops so the handler fires."""
+
+    @pytest.mark.parametrize(
+        "aten_op",
+        [
+            torch.ops.aten.reflection_pad1d.default,
+            torch.ops.aten.reflection_pad2d.default,
+            torch.ops.aten.reflection_pad3d.default,
+            torch.ops.aten.replication_pad1d.default,
+            torch.ops.aten.replication_pad2d.default,
+            torch.ops.aten.replication_pad3d.default,
+        ],
+    )
+    def test_pad_ops_preserved(self, aten_op) -> None:
+        assert aten_op not in coreai_torch.get_decomp_table()
