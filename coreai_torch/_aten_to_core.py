@@ -53,6 +53,9 @@ from ._utils import (
 from ._utils import (
     get_operands as _get_operands,
 )
+from ._utils import (
+    replace_pad_with_mode as _replace_pad_with_mode,
+)
 
 INT32_MAX: int = 2147483647
 
@@ -644,20 +647,28 @@ def replace_arange_start_step(
         else coreai.constant(1, dtype=start.type.element_type)
     )
 
-    # coreai.range_ requires scalar (rank-0) operands that share an element
-    # type. aten.arange promotes mixed-type scalars internally; we replicate
-    # that here by squeezing each operand to rank-0 and casting to the FX
-    # node's output dtype before the op.
+    # When ALL operands are integer-typed, keep them as si32 so coreai.range_
+    # can infer a static output shape, then cast the result to the requested
+    # dtype. If any operand is float (e.g. arange(0, 5, 0.5)), fall back to
+    # target_type — truncating a float step to si32 would corrupt the values.
     target_type = get_output_element_type_from_node(node)
+    si32 = IntegerType.get_signed(32)
+    all_integer = all(
+        isinstance(v.type.element_type, IntegerType) for v in (start, end, step)
+    )
+    range_type = si32 if all_integer else target_type
 
     def to_scalar(v: Value) -> Value:
         if v.type.rank > 0:
             v = coreai.shrink_dims(v, list(range(v.type.rank)))
-        if v.type.element_type != target_type:
-            v = coreai.cast(v, target_type)
+        if v.type.element_type != range_type:
+            v = coreai.cast(v, range_type)
         return v
 
-    return coreai.range_(to_scalar(start), to_scalar(end), to_scalar(step))
+    result = coreai.range_(to_scalar(start), to_scalar(end), to_scalar(step))
+    if result.type.element_type != target_type:
+        result = coreai.cast(result, target_type)
+    return result
 
 
 def replace_batch_norm(
@@ -1107,6 +1118,20 @@ def replace_constant_pad_nd(
             coreai.cast(pad_value, x.type.element_type),
         )
     return result
+
+
+def replace_reflection_pad(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """aten.reflection_pad{1,2,3}d.default -> coreai.pad<reflect>."""
+    return _replace_pad_with_mode(values_map, node, loc, "reflect")
+
+
+def replace_replication_pad(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """aten.replication_pad{1,2,3}d.default -> coreai.pad<replicate>."""
+    return _replace_pad_with_mode(values_map, node, loc, "replicate")
 
 
 def _conv_transpose(
@@ -3657,8 +3682,14 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "prod.default": replace_prod_default,
     "prod.dim_int": replace_prod_dim_int,
     "reciprocal.default": replace_reciprocal,
+    "reflection_pad1d.default": replace_reflection_pad,
+    "reflection_pad2d.default": replace_reflection_pad,
+    "reflection_pad3d.default": replace_reflection_pad,
     "relu.default": replace_unary_ops,
     "remainder.Tensor": replace_remainder,
+    "replication_pad1d.default": replace_replication_pad,
+    "replication_pad2d.default": replace_replication_pad,
+    "replication_pad3d.default": replace_replication_pad,
     "round.default": replace_unary_ops,
     "round.decimals": replace_round_decimals,
     "round": replace_unary_ops,

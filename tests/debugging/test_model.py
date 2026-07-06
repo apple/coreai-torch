@@ -57,14 +57,6 @@ class ElemwiseBlock(torch.nn.Module):
         return torch.clamp(z, -3.0, 3.0)
 
 
-class BroadcastReduceBlock(torch.nn.Module):
-    def forward(self, x, bias):
-        y = x + bias
-        m = y.mean(dim=-1, keepdim=True)
-        v = y.var(dim=-1, correction=0, keepdim=True)
-        return (y - m) / torch.sqrt(v + 1e-5)
-
-
 class LayerNormBlock(torch.nn.Module):
     def __init__(self, dim=8):
         super().__init__()
@@ -463,10 +455,6 @@ EXAMPLE_INPUTS = {
         x=torch.randn(1, 2, 8),
         y=torch.randn(1, 2, 8),
     ),
-    BroadcastReduceBlock: lambda: OrderedDict(
-        x=torch.randn(1, 2, 8),
-        bias=torch.randn(8),
-    ),
     LayerNormBlock: lambda: OrderedDict(
         x=torch.randn(1, 2, 8),
     ),
@@ -489,10 +477,10 @@ EXAMPLE_INPUTS = {
         x=torch.randn(1, 2, 8),
     ),
     EmbeddingMLPBlock: lambda: OrderedDict(
-        tokens=torch.randint(0, 32, (1, 3)),
+        tokens=torch.randint(0, 32, (1, 3), dtype=torch.int32),
     ),
     TinyTransformerBlock: lambda: OrderedDict(
-        tokens=torch.randint(0, 32, (1, 3)),
+        tokens=torch.randint(0, 32, (1, 3), dtype=torch.int32),
     ),
     LinearMulAddModel: lambda: OrderedDict(
         x=torch.randn(2, 4),

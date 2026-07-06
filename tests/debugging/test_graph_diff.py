@@ -12,7 +12,7 @@ import pytest
 import torch
 from coreai.authoring import AIProgram
 
-from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
+from coreai_torch.converter import TorchConverter
 from coreai_torch.debugging.graph_diff import (
     compute_coreai_program_diff,
     compute_exported_program_diff,
@@ -34,8 +34,7 @@ async def _create_coreai_program_from_model(
     exported_program: torch.export.ExportedProgram,
 ) -> AIProgram:
     """Create a coreai_program program from an exported program."""
-    converter: TorchConverter = TorchConverter()
-    converter._debug_info_recorder._options = _DebugInfoRecorder.Options.DEBUGINFO
+    converter: TorchConverter = TorchConverter(mode=TorchConverter.Mode.DEBUG)
     converter.add_exported_program(exported_program, entrypoint_name="main")
     coreai_program = converter.to_coreai()
     return coreai_program

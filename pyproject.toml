@@ -13,7 +13,7 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "coreai-core==1.0.0b1",
+    "coreai-core==1.0.0b2",
     "ml-dtypes",
     "networkx",
     "numpy",

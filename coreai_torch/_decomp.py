@@ -18,6 +18,12 @@ _COMPOSITE_OPS: list = [
     torch.ops.aten.hardswish.default,
     torch.ops.aten.instance_norm.default,
     torch.ops.aten.pixel_shuffle.default,
+    torch.ops.aten.reflection_pad1d.default,
+    torch.ops.aten.reflection_pad2d.default,
+    torch.ops.aten.reflection_pad3d.default,
+    torch.ops.aten.replication_pad1d.default,
+    torch.ops.aten.replication_pad2d.default,
+    torch.ops.aten.replication_pad3d.default,
     torch.ops.aten.scaled_dot_product_attention.default,
     torch.ops.aten.silu.default,
 ]
@@ -40,6 +46,8 @@ def get_decomp_table() -> dict:
     *Direct lowerings:*
 
     * ``torch.ops.aten.hardswish.default``
+    * ``torch.ops.aten.reflection_pad{1,2,3}d.default`` (to ``coreai.pad`` reflect)
+    * ``torch.ops.aten.replication_pad{1,2,3}d.default`` (to ``coreai.pad`` replicate)
     * ``torch.ops.aten.silu.default``
 
     **Usage with** ``add_exported_program`` (caller handles decomposition)::

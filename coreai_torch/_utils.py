@@ -46,6 +46,7 @@ from torch.fx.node import Argument
 from ._composite_declaration import generate_composite_decl
 from ._type_mapping import (
     TORCH_TO_COREAI_DTYPE,
+    _get_coreai_to_numpy_dtype,
     _get_coreai_to_torch_dtype,
 )
 
@@ -1034,6 +1035,52 @@ def get_operands(
     return [get_operand(values_map, node, i, loc) for i in indices]
 
 
+def replace_pad_with_mode(
+    values_map: dict[str, Value], node: fx.Node, loc: Location, padding_mode: str
+) -> Value:
+    """aten.reflection_pad{1,2,3}d / replication_pad{1,2,3}d -> coreai.pad.
+
+    These modes only ever produce positive padding (torch has no negative
+    reflect/replicate), so unlike constant_pad_nd there is no cropping path.
+
+    PyTorch pad format: [pad_left_lastdim, pad_right_lastdim, ...]  (reversed)
+    Core AI pad format:  [pad_before_dim0, pad_after_dim0, ...]     (full rank)
+    """
+    x = get_operand(values_map, node, 0)
+    inverted_padding = node.args[1]
+    x_rank = x.type.rank
+
+    padding = [0] * (2 * x_rank)
+    for i in range(0, len(inverted_padding), 2):
+        dim = x_rank - (i // 2) - 1
+        padding[2 * dim] = inverted_padding[i]
+        padding[2 * dim + 1] = inverted_padding[i + 1]
+
+    # padding_value is ignored for non-constant modes, but the op requires it to
+    # be a constant of the input dtype (a cast op is rejected by the backend).
+    np_dtype = _get_coreai_to_numpy_dtype()[x.type.element_type]
+    return coreai.pad(
+        x,
+        np.array(padding, dtype=np.uint32),
+        coreai.constant(np.array(0.0, dtype=np_dtype)),
+        padding_mode=padding_mode,
+    )
+
+
+def scalar_constant(py_type: type, value: Any) -> Value:
+    """Create a coreai.constant for a scalar kernel arg with the natural dtype.
+
+    Bypasses the fp16 promotion :func:`get_operand` applies to Python floats so
+    the MSL parameter ends up as ``constant float&`` even when the surrounding
+    tensors are fp16. Bool widens to ui8 because ``i1`` is rejected by the
+    metal4_kernel verifier; the MSL signature still emits ``constant bool&``
+    via :class:`~coreai_torch._torch_metal_kernel.TorchMetalKernel`'s
+    metal_dtype override.
+    """
+    np_dtype = {bool: np.uint8, int: np.int32, float: np.float32}[py_type]
+    return coreai.constant(np.array(value, dtype=np_dtype))
+
+
 def build_shape_tensor(
     values_map: dict[str, Value],
     shape: list[int | fx.Node],
@@ -1840,19 +1887,6 @@ def _resolve_io_names(
             fx_to_output[graph_output_names[i]] = out_name
 
     return graph_input_names, resolved_output_names, fx_to_output
-
-
-def _get_debug_info_enabled() -> bool:
-    """Get debug info enable flag from ENABLE_DEBUG_INFO environment variable.
-
-    By default, debug info is not enabled for performance reasons.
-    Set ENABLE_DEBUG_INFO=true to enable debug information generation.
-
-    Returns:
-        True if debug info should be enabled, False otherwise.
-        Defaults to False if environment variable is not set.
-    """
-    return os.getenv("ENABLE_DEBUG_INFO", "false").lower() in ("true", "1", "yes", "on")
 
 
 def _get_verify_debuginfo_locations_enabled() -> bool:
