@@ -7331,3 +7331,93 @@ class TestSDPA:
             remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
             **kwargs,
         )
+
+
+# ndim (number of padded spatial dims) -> the aten op that must be preserved
+# so the reflect/replicate lowering (coreai.pad) is exercised end to end.
+_REFLECT_PAD_OP = {
+    1: torch.ops.aten.reflection_pad1d.default,
+    2: torch.ops.aten.reflection_pad2d.default,
+    3: torch.ops.aten.reflection_pad3d.default,
+}
+_REPLICATE_PAD_OP = {
+    1: torch.ops.aten.replication_pad1d.default,
+    2: torch.ops.aten.replication_pad2d.default,
+    3: torch.ops.aten.replication_pad3d.default,
+}
+
+
+class _PadModel(nn.Module):
+    def __init__(self, pad: tuple[int, ...], mode: str) -> None:
+        super().__init__()
+        self._pad = pad
+        self._mode = mode
+
+    def forward(self, x: Tensor) -> Tensor:
+        return torch.nn.functional.pad(x, self._pad, mode=self._mode)
+
+
+# (pad, input_shape) pairs valid for BOTH reflect and replicate.
+# For reflect, torch requires every pad entry < the corresponding dim size.
+_PAD_SHARED_CASES = [
+    # 1D (pad = (left, right)), input (N, C, W)
+    ((2, 2), (1, 3, 8)),  # symmetric
+    ((1, 3), (2, 4, 10)),  # asymmetric
+    ((0, 2), (1, 1, 6)),  # one-sided
+    # 2D (pad = (left, right, top, bottom)), input (N, C, H, W)
+    ((2, 2, 2, 2), (1, 3, 8, 8)),  # symmetric
+    ((1, 2, 3, 1), (2, 3, 10, 12)),  # asymmetric, per-side
+    ((0, 1, 1, 0), (1, 4, 7, 9)),  # mixed zero/one-sided
+    # 3D (pad = (l, r, t, b, front, back)), input (N, C, D, H, W)
+    ((1, 1, 1, 1, 1, 1), (1, 2, 4, 6, 6)),  # symmetric
+    ((2, 1, 0, 2, 1, 1), (1, 2, 5, 7, 7)),  # asymmetric
+]
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("mode", ["reflect", "replicate"])
+@pytest.mark.parametrize("pad, input_shape", _PAD_SHARED_CASES)
+async def test_reflect_replicate_pad(
+    pad: tuple[int, ...],
+    input_shape: tuple[int, ...],
+    mode: str,
+    dtype: torch.dtype,
+) -> None:
+    ndim = len(pad) // 2
+    aten_op = (_REFLECT_PAD_OP if mode == "reflect" else _REPLICATE_PAD_OP)[ndim]
+    await validate_numerical_output(
+        model=_PadModel(pad, mode).eval(),
+        x=torch.rand(*input_shape, dtype=dtype),
+        remove_decomps=[aten_op],
+    )
+
+
+@pytest.mark.parametrize("mode", ["reflect", "replicate"])
+async def test_reflect_replicate_pad_dynamic_batch(mode: str) -> None:
+    """Padding amounts and spatial dims are static; only the batch is dynamic."""
+    aten_op = (_REFLECT_PAD_OP if mode == "reflect" else _REPLICATE_PAD_OP)[2]
+    await validate_numerical_output(
+        model=_PadModel((2, 2, 2, 2), mode).eval(),
+        x=torch.rand(2, 3, 8, 8),
+        dynamic_shapes={"x": {0: torch.export.Dim("batch", min=1)}},
+        remove_decomps=[aten_op],
+    )
+
+
+@pytest.mark.parametrize(
+    "pad, input_shape",
+    [
+        ((4, 4), (1, 2, 3)),  # 1D: pad exceeds the padded dim
+        ((5, 5, 5, 5), (1, 2, 3, 3)),  # 2D: pad exceeds both spatial dims
+    ],
+)
+async def test_replicate_pad_larger_than_dim(
+    pad: tuple[int, ...], input_shape: tuple[int, ...]
+) -> None:
+    """Replicate (unlike reflect) allows padding wider than the input dim."""
+    ndim = len(pad) // 2
+    await validate_numerical_output(
+        model=_PadModel(pad, "replicate").eval(),
+        x=torch.rand(*input_shape),
+        remove_decomps=[_REPLICATE_PAD_OP[ndim]],
+    )

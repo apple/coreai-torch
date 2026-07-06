@@ -46,6 +46,7 @@ from torch.fx.node import Argument
 from ._composite_declaration import generate_composite_decl
 from ._type_mapping import (
     TORCH_TO_COREAI_DTYPE,
+    _get_coreai_to_numpy_dtype,
     _get_coreai_to_torch_dtype,
 )
 
@@ -1055,11 +1056,13 @@ def replace_pad_with_mode(
         padding[2 * dim] = inverted_padding[i]
         padding[2 * dim + 1] = inverted_padding[i + 1]
 
-    # padding_value is ignored for non-constant modes, but the op requires one.
+    # padding_value is ignored for non-constant modes, but the op requires it to
+    # be a constant of the input dtype (a cast op is rejected by the backend).
+    np_dtype = _get_coreai_to_numpy_dtype()[x.type.element_type]
     return coreai.pad(
         x,
         np.array(padding, dtype=np.uint32),
-        coreai.cast(0.0, x.type.element_type),
+        coreai.constant(np.array(0.0, dtype=np_dtype)),
         padding_mode=padding_mode,
     )
 
