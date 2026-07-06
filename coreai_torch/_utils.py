@@ -1057,7 +1057,8 @@ def replace_pad_with_mode(
 
     # padding_value is ignored for non-constant modes, but the op still requires
     # a constant operand of the input's exact dtype (a cast op is rejected by the
-    # backend). Passing the MLIR element type preserves bf16/float8 exactly.
+    # backend). Passing the MLIR element type keeps the constant's dtype exact
+    # (e.g. bf16) instead of round-tripping through a lossy numpy dtype map.
     return coreai.pad(
         x,
         np.array(padding, dtype=np.uint32),
