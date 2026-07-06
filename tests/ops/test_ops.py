@@ -7374,7 +7374,7 @@ _PAD_SHARED_CASES = [
 ]
 
 
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("mode", ["reflect", "replicate"])
 @pytest.mark.parametrize("pad, input_shape", _PAD_SHARED_CASES)
 async def test_reflect_replicate_pad(
