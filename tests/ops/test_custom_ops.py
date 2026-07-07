@@ -411,7 +411,10 @@ class TestQuantize:
             prepare_program=inject_subbyte_tensors,
         )
 
-    async def test_per_channel_negative_axis_numerical(self) -> None:
+    # (2, 4, 4): equal dims keep a wrong axis silent (a value mismatch).
+    # (2, 3, 4): distinct dims show -1 is the last dim (a wrong axis is a reshape error).
+    @pytest.mark.parametrize("x", [torch.randn(2, 4, 4), torch.randn(2, 3, 4)])
+    async def test_per_channel_negative_axis_numerical(self, x: Tensor) -> None:
         """quantize with a per-channel scale on a negative axis matches eager."""
 
         class Model(nn.Module):
@@ -428,7 +431,6 @@ class TestQuantize:
                 )
 
         model = Model()
-        x = torch.randn(2, 4, 4)
         await validate_numerical_output(
             model=model, x=x, prepare_program=inject_subbyte_tensors
         )
@@ -562,7 +564,16 @@ class TestDequantize:
             prepare_program=inject_subbyte_tensors,
         )
 
-    async def test_per_channel_negative_axis_numerical(self) -> None:
+    # (2, 4, 4): equal dims keep a wrong axis silent (a value mismatch).
+    # (2, 3, 4): distinct dims show -1 is the last dim (a wrong axis is a reshape error).
+    @pytest.mark.parametrize(
+        "x",
+        [
+            torch.randint(-128, 127, (2, 4, 4), dtype=torch.int8),
+            torch.randint(-128, 127, (2, 3, 4), dtype=torch.int8),
+        ],
+    )
+    async def test_per_channel_negative_axis_numerical(self, x: Tensor) -> None:
         """dequantize with a per-channel scale on a negative axis matches eager."""
 
         class Model(nn.Module):
@@ -579,7 +590,6 @@ class TestDequantize:
                 )
 
         model = Model()
-        x = torch.randint(-128, 127, (2, 4, 4), dtype=torch.int8)
         await validate_numerical_output(
             model=model, x=x, prepare_program=inject_subbyte_tensors
         )
