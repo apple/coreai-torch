@@ -46,7 +46,6 @@ from torch.fx.node import Argument
 from ._composite_declaration import generate_composite_decl
 from ._type_mapping import (
     TORCH_TO_COREAI_DTYPE,
-    _get_coreai_to_numpy_dtype,
     _get_coreai_to_torch_dtype,
 )
 
@@ -1056,13 +1055,14 @@ def replace_pad_with_mode(
         padding[2 * dim] = inverted_padding[i]
         padding[2 * dim + 1] = inverted_padding[i + 1]
 
-    # padding_value is ignored for non-constant modes, but the op requires it to
-    # be a constant of the input dtype (a cast op is rejected by the backend).
-    np_dtype = _get_coreai_to_numpy_dtype()[x.type.element_type]
+    # padding_value is ignored for non-constant modes, but the op still requires
+    # a constant operand of the input's exact dtype (a cast op is rejected by the
+    # backend). Passing the MLIR element type keeps the constant's dtype exact
+    # (e.g. bf16) instead of round-tripping through a lossy numpy dtype map.
     return coreai.pad(
         x,
         np.array(padding, dtype=np.uint32),
-        coreai.constant(np.array(0.0, dtype=np_dtype)),
+        coreai.constant(0.0, dtype=x.type.element_type),
         padding_mode=padding_mode,
     )
 
