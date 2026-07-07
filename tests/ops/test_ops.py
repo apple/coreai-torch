@@ -1544,6 +1544,41 @@ async def test_div(x: Tensor, y: Tensor, dynamic: bool) -> None:
 @pytest.mark.parametrize(
     "x,y",
     [
+        (
+            torch.tensor([7, -7, 3, 1], dtype=torch.int32),
+            torch.tensor([2, 2, 2, 4], dtype=torch.int32),
+        ),
+        (
+            torch.tensor([1, 2, 3, 4], dtype=torch.int64),
+            torch.tensor([3, 3, 3, 3], dtype=torch.int64),
+        ),
+    ],
+)
+async def test_div_integer_promotes_to_float(x: Tensor, y: Tensor) -> None:
+    """aten.div.Tensor on integer operands must promote to float before dividing."""
+
+    class DivModel(nn.Module):
+        def forward(self, x: Tensor, y: Tensor) -> Tensor:
+            return x / y
+
+    model = DivModel().eval()
+    await validate_numerical_output(model=model, x=x, y=y)
+
+
+async def test_div_scalar_integer_promotes_to_float() -> None:
+    """aten.div.Scalar on an integer tensor must promote to float before dividing."""
+    x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
+
+    class DivScalarModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return x / 4
+
+    await validate_numerical_output(model=DivScalarModel().eval(), x=x)
+
+
+@pytest.mark.parametrize(
+    "x,y",
+    [
         # Float tensors - mixed positive/negative values
         (
             torch.tensor([[3.5, -7.2], [-2.8, 9.1]]),
