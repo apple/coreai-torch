@@ -36,7 +36,6 @@ async def simple_coreai_program() -> AIProgram:
     converter: TorchConverter = TorchConverter()
     converter._debug_info_recorder.config = _DebugInfoRecorder.Config(
         include_stack_trace=True,
-        options=_DebugInfoRecorder.Options.DEBUGINFO,
         verify_debuginfo_locations=True,
     )
     converter.add_exported_program(exported_program, entrypoint_name="main")
@@ -44,7 +43,6 @@ async def simple_coreai_program() -> AIProgram:
     return coreai_program
 
 
-@pytest.mark.asyncio
 async def test_torch_fx_inspector() -> None:
     """Test _TorchFXInspector with a simple torch model."""
     model = LinearMulAddModel().eval()
@@ -73,7 +71,6 @@ async def test_torch_fx_inspector() -> None:
         assert isinstance(results[op_name][0], np.ndarray)
 
 
-@pytest.mark.asyncio
 async def test_caching_inspector() -> None:
     """Test CachingInspector with LRU caching."""
     model = LinearMulAddModel().eval()
@@ -110,7 +107,6 @@ async def test_caching_inspector() -> None:
     sys.platform != "darwin",
     reason="Requires loading a runtime asset (AIModel.load); only supported on macOS",
 )
-@pytest.mark.asyncio
 async def test_coreai_inspector(simple_coreai_program: AIProgram) -> None:
     """Test _CoreAIInspector with a deployed model."""
     # Get torch -> coreai mappings
@@ -155,7 +151,6 @@ async def test_coreai_inspector(simple_coreai_program: AIProgram) -> None:
                 assert isinstance(item, np.ndarray)
 
 
-@pytest.mark.asyncio
 async def test_torch_to_coreai_mappings(
     simple_coreai_program: AIProgram,
 ) -> None:

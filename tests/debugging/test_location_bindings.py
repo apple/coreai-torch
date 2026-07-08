@@ -28,7 +28,6 @@ async def simple_coreai_program() -> AIProgram:
     converter: TorchConverter = TorchConverter()
     converter._debug_info_recorder.config = _DebugInfoRecorder.Config(
         include_stack_trace=True,
-        options=_DebugInfoRecorder.Options.DEBUGINFO,
         verify_debuginfo_locations=True,
     )
     converter.add_exported_program(exported_program, entrypoint_name="main")
@@ -46,7 +45,6 @@ async def complex_coreai_program() -> AIProgram:
     converter: TorchConverter = TorchConverter()
     converter._debug_info_recorder.config = _DebugInfoRecorder.Config(
         include_stack_trace=True,
-        options=_DebugInfoRecorder.Options.DEBUGINFO,
         verify_debuginfo_locations=True,
     )
     converter.add_exported_program(exported_program, entrypoint_name="main")

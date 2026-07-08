@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, Optional, cast
 
 import coreai._compiler._mlir_libs._coreaiIR._bindings.mlir as _mlir  # type: ignore[attr-defined]
@@ -43,7 +44,6 @@ from ._debug_locations import _DebugInfoRecorder
 from ._torch_metal_kernel import TorchMetalKernel
 from ._utils import (
     _NARROW_TORCH_DTYPE,
-    _get_debug_info_enabled,
     _get_mutation_output_name,
     _get_verify_debuginfo_locations_enabled,
     _ProgressBar,
@@ -51,11 +51,12 @@ from ._utils import (
     check_result_type,
     get_invoke_from_graph,
     get_namespace,
-    get_operands,
+    get_operand,
     get_result_types,
     get_target,
     get_tensor_type,
     preprocess_graph,
+    scalar_constant,
     strip_variant_from_target,
     validate_and_cast_numpy_array,
 )
@@ -103,12 +104,54 @@ class Context(_CoreAIAuthoringContext):
 
 
 class TorchConverter:
-    def __init__(self) -> None:
+    class Mode(Enum):
+        """Controls the level of debug information embedded in the converted asset.
+
+        Attributes:
+            RELEASE: Lightweight mode that records only operation IDs without
+                stack traces.
+            DEBUG: Includes full torch stack traces for comprehensive source
+                mapping and debugging.
+        """
+
+        DEBUG = "debug"
+        RELEASE = "release"
+
+    @staticmethod
+    def _create_debug_info_recorder(
+        mode: "TorchConverter.Mode",
+    ) -> _DebugInfoRecorder:
+        """Create and configure a DebugInfoRecorder based on the converter mode.
+
+        Args:
+            mode: The converter mode that determines whether stack traces are
+                included.
+
+        Returns:
+            A configured _DebugInfoRecorder instance.
+        """
+        include_stack_trace = mode == TorchConverter.Mode.DEBUG
+        debug_config = _DebugInfoRecorder.Config(
+            include_stack_trace=include_stack_trace,
+            verify_debuginfo_locations=_get_verify_debuginfo_locations_enabled(),
+        )
+        return _DebugInfoRecorder(config=debug_config)
+
+    def __init__(self, *, mode: "TorchConverter.Mode" = Mode.DEBUG) -> None:
         """Create a reusable converter engine.
+
+        Args:
+            mode: Controls the level of debug information embedded in the
+                converted asset. Use ``TorchConverter.Mode.RELEASE``
+                for lightweight operation-ID-only tracking, or ``TorchConverter.Mode.DEBUG`` (default)
+                for full torch stack traces. Call
+                :func:`coreai_torch.debugging.debug_info.strip_debug_info`
+                to remove debug metadata from an already-converted program.
 
         Reusable state (custom op lowerings) is retained across calls to
         ``to_coreai()``.  Per-conversion transient state is reset each time.
         """
+        self._mode = mode
         self.context = Context()
 
         # user defined torch op lowering (reusable across conversions)
@@ -121,17 +164,7 @@ class TorchConverter:
         self._progress_bar: _ProgressBar | None = None
 
         # Debug info recorder for comprehensive debug tracking
-        options = (
-            _DebugInfoRecorder.Options.DEBUGINFO
-            if _get_debug_info_enabled()
-            else _DebugInfoRecorder.Options.STANDARD
-        )
-        debug_config = _DebugInfoRecorder.Config(
-            include_stack_trace=True,
-            options=options,
-            verify_debuginfo_locations=_get_verify_debuginfo_locations_enabled(),
-        )
-        self._debug_info_recorder = _DebugInfoRecorder(config=debug_config)
+        self._debug_info_recorder = self._create_debug_info_recorder(mode)
 
     def _init_conversion_state(self) -> None:
         """Reset per-conversion transient state."""
@@ -1024,10 +1057,26 @@ class TorchConverter:
                 loc: Location,
                 _k: TorchMetalKernel = kernel,
             ) -> Value | list[Value]:
-                input_values = get_operands(
-                    values_map, node, list(range(len(node.args)))
-                )
-                results = _k._construct_kernel_op(input_values, get_result_types(node))
+                input_values: list[Value] = []
+                scalar_values: dict[str, Any] = {}
+                for idx in range(len(node.args)):
+                    arg = node.args[idx]
+                    scalar_type: type | None = None
+                    if idx < len(_k.input_names) and not isinstance(arg, fx.Node):
+                        scalar_type = _k._scalar_input_types.get(_k.input_names[idx])
+                    if scalar_type is not None:
+                        input_values.append(scalar_constant(scalar_type, arg))
+                        scalar_values[_k.input_names[idx]] = arg
+                    else:
+                        input_values.append(get_operand(values_map, node, idx))
+                _k._scalar_values_for_call = scalar_values
+                try:
+                    results = _k._construct_kernel_op(
+                        input_values,
+                        get_result_types(node),
+                    )
+                finally:
+                    _k._scalar_values_for_call = {}
                 return results[0] if len(results) == 1 else results
 
         return self

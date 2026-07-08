@@ -13,7 +13,6 @@ import pathlib
 from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from enum import Enum
 from typing import Iterable, Iterator, Optional
 
 import torch.fx as fx
@@ -148,7 +147,10 @@ class DebugInfo:
 
 
 def _create_debug_location_from_debug_info(
-    debug_info: DebugInfo, scope: Attribute, context: Context
+    debug_info: DebugInfo,
+    scope: Attribute,
+    context: Context,
+    unknown_src: Location,
 ) -> location_attr:
     """
     Create a debug location from DebugInfo dataclass.
@@ -162,6 +164,7 @@ def _create_debug_location_from_debug_info(
         scope: Debug scope attribute (SubprogramAttr, CompileUnitAttr, or
             UnitAttr)
         context: Core AI context
+        unknown_src: Unknown location.
 
     Returns:
         LocationAttr with file location as base and metadata from other
@@ -200,136 +203,12 @@ def _create_debug_location_from_debug_info(
         scope=scope,
         context=context,
         metadata_attrs=metadata_attrs,
+        unknown_src=unknown_src,
     )
-
-
-def _create_locations_from_debug_info(
-    debug_info: DebugInfo, context: Context
-) -> list[Location]:
-    """Create Core AI locations from DebugInfo file locations and operation IDs."""
-    locations = []
-
-    # Convert file locations to Core AI Location objects
-    if debug_info.file_locations:
-        locations.extend(
-            [
-                Location.file(
-                    filename=file_loc.filename,
-                    line=file_loc.line,
-                    col=file_loc.col,
-                    context=context,
-                )
-                for file_loc in debug_info.file_locations
-            ]
-        )
-
-    # Add operation ID location using _create_operation_id_location
-    if debug_info.operation_id:
-        op_id_location = _create_operation_id_location(debug_info.operation_id, context)
-        locations.append(op_id_location)
-
-    # Add source operation ID location using _create_operation_id_location
-    if debug_info.source:
-        source_operation_id = OperationID(
-            type=debug_info.source.name, value=debug_info.source.id
-        )
-        source_op_id_location = _create_operation_id_location(
-            source_operation_id, context
-        )
-        locations.append(source_op_id_location)
-
-    return locations
-
-
-def _create_metadata_dict_from_debug_info(
-    debug_info: DebugInfo, context: Context
-) -> dict[str, Attribute]:
-    """Create metadata dictionary from DebugInfo components."""
-    metadata_dict = {}
-
-    # Add source identifiers metadata if source exists
-    if debug_info.source and debug_info.source.identifiers:
-        id_attrs = [
-            StringAttr.get(ident, context=context)
-            for ident in debug_info.source.identifiers
-        ]
-        metadata_dict["identifiers"] = ArrayAttr.get(id_attrs, context=context)
-
-    # Add output maps metadata if present
-    if debug_info.output_maps:
-        map_dicts = [
-            _output_map_to_dictionary(output_map, context)
-            for output_map in debug_info.output_maps
-        ]
-        metadata_dict["output_maps"] = ArrayAttr.get(map_dicts, context=context)
-
-    # Add module hierarchy metadata if present
-    if debug_info.call_stack:
-        string_attrs = [
-            StringAttr.get(name, context=context) for name in debug_info.call_stack
-        ]
-        metadata_dict["call_stack"] = ArrayAttr.get(string_attrs, context=context)
-
-    return metadata_dict
-
-
-def _create_location_from_debug_info(
-    debug_info: DebugInfo, context: Context
-) -> Location:
-    """
-    Create a Core AI Location from DebugInfo dataclass.
-
-    Uses file_locations as the base location, creating a fused location with
-    operation ID locations for both Operation ID and source operation ID.
-
-    Args:
-        debug_info: DebugInfo dataclass instance containing all debug
-            information
-        context: Core AI context
-
-    Returns:
-        Core AI Location object from file locations with operation ID locations,
-            or unknown location if no file locations and no operation IDs available
-    """
-    # Create Core AI locations from debug info
-    locations = _create_locations_from_debug_info(debug_info, context)
-
-    # Create metadata dictionary
-    metadata_dict = _create_metadata_dict_from_debug_info(debug_info, context)
-
-    # Handle edge cases
-    if not locations:
-        return Location.unknown(context=context)
-
-    if len(locations) == 1 and not metadata_dict:
-        return locations[0]
-
-    # Create fused location with operation ID locations and metadata
-    fused_attr = DictAttr.get(metadata_dict, context=context) if metadata_dict else None
-    return Location.fused(locations, metadata=fused_attr, context=context)
 
 
 # =============================================================================
 # Integer Attribute Helper Functions
-def _create_operation_id_location(
-    operation_id: OperationID, context: Context
-) -> Location:
-    """Create a NamedLocation with operation ID information.
-
-    Args:
-        operation_id: Operation ID containing type and value
-        context: Core AI context
-
-    Returns:
-        Core AI NamedLocation with operation ID
-    """
-    # Create NamedLocation(<type>, loc("op_id", <value>, 0))
-    file_loc = Location.file(
-        filename="op_id", line=operation_id.value, col=0, context=context
-    )
-    return Location.name(operation_id.type, file_loc, context=context)
-
-
 # =============================================================================
 
 
@@ -459,6 +338,53 @@ def _create_output_maps_metadata(
     return metadata_attr(name="output_maps", data=output_maps_array, context=context)
 
 
+def _create_unknown_location(
+    unknown_src: Location,
+    context: Context,
+    metadata_attrs: list[metadata_attr] | None = None,
+) -> location_attr:
+    """Create an unknown debuginfo location with optional metadata.
+
+    Args:
+        unknown_src: A pre-created unknown source Location (e.g. filename="", line=0).
+        context: Core AI context.
+        metadata_attrs: Optional metadata attributes to attach.
+
+    Returns:
+        A location_attr with UnitAttr scope and the given metadata.
+    """
+    scope = UnitAttr.get(context=context)
+    return location_attr(
+        src=unknown_src,
+        scope=scope,
+        metadata=metadata_attrs,
+        context=context,
+    )
+
+
+def _create_unknown_location_with_operation_id(
+    operation_id: OperationID | None,
+    unknown_src: Location,
+    context: Context,
+) -> location_attr:
+    """Create an unknown debuginfo location preserving only an operation ID.
+
+    Args:
+        operation_id: Optional operation ID to embed as metadata.
+        unknown_src: A pre-created unknown source Location.
+        context: Core AI context.
+
+    Returns:
+        A location_attr with UnitAttr scope and operation_id metadata.
+    """
+    metadata_attrs: list[metadata_attr] = []
+    if operation_id is not None:
+        metadata_attrs.append(_create_operation_id_metadata(operation_id, context))
+    return _create_unknown_location(
+        unknown_src, context, metadata_attrs if metadata_attrs else None
+    )
+
+
 # =============================================================================
 # Location Creation Functions
 # =============================================================================
@@ -487,60 +413,6 @@ def _create_stack_trace_file_locations(
         )
 
     return file_locations
-
-
-def _create_unknown_location(
-    context: Context,
-    metadata_attrs: list[metadata_attr] | None = None,
-) -> location_attr:
-    """
-    Create an unknown location when file location information is not
-    available.
-
-    Args:
-        context: Core AI context
-        metadata_attrs: Optional list of metadata attributes to attach
-
-    Returns:
-        LocationAttr with empty filename and UnitAttr scope
-    """
-    # Create empty file location (filename="", line=0, col=0)
-    unknown_src = Location.file(
-        filename="-",
-        line=0,
-        col=0,
-        context=context,
-    )
-
-    # Create with UnitAttr scope
-    scope = UnitAttr.get(context=context)
-
-    return location_attr(
-        src=unknown_src,
-        scope=scope,
-        metadata=metadata_attrs,
-        context=context,
-    )
-
-
-def _create_unknown_location_with_operation_id(
-    debug_info: DebugInfo, context: Context
-) -> location_attr:
-    """
-    Create an unknown location with operation_id metadata if available.
-
-    Args:
-        debug_info: Debug information containing optional operation_id
-        context: Core AI context
-
-    Returns:
-        LocationAttr with unknown location and operation_id metadata
-    """
-    metadata_attrs = []
-    if debug_info.operation_id:
-        op_id_metadata = _create_operation_id_metadata(debug_info.operation_id, context)
-        metadata_attrs.append(op_id_metadata)
-    return _create_unknown_location(context, metadata_attrs)
 
 
 def _create_debug_info_from_node(
@@ -582,6 +454,7 @@ def _create_stack_trace_debug_location(
     file_locations: list[FileLineColLoc],
     scope: Attribute,
     context: Context,
+    unknown_src: Location,
     metadata_attrs: list[metadata_attr] | None = None,
 ) -> location_attr:
     """
@@ -593,6 +466,7 @@ def _create_stack_trace_debug_location(
         scope: Debug scope attribute (SubprogramAttr, CompileUnitAttr, or
             UnitAttr)
         context: Core AI context
+        unknown_src: Unknown location.
         metadata_attrs: Optional list of metadata attributes to attach
 
     Returns:
@@ -600,7 +474,13 @@ def _create_stack_trace_debug_location(
             locations
     """
     if not file_locations:
-        return _create_unknown_location(context, metadata_attrs)
+        unit_scope = UnitAttr.get(context=context)
+        return location_attr(
+            src=unknown_src,
+            scope=unit_scope,
+            metadata=metadata_attrs,
+            context=context,
+        )
 
     # Convert first location to Core AI Location for src
     first_location = Location.file(
@@ -863,25 +743,17 @@ class _DebugInfoMap:
 class _DebugInfoRecorder:
     """Recorder for recording debug information with node and results."""
 
-    class Options(Enum):
-        """Enum to specify location creation mode."""
-
-        DEBUGINFO = "debuginfo"  # Use location_attr with full debug info
-        STANDARD = "standard"  # Use standard Core AI Location objects
-
     @dataclass(frozen=True)
     class Config:
         """Configuration for _DebugInfoRecorder."""
 
         include_stack_trace: bool
-        options: "_DebugInfoRecorder.Options"
         verify_debuginfo_locations: bool
 
     def __init__(
         self: Self,
         config: "Config" = Config(
             include_stack_trace=True,
-            options=Options.STANDARD,
             verify_debuginfo_locations=False,
         ),
     ):
@@ -897,87 +769,89 @@ class _DebugInfoRecorder:
         )
         self._current_node: fx.Node | None = None
         self._file_cache: OrderedDict[str, file_attr] = OrderedDict()
+        self._unknown_src: Location | None = None
 
-    def _create_unknown_location_with_operation_id(
-        self: Self, debug_info: DebugInfo, context: Context
-    ) -> Location:
-        """Create a NamedLocation with operation ID information.
+    def _get_unknown_src(self: Self, context: Context) -> Location:
+        """Get or create the shared unknown source location.
+
+        Creates the Location once on first call and reuses it for all
+        subsequent calls within the same recorder instance.
 
         Args:
-            debug_info: Debug information containing operation ID
             context: Core AI context
 
         Returns:
-            Core AI NamedLocation with operation ID or unknown location
+            A shared Location with filename="", line=0, col=0
         """
-        if debug_info.operation_id:
-            return _create_operation_id_location(debug_info.operation_id, context)
-        else:
-            return Location.unknown(context=context)
+        if self._unknown_src is None:
+            self._unknown_src = Location.file(
+                filename="",
+                line=0,
+                col=0,
+                context=context,
+            )
+        return self._unknown_src
 
-    def _create_debuginfo_location(
+    def _get_unknown_location(
         self: Self,
-        debug_info: DebugInfo,
         context: Context,
-        scope: Attribute | None = None,
+        metadata_attrs: list[metadata_attr] | None = None,
     ) -> location_attr:
-        """Create location_attr for DEBUGINFO mode.
+        """Create an unknown location reusing the cached unknown_src.
 
         Args:
-            debug_info: Debug information for the location
             context: Core AI context
-            scope: Optional scope for DEBUGINFO mode
+            metadata_attrs: Optional list of metadata attributes to attach
 
         Returns:
-            location_attr with debug info or unknown location if disabled
+            LocationAttr with cached unknown_src and UnitAttr scope
         """
-        if not self.config.include_stack_trace:
-            return _create_unknown_location_with_operation_id(debug_info, context)
-        else:
-            if scope is None:
-                scope = UnitAttr.get(context=context)
-            return _create_debug_location_from_debug_info(debug_info, scope, context)
+        unknown_src = self._get_unknown_src(context)
+        return _create_unknown_location(unknown_src, context, metadata_attrs)
 
-    def _create_standard_location(
-        self: Self,
-        debug_info: DebugInfo,
-        context: Context,
-    ) -> Location:
-        """Create standard Core AI Location for STANDARD mode.
+    def _get_unknown_location_with_operation_id(
+        self: Self, debug_info: DebugInfo, context: Context
+    ) -> location_attr:
+        """Create an unknown location with operation_id metadata if available.
+
+        Reuses the cached unknown_src and attaches operation ID as metadata.
 
         Args:
-            debug_info: Debug information for the location
+            debug_info: Debug information containing optional operation_id
             context: Core AI context
 
         Returns:
-            Location with debug info or unknown location if disabled
+            LocationAttr with cached unknown_src and operation_id metadata
         """
-        if not self.config.include_stack_trace:
-            return self._create_unknown_location_with_operation_id(debug_info, context)
-        else:
-            return _create_location_from_debug_info(debug_info, context)
+        unknown_src = self._get_unknown_src(context)
+        return _create_unknown_location_with_operation_id(
+            debug_info.operation_id, unknown_src, context
+        )
 
     def _create_operation_location(
         self: Self,
         debug_info: DebugInfo,
         context: Context,
         scope: Attribute | None = None,
-    ) -> location_attr | Location:
-        """Create location based on the current location mode and enable_locations setting.
+    ) -> location_attr:
+        """Create a debuginfo location_attr for an operation.
 
         Args:
             debug_info: Debug information for the location
             context: Core AI context
-            scope: Optional scope for DEBUGINFO mode
+            scope: Optional scope attribute
 
         Returns:
-            location_attr for DEBUGINFO mode or Location for STANDARD mode,
-            with operation ID metadata preserved even when locations are disabled
+            location_attr with debug info, or unknown location with operation
+            ID metadata when stack traces are disabled
         """
-        if self.config.options == self.Options.DEBUGINFO:
-            return self._create_debuginfo_location(debug_info, context, scope)
-        else:  # STANDARD mode
-            return self._create_standard_location(debug_info, context)
+        if not self.config.include_stack_trace:
+            return self._get_unknown_location_with_operation_id(debug_info, context)
+        if scope is None:
+            scope = UnitAttr.get(context=context)
+        return _create_debug_location_from_debug_info(
+            debug_info, scope, context, unknown_src=self._get_unknown_src(context)
+        )
 
     def _populate_file_cache_from_debug_info(
         self: Self, debug_info: DebugInfo, context: Context
@@ -1052,10 +926,6 @@ class _DebugInfoRecorder:
         Args:
             graph_operation: The graph operation to set location for
         """
-        # Skip location creation for STANDARD mode
-        if self.config.options == self.Options.STANDARD:
-            return
-
         context = graph_operation.context
 
         # Create operation ID metadata for the graph operation
@@ -1065,7 +935,7 @@ class _DebugInfoRecorder:
 
         if not self.config.include_stack_trace:
             # Create unknown location with metadata if locations are disabled
-            debug_location = _create_unknown_location(context, [op_id_metadata])
+            debug_location = self._get_unknown_location(context, [op_id_metadata])
         else:
             # Get the graph name using the helper function
             graph_name = _get_symbol_name(graph_operation, "")
@@ -1121,17 +991,13 @@ class _DebugInfoRecorder:
         Args:
             module: The Core AI Module to set location for
         """
-        # Skip location creation for STANDARD mode
-        if self.config.options == self.Options.STANDARD:
-            return
-
         # Get the module operation
         module_op = module.operation
         context = module_op.context
 
         if not self.config.include_stack_trace:
             # Create unknown location if locations are disabled
-            debug_location = _create_unknown_location(context)
+            debug_location = self._get_unknown_location(context)
         else:
             # Create compile unit for module using files from the graph if available
             if self._file_cache:
@@ -1223,11 +1089,8 @@ class _DebugInfoRecorder:
         # Set module location before restoring context
         self._set_module_location(module)
 
-        # Verify that each location is a debuginfo location (only in DEBUGINFO mode and when enabled)
-        if (
-            self.config.options == self.Options.DEBUGINFO
-            and self.config.verify_debuginfo_locations
-        ):
+        # Verify that each location is a debuginfo location when enabled
+        if self.config.verify_debuginfo_locations:
             self._verify_debuginfo_locations(module)
 
         # Restore previous module and clear caches
@@ -1410,7 +1273,7 @@ class _DebugInfoRecorder:
 
                 if not self.config.include_stack_trace:
                     # Create unknown location with metadata if locations are disabled
-                    location = _create_unknown_location_with_operation_id(
+                    location = self._get_unknown_location_with_operation_id(
                         debug_info, context
                     )
                 else:
@@ -1460,7 +1323,7 @@ class _DebugInfoRecorder:
             # Create debug location
             if not self.config.include_stack_trace:
                 # Create unknown location with metadata if locations are disabled
-                location = _create_unknown_location_with_operation_id(
+                location = self._get_unknown_location_with_operation_id(
                     debug_info, context
                 )
             else:

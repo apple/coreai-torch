@@ -399,7 +399,6 @@ async def _create_coreai_program_from_model(
     converter: TorchConverter = TorchConverter()
     converter._debug_info_recorder.config = _DebugInfoRecorder.Config(
         include_stack_trace=True,
-        options=_DebugInfoRecorder.Options.DEBUGINFO,
         verify_debuginfo_locations=True,
     )
     converter.add_exported_program(exported_program, entrypoint_name="main")
@@ -416,11 +415,9 @@ async def _create_coreai_program_from_model(
     [
         pytest.param(
             "fc1",
-            marks=pytest.mark.xfail(reason="Fails after coreai update", strict=False),
         ),
         pytest.param(
             "fc2",
-            marks=pytest.mark.xfail(reason="Fails after coreai update", strict=False),
         ),
         None,
     ],

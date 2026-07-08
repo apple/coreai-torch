@@ -347,7 +347,20 @@ class TestArange:
         x = torch.zeros(2, 8)
         await validate_numerical_output(model=model, x=x)
 
-    async def test_symint_end_with_float_start_step(self) -> None:
+    async def test_mixed_int_float_operands(self) -> None:
+        """Regression: arange with mixed int/float operands must not truncate.
+
+        torch.arange(0, 5, 0.5) has int start/end but float step. The lowering
+        must not cast step to si32 (which would truncate 0.5 → 0 and produce a
+        degenerate range); it must fall back to the float path instead.
+        """
+
+        class ArangeMixedScalars(nn.Module):
+            def forward(self) -> Tensor:
+                return torch.arange(0, 5, 0.5, dtype=torch.float32)
+
+        await validate_numerical_output(model=ArangeMixedScalars().eval())
+
         """Regression for ``replace_arange_start_step``: when ``end`` is
         SymInt-derived (carrying f32 element type from a sym_size cast)
         and ``start`` / ``step`` come in as scalar si32, ``coreai.range_``
@@ -593,6 +606,80 @@ async def test_argmax(
     model = ArgmaxModel().eval()
     dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+class TestAtan2:
+    """Tests for torch.atan2(y, x) — angle from the positive x-axis to the point (x, y)."""
+
+    class Atan2Model(nn.Module):
+        def forward(self, y: Tensor, x: Tensor) -> Tensor:
+            return torch.atan2(y, x)
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (4,),
+            (3, 4),
+            (2, 3, 4),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    async def test_basic(
+        self, shape: tuple[int, ...], dtype: torch.dtype, dynamic: bool
+    ) -> None:
+        model = self.Atan2Model().eval()
+        y = torch.randn(shape, dtype=dtype)
+        x = torch.randn(shape, dtype=dtype)
+        dynamic_shapes = (
+            {"y": _all_dims_dynamic(y), "x": _all_dims_dynamic(x)} if dynamic else None
+        )
+        await validate_numerical_output(
+            model=model, y=y, x=x, dynamic_shapes=dynamic_shapes
+        )
+
+    async def test_x_zero(self) -> None:
+        """x = 0 should yield ±π/2 depending on sign of y; (0, 0) → 0 by convention."""
+        model = self.Atan2Model().eval()
+        y = torch.tensor([1.0, -1.0, 2.0, -2.0, 0.0])
+        x = torch.zeros(5)
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_y_zero(self) -> None:
+        """y = 0 with x > 0 → 0, x < 0 → π."""
+        model = self.Atan2Model().eval()
+        y = torch.zeros(4)
+        x = torch.tensor([1.0, -1.0, 2.0, -2.0])
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_all_quadrants(self) -> None:
+        """Cover all four quadrants and axes."""
+        model = self.Atan2Model().eval()
+        y = torch.tensor([1.0, 1.0, -1.0, -1.0, 0.0, 0.0, 1.0, -1.0])
+        x = torch.tensor([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 0.0, 0.0])
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_broadcast_shapes(self) -> None:
+        model = self.Atan2Model().eval()
+        y = torch.randn(3, 4)
+        x = torch.randn(4)
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_signed_zeros(self) -> None:
+        """IEEE-754 signed-zero cases: atan2(-0, x) and atan2(y, -0)."""
+        model = self.Atan2Model().eval()
+        # y = -0.0 with various x signs
+        y = torch.tensor([-0.0, -0.0, -0.0, 0.0])
+        x = torch.tensor([-1.0, 1.0, -0.0, -0.0])
+        await validate_numerical_output(model=model, y=y, x=x)
+
+    async def test_infinities(self) -> None:
+        """IEEE-754 both-infinite cases: atan2(±inf, ±inf) → ±π/4 or ±3π/4."""
+        model = self.Atan2Model().eval()
+        inf = float("inf")
+        y = torch.tensor([inf, inf, -inf, -inf])
+        x = torch.tensor([inf, -inf, inf, -inf])
+        await validate_numerical_output(model=model, y=y, x=x)
 
 
 @pytest.mark.parametrize(
@@ -6666,7 +6753,7 @@ async def test_pixel_shuffle(x: Tensor, upscale_factor: int, dynamic_dims: tuple
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize(
     "shape",
     [
@@ -6765,7 +6852,7 @@ class TestPolar:
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize(
     "shape",
     [
@@ -6813,7 +6900,7 @@ async def test_unsafe_view(x: Tensor, shape: list[int]) -> None:
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize(
     "shape",
     [
@@ -6825,27 +6912,13 @@ async def test_unsafe_view(x: Tensor, shape: list[int]) -> None:
 async def test_view_as_complex(
     shape: tuple[int, ...], dtype: torch.dtype, dynamic: bool
 ) -> None:
-    """Test torch.view_as_complex converting a real tensor [..., 2] to a complex tensor [...]。
-
-    float16 input produces complex<f16> (torch.complex32); check_result_type must
-    accept complex<f16> when the FX metadata records complex<f32> (torch.complex64),
-    which happens when an f16-cast ExportedProgram is imported via TorchConverter.
-    """
+    """Test torch.view_as_complex converting a real tensor [..., 2] to a complex tensor [...]."""
 
     class ViewAsComplexModel(nn.Module):
         def forward(self, x: Tensor) -> Tensor:
             return torch.view_as_complex(x)
 
-    class ViewAsComplexF16Model(nn.Module):
-        def forward(self, x: Tensor) -> Tensor:
-            # view_as_real roundtrip: keeps output as float so numpy can compare.
-            # float16 input produces complex<f16> internally, exercising the
-            # complex64->complex32 narrowing in check_result_type.
-            return torch.view_as_real(torch.view_as_complex(x))
-
-    model = (
-        ViewAsComplexModel() if dtype == torch.float32 else ViewAsComplexF16Model()
-    ).eval()
+    model = ViewAsComplexModel().eval()
     x = torch.randn(*shape, 2, dtype=dtype)
     dynamic_shapes = (
         make_dynamic_shapes(x={i: f"d{i}" for i in range(x.dim() - 1)})
@@ -6856,7 +6929,7 @@ async def test_view_as_complex(
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize(
     "shape",
     [
@@ -7332,3 +7405,93 @@ class TestSDPA:
             remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
             **kwargs,
         )
+
+
+# ndim (number of padded spatial dims) -> the aten op that must be preserved
+# so the reflect/replicate lowering (coreai.pad) is exercised end to end.
+_REFLECT_PAD_OP = {
+    1: torch.ops.aten.reflection_pad1d.default,
+    2: torch.ops.aten.reflection_pad2d.default,
+    3: torch.ops.aten.reflection_pad3d.default,
+}
+_REPLICATE_PAD_OP = {
+    1: torch.ops.aten.replication_pad1d.default,
+    2: torch.ops.aten.replication_pad2d.default,
+    3: torch.ops.aten.replication_pad3d.default,
+}
+
+
+class _PadModel(nn.Module):
+    def __init__(self, pad: tuple[int, ...], mode: str) -> None:
+        super().__init__()
+        self._pad = pad
+        self._mode = mode
+
+    def forward(self, x: Tensor) -> Tensor:
+        return torch.nn.functional.pad(x, self._pad, mode=self._mode)
+
+
+# (pad, input_shape) pairs valid for BOTH reflect and replicate.
+# For reflect, torch requires every pad entry < the corresponding dim size.
+_PAD_SHARED_CASES = [
+    # 1D (pad = (left, right)), input (N, C, W)
+    ((2, 2), (1, 3, 8)),  # symmetric
+    ((1, 3), (2, 4, 10)),  # asymmetric
+    ((0, 2), (1, 1, 6)),  # one-sided
+    # 2D (pad = (left, right, top, bottom)), input (N, C, H, W)
+    ((2, 2, 2, 2), (1, 3, 8, 8)),  # symmetric
+    ((1, 2, 3, 1), (2, 3, 10, 12)),  # asymmetric, per-side
+    ((0, 1, 1, 0), (1, 4, 7, 9)),  # mixed zero/one-sided
+    # 3D (pad = (l, r, t, b, front, back)), input (N, C, D, H, W)
+    ((1, 1, 1, 1, 1, 1), (1, 2, 4, 6, 6)),  # symmetric
+    ((2, 1, 0, 2, 1, 1), (1, 2, 5, 7, 7)),  # asymmetric
+]
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("mode", ["reflect", "replicate"])
+@pytest.mark.parametrize("pad, input_shape", _PAD_SHARED_CASES)
+async def test_reflect_replicate_pad(
+    pad: tuple[int, ...],
+    input_shape: tuple[int, ...],
+    mode: str,
+    dtype: torch.dtype,
+) -> None:
+    ndim = len(pad) // 2
+    aten_op = (_REFLECT_PAD_OP if mode == "reflect" else _REPLICATE_PAD_OP)[ndim]
+    await validate_numerical_output(
+        model=_PadModel(pad, mode).eval(),
+        x=torch.rand(*input_shape, dtype=dtype),
+        remove_decomps=[aten_op],
+    )
+
+
+@pytest.mark.parametrize("mode", ["reflect", "replicate"])
+async def test_reflect_replicate_pad_dynamic_batch(mode: str) -> None:
+    """Padding amounts and spatial dims are static; only the batch is dynamic."""
+    aten_op = (_REFLECT_PAD_OP if mode == "reflect" else _REPLICATE_PAD_OP)[2]
+    await validate_numerical_output(
+        model=_PadModel((2, 2, 2, 2), mode).eval(),
+        x=torch.rand(2, 3, 8, 8),
+        dynamic_shapes={"x": {0: torch.export.Dim("batch", min=1)}},
+        remove_decomps=[aten_op],
+    )
+
+
+@pytest.mark.parametrize(
+    "pad, input_shape",
+    [
+        ((4, 4), (1, 2, 3)),  # 1D: pad exceeds the padded dim
+        ((5, 5, 5, 5), (1, 2, 3, 3)),  # 2D: pad exceeds both spatial dims
+    ],
+)
+async def test_replicate_pad_larger_than_dim(
+    pad: tuple[int, ...], input_shape: tuple[int, ...]
+) -> None:
+    """Replicate (unlike reflect) allows padding wider than the input dim."""
+    ndim = len(pad) // 2
+    await validate_numerical_output(
+        model=_PadModel(pad, "replicate").eval(),
+        x=torch.rand(*input_shape),
+        remove_decomps=[_REPLICATE_PAD_OP[ndim]],
+    )

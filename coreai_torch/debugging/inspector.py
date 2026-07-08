@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from abc import ABC, abstractmethod
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Mapping, Sequence
@@ -24,9 +26,29 @@ from .torch_utils import _TorchFXNodeValueInterpreter
 logger = logging.getLogger(__name__)
 
 
+def _running_under_pytest() -> bool:
+    """Return True if the code is currently executing within a pytest run."""
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
+async def _wait_for_async_callbacks() -> None:
+    """
+    Wait for asynchronously-invoked intermediate capture callbacks to complete.
+
+    TODO: This sleep is a temporary workaround. The intermediate capture
+    callbacks are invoked asynchronously and may not have completed by the
+    time inference returns. Skipped under pytest to avoid slowing tests.
+    """
+    if _running_under_pytest():
+        return
+    await asyncio.sleep(5.0)
+
+
 @dataclass(frozen=True)
 class _MappingKey:
-    """Key for mapping ODIX outputs to source outputs."""
+    """
+    Key for mapping ODIX outputs to source outputs.
+    """
 
     odix_id: int
     delegate_id: int | None
@@ -41,122 +63,166 @@ class _CompiledIdMappings:
     all_compiled_ids: list[tuple[int, int | None]]
 
 
-def _map_source_op_to_compiled_ops(
-    source_level: str,
-    source_op_id: int,
+def _build_source_to_odix_map(
     debug_info_records: list[DebugInfoRecord],
-) -> dict[int, tuple[int, int, int | None]]:
+    source_level: str,
+) -> dict[int, int]:
     """
-    Map a source operation to its compiled ODIX operations.
+    Build a mapping from source op ID to odix ID from odix debug info records.
 
-    Maps each output of a source-level operation (e.g., a PyTorch operation)
-    to its corresponding compiled ODIX operation ID and output index.
-    When multiple mappings exist for the same source output, keeps the one
-    with the highest target_op_id (representing the final compiled form).
+    Iterates over all ``"odix"`` records and extracts the source-level
+    op ID and the ``"odix"`` op ID from each operation's metadata.
 
     Args:
-        source_level: Source dialect level (e.g., "torch" for PyTorch, "coreai" for Core AI)
-        source_op_id: Unique identifier of the source operation
-        debug_info_records: Parsed debug information containing operation mappings
-
+        debug_info_records: Parsed debug information containing
+            operation mappings.
+        source_level: Dialect level to extract source op IDs from
+            (e.g., ``"coreai"``). Defaults to ``"coreai"``.
     Returns:
-        Dictionary mapping source output index to (odix_id, odix_output_index, delegate_id).
-        The delegate_id is currently always None (reserved for future delegate support).
+        Dictionary mapping source_op_id to odix_id.
 
     """
-    compiled_ids: dict[int, tuple[int, int, int | None]] = {}
-
-    logger.debug("Mapping %s.%d to ODIX", source_level, source_op_id)
-
+    source_to_odix: dict[int, int] = {}
     for record in debug_info_records:
         if not record.identifier.startswith("odix"):
             continue
+        for op in record.operations:
+            source_ids = op.get_op_ids(source_level)
+            for source_id in source_ids:
+                existing_odix_id = source_to_odix.get(source_id)
+                if existing_odix_id is None or existing_odix_id < op.odix_id:
+                    source_to_odix[source_id] = op.odix_id
+    return source_to_odix
+
+
+def _build_compile_identifiers_map(
+    debug_info_records: list[DebugInfoRecord],
+    source_level: str,
+) -> dict[tuple[int, int], _MappingKey]:
+    """
+    Build a mapping from source output to compiled identifiers.
+
+    Maps each ``(source_op_id, source_output_idx)`` to a
+    ``_MappingKey(odix_id, delegate_id, output_idx)`` by extracting
+    output mappings from every debug info record at the given
+    *source_level*.  When duplicates target the same source output, the
+    highest ``target_op_id`` wins.  For odix records
+    (``identifier.startswith("odix")``), ``target_op_id`` is the
+    ``odix_id``; for all other records it is the ``delegate_id``, and
+    the true ``odix_id`` is resolved via ``_build_source_to_odix_map``.
+
+    Args:
+        debug_info_records: Parsed debug information containing
+            operation mappings.
+        source_level: Dialect level to extract op IDs from
+            (e.g., ``"coreai"``). Defaults to ``"coreai"``.
+
+    Returns:
+        Dictionary mapping ``(source_op_id, source_output_idx)`` to
+        ``_MappingKey``.
+
+    """
+    source_to_odix_map = _build_source_to_odix_map(debug_info_records, source_level)
+    result: dict[tuple[int, int], _MappingKey] = {}
+
+    for record in debug_info_records:
+        is_odix = record.identifier.startswith("odix")
 
         for op in record.operations:
-            mappings = op.get_output_mappings(source_level)
-            for mapping in mappings:
-                # Filter mappings for the specific source operation
-                if (
-                    mapping.source_op_id == source_op_id
-                    and mapping.target_level == "odix"
-                ):
-                    # Check if we already have a mapping for this source output
-                    existing = compiled_ids.get(mapping.source_output)
+            for mapping in op.get_output_mappings(source_level=source_level):
+                # For delegate records, resolve odix_id via the
+                # source-to-odix lookup or the op's own odix metadata.
+                if not is_odix:
+                    odix_id = source_to_odix_map.get(mapping.source_op_id)
+                    if odix_id is None:
+                        continue
 
-                    # Only update if this is a new mapping or has a higher target_op_id
-                    if existing is None or mapping.target_op_id > existing[0]:
-                        compiled_ids[mapping.source_output] = (
+                source_key = (mapping.source_op_id, mapping.source_output)
+                existing = result.get(source_key)
+
+                # Compare against the relevant ID from the existing entry:
+                # odix_id for odix records, delegate_id for delegate records.
+                existing_op_id = (
+                    (existing.odix_id if is_odix else existing.delegate_id)
+                    if existing is not None
+                    else None
+                )
+
+                # Only update if new or has a higher target_op_id
+                if existing_op_id is None or mapping.target_op_id > existing_op_id:
+                    if is_odix:
+                        new_entry = _MappingKey(
+                            odix_id=op.odix_id,
+                            delegate_id=None,
+                            output_idx=mapping.target_output,
+                        )
+                    else:
+                        new_entry = _MappingKey(
+                            odix_id=odix_id,
+                            delegate_id=mapping.target_op_id,
+                            output_idx=mapping.target_output,
+                        )
+                    result[source_key] = new_entry
+
+                    if existing is not None:
+                        logger.debug(
+                            "  %s.%d[%d] -> %s.%d[%d] (replaced %d)",
+                            source_level,
+                            mapping.source_op_id,
+                            mapping.source_output,
+                            record.identifier,
                             mapping.target_op_id,
                             mapping.target_output,
-                            None,
+                            existing_op_id,
                         )
-                        if existing is not None:
-                            logger.debug(
-                                "  %s.%d[%d] -> odix.%d[%d] (replaced odix.%d)",
-                                source_level,
-                                source_op_id,
-                                mapping.source_output,
-                                mapping.target_op_id,
-                                mapping.target_output,
-                                existing[0],
-                            )
-                        else:
-                            logger.debug(
-                                "  %s.%d[%d] -> odix.%d[%d]",
-                                source_level,
-                                source_op_id,
-                                mapping.source_output,
-                                mapping.target_op_id,
-                                mapping.target_output,
-                            )
+                    else:
+                        logger.debug(
+                            "  %s.%d[%d] -> %s.%d[%d]",
+                            source_level,
+                            mapping.source_op_id,
+                            mapping.source_output,
+                            record.identifier,
+                            mapping.target_op_id,
+                            mapping.target_output,
+                        )
 
-    if not compiled_ids:
-        logger.warning("No ODIX mapping found for %s.%d", source_level, source_op_id)
-
-    return compiled_ids
+    return result
 
 
 def _create_operation_mappings(
     op_ids: Sequence[int],
-    source_level: str,
-    debug_info_records: list[DebugInfoRecord],
+    compile_map: dict[tuple[int, int], _MappingKey],
 ) -> _CompiledIdMappings:
     """
-    Create bidirectional mappings between source and compiled operations.
+    Create reverse mappings from compiled identifiers back to source outputs.
 
-    Builds mappings that allow translating between source-level operations (e.g., PyTorch)
-    and their compiled ODIX representations. This enables capturing intermediate values
-    from compiled models and mapping them back to source operations.
+    Filters *compile_map* to the requested *op_ids* and inverts the
+    direction: the returned ``target_to_source_output_map`` is keyed by
+    ``_MappingKey`` (compiled side) and valued by
+    ``(source_op_id, source_output_idx)``.
 
     Args:
-        op_ids: List of source operation IDs to create mappings for
-        source_level: Source dialect level (e.g., "torch" for PyTorch, "coreai" for Core AI)
-        debug_info_records: Parsed debug information containing operation mappings
+        op_ids: Source operation IDs to include.
+        compile_map: Pre-built map from
+            ``_build_compile_identifiers_map``.
 
     Returns:
-        _CompiledIdMappings containing:
-        - target_to_source_output_map: Maps ODIX outputs back to source outputs via _MappingKey
-        - all_compiled_ids: Unique list of (odix_id, delegate_id) pairs for all operations
+        ``_CompiledIdMappings`` with the reverse map and a list of
+        ``(odix_id, delegate_id)`` pairs for all matched operations.
 
     """
+    requested = set(op_ids)
     target_to_source_output_map: dict[_MappingKey, tuple[int, int]] = {}
     all_compiled_ids: list[tuple[int, int | None]] = []
 
-    for source_op_id in op_ids:
-        compiled_ids = _map_source_op_to_compiled_ops(
-            source_level,
+    for (source_op_id, source_output_idx), mapping_key in compile_map.items():
+        if source_op_id not in requested:
+            continue
+        all_compiled_ids.append((mapping_key.odix_id, mapping_key.delegate_id))
+        target_to_source_output_map[mapping_key] = (
             source_op_id,
-            debug_info_records,
+            source_output_idx,
         )
-
-        for source_output_idx, (
-            odix_id,
-            target_output,
-            delegate_id,
-        ) in compiled_ids.items():
-            all_compiled_ids.append((odix_id, delegate_id))
-            mapping_key = _MappingKey(odix_id, delegate_id, target_output)
-            target_to_source_output_map[mapping_key] = (source_op_id, source_output_idx)
 
     return _CompiledIdMappings(target_to_source_output_map, all_compiled_ids)
 
@@ -554,6 +620,10 @@ class CoreAIInspector(Inspector):
         self._debug_info_records = parse_debug_infos(debug_infos_bytes)
 
         self._source_level = "coreai"
+        self._compile_map = _build_compile_identifiers_map(
+            self._debug_info_records,
+            self._source_level,
+        )
 
     def _build_mapping_and_compile_ids(
         self,
@@ -577,11 +647,7 @@ class CoreAIInspector(Inspector):
             - compile_identifiers: List of unique compiled operation IDs to capture
 
         """
-        mappings = _create_operation_mappings(
-            op_ids,
-            self._source_level,
-            self._debug_info_records,
-        )
+        mappings = _create_operation_mappings(op_ids, self._compile_map)
 
         # Get unique compiled IDs preserving insertion order (dict.fromkeys for stable deduplication)
         unique_compiled_ids = dict.fromkeys(mappings.all_compiled_ids)
@@ -640,36 +706,43 @@ class CoreAIInspector(Inspector):
                     compile_ids.delegate_id,
                     odix_output_idx,
                 )
-                if mapping_key in odix_output_to_source_map:
-                    source_op_id, source_output_idx = odix_output_to_source_map[
-                        mapping_key
-                    ]
 
-                    if source_output_idx in results[source_op_id]:
-                        msg = f"Multiple compile_ids map to the same source operation output: source_op_id={source_op_id}, source_output_idx={source_output_idx}"
-                        raise ValueError(msg)
-                    if intermediate is not None:
-                        # Convert _NDArray (internal Core AI runtime type) to NDArray wrapper then to numpy
-                        ndarray = coreai.runtime.NDArray(intermediate)
-                        results[source_op_id][source_output_idx] = (
-                            self.__class__.convert_to_numpy(ndarray)
-                        )
-                        logger.debug(
-                            "  odix.%d[%d] -> source.%d[%d] shape=%s",
-                            compile_ids.id,
-                            odix_output_idx,
-                            source_op_id,
-                            source_output_idx,
-                            ndarray.numpy().shape,
-                        )
-                    else:
-                        logger.warning(
-                            "  Intermediate is None for odix.%d[%d] -> source.%d[%d]",
-                            compile_ids.id,
-                            odix_output_idx,
-                            source_op_id,
-                            source_output_idx,
-                        )
+                if mapping_key not in odix_output_to_source_map:
+                    logger.warning(
+                        "  No source mapping found for odix.%d[%d]",
+                        compile_ids.id,
+                        odix_output_idx,
+                    )
+                    continue
+
+                source_op_id, source_output_idx = odix_output_to_source_map[mapping_key]
+
+                if source_output_idx in results[source_op_id]:
+                    msg = f"Multiple compile_ids map to the same source operation output: source_op_id={source_op_id}, source_output_idx={source_output_idx}"
+                    raise ValueError(msg)
+
+                if intermediate is None:
+                    logger.warning(
+                        "  Intermediate is None for odix.%d[%d] -> source.%d[%d]",
+                        compile_ids.id,
+                        odix_output_idx,
+                        source_op_id,
+                        source_output_idx,
+                    )
+                    continue
+                # Convert _NDArray (internal Core AI runtime type) to NDArray wrapper then to numpy
+                ndarray = coreai.runtime._ndarray.NDArray._wrap(intermediate)
+                results[source_op_id][source_output_idx] = (
+                    self.__class__.convert_to_numpy(ndarray)
+                )
+                logger.debug(
+                    "  odix.%d[%d] -> source.%d[%d] shape=%s",
+                    compile_ids.id,
+                    odix_output_idx,
+                    source_op_id,
+                    source_output_idx,
+                    ndarray.numpy().shape,
+                )
 
         return capture_callback
 
@@ -748,6 +821,7 @@ class CoreAIInspector(Inspector):
         )
 
         outputs = await inference_function(inputs=ndarray_inputs)
+        await _wait_for_async_callbacks()
 
         self._last_outputs = {name: array.numpy() for name, array in outputs.items()}
 
@@ -795,27 +869,51 @@ class CoreAIInspector(Inspector):
         (used by the Core AI Runtime).
 
         Args:
-            source_level: Source dialect level ("torch" for PyTorch, "coreai" for Core AI)
+            source_level: Source dialect level (e.g., ``"coreai"``)
             source_op_id: Source operation ID to look up
             debug_info_records: Debug information containing operation mappings
 
         Returns:
-            Dictionary mapping output index to CompileIdentifiers
+            Dictionary mapping source output index to CompileIdentifiers
 
         """
-        compiled_ids = _map_source_op_to_compiled_ops(
-            source_level,
-            source_op_id,
+        compile_map = _build_compile_identifiers_map(
             debug_info_records,
+            source_level,
         )
         return {
-            output_idx: coreai.runtime.CompileIdentifiers(
-                odix_id,
-                delegate_id,
+            source_output_idx: coreai.runtime.CompileIdentifiers(
+                mk.odix_id,
+                mk.delegate_id,
             )
-            for output_idx, (
-                odix_id,
-                _target_output,
-                delegate_id,
-            ) in compiled_ids.items()
+            for (op_id, source_output_idx), mk in compile_map.items()
+            if op_id == source_op_id
+        }
+
+    @staticmethod
+    def get_all_compile_identifiers(
+        debug_info_records: list[DebugInfoRecord],
+    ) -> dict[int, coreai.runtime.CompileIdentifiers]:
+        """
+        Get compiled operation identifiers for all coreai operations.
+
+        Builds a mapping from every coreai op ID to its
+        ``CompileIdentifiers`` by processing all debug info records.
+
+        Args:
+            debug_info_records: Debug information containing operation
+                mappings.
+
+        Returns:
+            Dictionary mapping ``coreai_op_id`` to
+            ``CompileIdentifiers``.
+
+        """
+        compile_map = _build_compile_identifiers_map(debug_info_records, "coreai")
+        return {
+            source_op_id: coreai.runtime.CompileIdentifiers(
+                mk.odix_id,
+                mk.delegate_id,
+            )
+            for (source_op_id, _output_idx), mk in compile_map.items()
         }
