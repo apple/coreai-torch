@@ -16,7 +16,9 @@ import torch
 _COMPOSITE_OPS: list = [
     torch.ops.aten.hardsigmoid.default,
     torch.ops.aten.hardswish.default,
+    torch.ops.aten.gru.input,
     torch.ops.aten.instance_norm.default,
+    torch.ops.aten.lstm.input,
     torch.ops.aten.pixel_shuffle.default,
     torch.ops.aten.reflection_pad1d.default,
     torch.ops.aten.reflection_pad2d.default,
@@ -24,6 +26,8 @@ _COMPOSITE_OPS: list = [
     torch.ops.aten.replication_pad1d.default,
     torch.ops.aten.replication_pad2d.default,
     torch.ops.aten.replication_pad3d.default,
+    torch.ops.aten.rnn_relu.input,
+    torch.ops.aten.rnn_tanh.input,
     torch.ops.aten.scaled_dot_product_attention.default,
     torch.ops.aten.silu.default,
 ]
@@ -40,6 +44,7 @@ def get_decomp_table() -> dict:
 
     * ``torch.ops.aten.hardsigmoid.default``
     * ``torch.ops.aten.instance_norm.default``
+    * ``torch.ops.aten.lstm.input`` (lowered to a ``"lstm"`` composite op)
     * ``torch.ops.aten.pixel_shuffle.default``
     * ``torch.ops.aten.scaled_dot_product_attention.default``
 

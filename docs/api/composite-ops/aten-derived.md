@@ -7,12 +7,15 @@ Composite ops recognized automatically from the ATen nodes (`fx.Node`s) in your 
 
 batch-norm
 group-norm
+gru
 hard-sigmoid
 instance-norm
 layer-norm
 linalg-vector-norm
 log-softmax
+lstm
 pixel-shuffle
+rnn
 ```
 
 For the ATen ops these are derived from, see {doc}`../supported-aten-ops`.

@@ -12,6 +12,9 @@ from torch import Tensor
 
 import coreai_torch
 
+from ..utils import GRUModule as _GRUModel
+from ..utils import LSTMModule as _LSTMModel
+from ..utils import RNNModule as _RNNModel
 from ..utils import _all_dims_dynamic, filecheck_pattern, get_ir
 
 
@@ -7455,3 +7458,220 @@ class TestPadDecompTable:
     )
     def test_pad_ops_preserved(self, aten_op) -> None:
         assert aten_op not in coreai_torch.get_decomp_table()
+
+
+class TestLSTMIR:
+    """IR structure of the ``aten.lstm.input`` -> ``"lstm"`` composite lowering."""
+
+    _LSTM_OP = torch.ops.aten.lstm.input
+
+    def test_lstm_preserved_in_decomp_table(self) -> None:
+        """The decomposition table must preserve aten.lstm so the handler fires."""
+        assert self._LSTM_OP not in coreai_torch.get_decomp_table()
+
+    def test_unidirectional(self) -> None:
+        model = _LSTMModel(input_size=4, hidden_size=3, batch_first=True).eval()
+        ir = get_ir(
+            model,
+            x=torch.randn(2, 5, 4),
+            h0=torch.randn(1, 2, 3),
+            c0=torch.randn(1, 2, 3),
+            remove_decomps=[self._LSTM_OP],
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.graph private noinline @lstm_forward_[[S:.*]](%arg0: tensor<5x2x4xf32>
+                // CHECK-SAME: composite_decl = #coreai.composite_declaration<"lstm" =
+                // CHECK-SAME: input_names = ["x", "initial_h", "initial_c", "weight_ih", "weight_hh", "bias"]
+                // CHECK-SAME: op_attrs =
+                // CHECK-SAME: activation = "tanh"
+                // CHECK-SAME: cell_activation = "tanh"
+                // CHECK-SAME: direction = "forward"
+                // CHECK-SAME: output_sequence = true
+                // CHECK-SAME: recurrent_activation = "sigmoid"
+                // CHECK-SAME: output_names = ["output", "h_n", "c_n"]
+                // CHECK: coreai.invoke @lstm_forward_[[S]]
+            """,
+        )
+
+    def test_bidirectional(self) -> None:
+        model = _LSTMModel(
+            input_size=4, hidden_size=3, batch_first=True, bidirectional=True
+        ).eval()
+        ir = get_ir(
+            model,
+            x=torch.randn(2, 5, 4),
+            h0=torch.randn(2, 2, 3),
+            c0=torch.randn(2, 2, 3),
+            remove_decomps=[self._LSTM_OP],
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.graph private noinline @lstm_bidirectional_[[S:.*]](%arg0: tensor<5x2x4xf32>
+                // CHECK-SAME: composite_decl = #coreai.composite_declaration<"lstm" =
+                // CHECK-SAME: input_names = ["x", "initial_h", "initial_c", "weight_ih", "weight_hh", "bias", "weight_ih_back", "weight_hh_back", "bias_back"]
+                // CHECK-SAME: direction = "bidirectional"
+                // CHECK-SAME: output_names = ["output", "h_n", "c_n"]
+                // CHECK: coreai.invoke @lstm_bidirectional_[[S]]
+            """,
+        )
+
+    def test_multi_layer_emits_one_composite_per_layer(self) -> None:
+        model = _LSTMModel(
+            input_size=4, hidden_size=3, num_layers=3, batch_first=True
+        ).eval()
+        ir = get_ir(
+            model,
+            x=torch.randn(2, 5, 4),
+            h0=torch.randn(3, 2, 3),
+            c0=torch.randn(3, 2, 3),
+            remove_decomps=[self._LSTM_OP],
+        )
+        assert ir.count("coreai.invoke @lstm_forward") == 3
+
+
+class TestGRUIR:
+    """IR structure of the ``aten.gru.input`` -> ``"gru"`` composite lowering."""
+
+    _GRU_OP = torch.ops.aten.gru.input
+
+    def test_gru_preserved_in_decomp_table(self) -> None:
+        assert self._GRU_OP not in coreai_torch.get_decomp_table()
+
+    def test_unidirectional(self) -> None:
+        model = _GRUModel(input_size=4, hidden_size=3, batch_first=True).eval()
+        ir = get_ir(
+            model,
+            x=torch.randn(2, 5, 4),
+            h0=torch.randn(1, 2, 3),
+            remove_decomps=[self._GRU_OP],
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.graph private noinline @gru_forward_[[S:.*]](%arg0: tensor<5x2x4xf32>
+                // CHECK-SAME: composite_decl = #coreai.composite_declaration<"gru" =
+                // CHECK-SAME: input_names = ["x", "initial_h", "weight_ih", "weight_hh", "bias_ih", "bias_hh"]
+                // CHECK-SAME: op_attrs =
+                // CHECK-SAME: activation = "tanh"
+                // CHECK-SAME: direction = "forward"
+                // CHECK-SAME: output_sequence = true
+                // CHECK-SAME: recurrent_activation = "sigmoid"
+                // CHECK-SAME: reset_after = true
+                // CHECK-SAME: output_names = ["output", "h_n"]
+                // CHECK: coreai.invoke @gru_forward_[[S]]
+            """,
+        )
+
+    def test_bidirectional(self) -> None:
+        model = _GRUModel(
+            input_size=4, hidden_size=3, batch_first=True, bidirectional=True
+        ).eval()
+        ir = get_ir(
+            model,
+            x=torch.randn(2, 5, 4),
+            h0=torch.randn(2, 2, 3),
+            remove_decomps=[self._GRU_OP],
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.graph private noinline @gru_bidirectional_[[S:.*]](%arg0: tensor<5x2x4xf32>
+                // CHECK-SAME: composite_decl = #coreai.composite_declaration<"gru" =
+                // CHECK-SAME: input_names = ["x", "initial_h", "weight_ih", "weight_hh", "bias_ih", "bias_hh", "weight_ih_back", "weight_hh_back", "bias_ih_back", "bias_hh_back"]
+                // CHECK-SAME: direction = "bidirectional"
+                // CHECK-SAME: reset_after = true
+                // CHECK-SAME: output_names = ["output", "h_n"]
+                // CHECK: coreai.invoke @gru_bidirectional_[[S]]
+            """,
+        )
+
+    def test_multi_layer_emits_one_composite_per_layer(self) -> None:
+        model = _GRUModel(
+            input_size=4, hidden_size=3, num_layers=3, batch_first=True
+        ).eval()
+        ir = get_ir(
+            model,
+            x=torch.randn(2, 5, 4),
+            h0=torch.randn(3, 2, 3),
+            remove_decomps=[self._GRU_OP],
+        )
+        assert ir.count("coreai.invoke @gru_forward") == 3
+
+
+class TestRNNIR:
+    """IR structure of the ``aten.rnn_{tanh,relu}.input`` -> ``"rnn"`` lowering."""
+
+    _RNN_TANH_OP = torch.ops.aten.rnn_tanh.input
+    _RNN_RELU_OP = torch.ops.aten.rnn_relu.input
+
+    def test_rnn_ops_preserved_in_decomp_table(self) -> None:
+        table = coreai_torch.get_decomp_table()
+        assert self._RNN_TANH_OP not in table
+        assert self._RNN_RELU_OP not in table
+
+    def test_tanh(self) -> None:
+        model = _RNNModel(
+            input_size=4, hidden_size=3, batch_first=True, nonlinearity="tanh"
+        ).eval()
+        ir = get_ir(
+            model,
+            x=torch.randn(2, 5, 4),
+            h0=torch.randn(1, 2, 3),
+            remove_decomps=[self._RNN_TANH_OP],
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.graph private noinline @rnn_forward_[[S:.*]](%arg0: tensor<5x2x4xf32>
+                // CHECK-SAME: composite_decl = #coreai.composite_declaration<"rnn" =
+                // CHECK-SAME: input_names = ["x", "initial_h", "weight_ih", "weight_hh", "bias"]
+                // CHECK-SAME: op_attrs =
+                // CHECK-SAME: activation = "tanh"
+                // CHECK-SAME: direction = "forward"
+                // CHECK-SAME: output_sequence = true
+                // CHECK-SAME: output_names = ["output", "h_n"]
+                // CHECK: coreai.invoke @rnn_forward_[[S]]
+            """,
+        )
+
+    def test_relu(self) -> None:
+        model = _RNNModel(
+            input_size=4, hidden_size=3, batch_first=True, nonlinearity="relu"
+        ).eval()
+        ir = get_ir(
+            model,
+            x=torch.randn(2, 5, 4),
+            h0=torch.randn(1, 2, 3),
+            remove_decomps=[self._RNN_RELU_OP],
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: composite_decl = #coreai.composite_declaration<"rnn" =
+                // CHECK-SAME: activation = "relu"
+            """,
+        )
+
+    def test_bidirectional(self) -> None:
+        model = _RNNModel(
+            input_size=4, hidden_size=3, batch_first=True, bidirectional=True
+        ).eval()
+        ir = get_ir(
+            model,
+            x=torch.randn(2, 5, 4),
+            h0=torch.randn(2, 2, 3),
+            remove_decomps=[self._RNN_TANH_OP],
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.graph private noinline @rnn_bidirectional_[[S:.*]](%arg0: tensor<5x2x4xf32>
+                // CHECK-SAME: composite_decl = #coreai.composite_declaration<"rnn" =
+                // CHECK-SAME: input_names = ["x", "initial_h", "weight_ih", "weight_hh", "bias", "weight_ih_back", "weight_hh_back", "bias_back"]
+                // CHECK-SAME: direction = "bidirectional"
+                // CHECK: coreai.invoke @rnn_bidirectional_[[S]]
+            """,
+        )
