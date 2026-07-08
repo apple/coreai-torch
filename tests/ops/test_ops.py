@@ -681,6 +681,16 @@ class TestAtan2:
         x = torch.tensor([inf, -inf, inf, -inf])
         await validate_numerical_output(model=model, y=y, x=x)
 
+    async def test_nan_propagation(self) -> None:
+        """NaN in either operand must propagate to NaN, including at x = ±0
+        where comparison-based branch selection would otherwise misclassify
+        NaN as one of the zero/quadrant cases."""
+        model = self.Atan2Model().eval()
+        nan = float("nan")
+        y = torch.tensor([nan, nan, 1.0, nan, 0.0])
+        x = torch.tensor([0.0, -0.0, nan, nan, nan])
+        await validate_numerical_output(model=model, y=y, x=x)
+
 
 @pytest.mark.parametrize(
     "x",

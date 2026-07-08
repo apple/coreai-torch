@@ -1555,6 +1555,9 @@ def replace_atan2(values_map: dict[str, Value], node: fx.Node, loc: Location) ->
       - x == +0: ±π/2 for non-zero y, 0 for y = 0.
       - x == -0: ±π for all y (including ±0 → ±π per IEEE-754).
       - both infinite: ±π/4 or ±3π/4 per IEEE-754.
+      - either operand is NaN: NaN, checked last so it overrides every other
+        branch (comparisons against NaN are all False, which would otherwise
+        misclassify NaN as one of the zero/quadrant cases above).
 
     Signed-zero handling: IEEE-754 treats -0.0 as distinct from +0.0 for atan2
     (e.g. atan2(-0, -1) = -π, not +π). The 1/v trick — 1/-0.0 = -inf — is used
@@ -1603,6 +1606,15 @@ def replace_atan2(values_map: dict[str, Value], node: fx.Node, loc: Location) ->
         coreai.broadcasting_greater(zero, coreai.broadcasting_divide(one, x)),
     )
 
+    # ── NaN branch ─────────────────────────────────────────────────────────────
+    # NaN != NaN under IEEE-754, so this is a self-contained NaN check. Needed
+    # because the x=0 branch below classifies purely on comparisons, which are
+    # all False for NaN and would otherwise misclassify atan2(NaN, ±0).
+    any_nan = coreai.broadcasting_or(
+        coreai.broadcasting_not_equal(y, y), coreai.broadcasting_not_equal(x, x)
+    )
+    nan_result = coreai.constant(float("nan"), dtype=ele_type)
+
     # ── both-infinite branch ──────────────────────────────────────────────────
     # atan(inf/inf) = atan(NaN) = NaN; handle before the divide.
     pos_inf = coreai.constant(float("inf"), dtype=ele_type)
@@ -1649,7 +1661,8 @@ def replace_atan2(values_map: dict[str, Value], node: fx.Node, loc: Location) ->
 
     # ── combine ────────────────────────────────────────────────────────────────
     result = coreai.broadcasting_where(x_is_zero, zero_result, nonzero_result)
-    return coreai.broadcasting_where(both_inf, inf_result, result)
+    result = coreai.broadcasting_where(both_inf, inf_result, result)
+    return coreai.broadcasting_where(any_nan, nan_result, result)
 
 
 def replace_gather(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:

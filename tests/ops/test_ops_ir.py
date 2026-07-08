@@ -1175,6 +1175,7 @@ class TestAtan2IR:
                 // CHECK-NEXT:   coreai.graph @main(%[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}, %[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
                 // CHECK:          %[[NEG_INF:.*]] = coreai.constant dense<0xFF800000> : tensor<f32>
                 // CHECK:          %[[POS_INF:.*]] = coreai.constant dense<0x7F800000> : tensor<f32>
+                // CHECK:          %[[NAN:.*]] = coreai.constant dense<0x7FC00000> : tensor<f32>
                 // CHECK:          %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK:          %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK:          %[[PI:.*]] = coreai.constant dense<3.14159274> : tensor<f32>
@@ -1197,6 +1198,9 @@ class TestAtan2IR:
                 // CHECK:          %[[RECIP_X_NEG:.*]] = coreai.decomposable.broadcasting_greater %[[ZERO]], %[[RECIP_X]]
                 // CHECK:          %[[X_ZERO_NEG:.*]] = coreai.decomposable.broadcasting_and %[[X_IS_ZERO]], %[[RECIP_X_NEG]]
                 // CHECK:          %[[X_NEG:.*]] = coreai.decomposable.broadcasting_or %[[X_NEG_STRICT]], %[[X_ZERO_NEG]]
+                // CHECK:          %[[Y_NOT_EQ_Y:.*]] = coreai.decomposable.broadcasting_not_equal %[[Y]], %[[Y]]
+                // CHECK:          %[[X_NOT_EQ_X:.*]] = coreai.decomposable.broadcasting_not_equal %[[X]], %[[X]]
+                // CHECK:          %[[ANY_NAN:.*]] = coreai.decomposable.broadcasting_or %[[Y_NOT_EQ_Y]], %[[X_NOT_EQ_X]]
                 // CHECK:          %[[X_IS_POS_INF:.*]] = coreai.decomposable.broadcasting_equal %[[X]], %[[POS_INF]]
                 // CHECK:          %[[X_IS_NEG_INF:.*]] = coreai.decomposable.broadcasting_equal %[[X]], %[[NEG_INF]]
                 // CHECK:          %[[X_IS_INF:.*]] = coreai.decomposable.broadcasting_or %[[X_IS_POS_INF]], %[[X_IS_NEG_INF]]
@@ -1205,7 +1209,8 @@ class TestAtan2IR:
                 // CHECK:          %[[Y_IS_INF:.*]] = coreai.decomposable.broadcasting_or %[[Y_IS_POS_INF]], %[[Y_IS_NEG_INF]]
                 // CHECK:          %[[BOTH_INF:.*]] = coreai.decomposable.broadcasting_and %[[X_IS_INF]], %[[Y_IS_INF]]
                 // CHECK:          %[[BASE:.*]] = coreai.atan
-                // CHECK:          %[[RESULT:.*]] = coreai.decomposable.broadcasting_where %[[BOTH_INF]],
+                // CHECK:          %[[INF_RESULT:.*]] = coreai.decomposable.broadcasting_where %[[BOTH_INF]],
+                // CHECK:          %[[RESULT:.*]] = coreai.decomposable.broadcasting_where %[[ANY_NAN]], %[[NAN]], %[[INF_RESULT]]
                 // CHECK-NEXT:     coreai.output %[[RESULT]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -1232,6 +1237,7 @@ class TestAtan2IR:
                 // CHECK-NEXT:   coreai.graph @main(%[[Y:.*]]: tensor<?x?xf32> {coreai.name = "y"}, %[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
                 // CHECK:          %[[NEG_INF:.*]] = coreai.constant dense<0xFF800000> : tensor<f32>
                 // CHECK:          %[[POS_INF:.*]] = coreai.constant dense<0x7F800000> : tensor<f32>
+                // CHECK:          %[[NAN:.*]] = coreai.constant dense<0x7FC00000> : tensor<f32>
                 // CHECK:          %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK:          %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK:          %[[PI:.*]] = coreai.constant dense<3.14159274> : tensor<f32>
@@ -1254,6 +1260,9 @@ class TestAtan2IR:
                 // CHECK:          %[[RECIP_X_NEG:.*]] = coreai.decomposable.broadcasting_greater %[[ZERO]], %[[RECIP_X]]
                 // CHECK:          %[[X_ZERO_NEG:.*]] = coreai.decomposable.broadcasting_and %[[X_IS_ZERO]], %[[RECIP_X_NEG]]
                 // CHECK:          %[[X_NEG:.*]] = coreai.decomposable.broadcasting_or %[[X_NEG_STRICT]], %[[X_ZERO_NEG]]
+                // CHECK:          %[[Y_NOT_EQ_Y:.*]] = coreai.decomposable.broadcasting_not_equal %[[Y]], %[[Y]]
+                // CHECK:          %[[X_NOT_EQ_X:.*]] = coreai.decomposable.broadcasting_not_equal %[[X]], %[[X]]
+                // CHECK:          %[[ANY_NAN:.*]] = coreai.decomposable.broadcasting_or %[[Y_NOT_EQ_Y]], %[[X_NOT_EQ_X]]
                 // CHECK:          %[[X_IS_POS_INF:.*]] = coreai.decomposable.broadcasting_equal %[[X]], %[[POS_INF]]
                 // CHECK:          %[[X_IS_NEG_INF:.*]] = coreai.decomposable.broadcasting_equal %[[X]], %[[NEG_INF]]
                 // CHECK:          %[[X_IS_INF:.*]] = coreai.decomposable.broadcasting_or %[[X_IS_POS_INF]], %[[X_IS_NEG_INF]]
@@ -1262,7 +1271,8 @@ class TestAtan2IR:
                 // CHECK:          %[[Y_IS_INF:.*]] = coreai.decomposable.broadcasting_or %[[Y_IS_POS_INF]], %[[Y_IS_NEG_INF]]
                 // CHECK:          %[[BOTH_INF:.*]] = coreai.decomposable.broadcasting_and %[[X_IS_INF]], %[[Y_IS_INF]]
                 // CHECK:          %[[BASE:.*]] = coreai.atan
-                // CHECK:          %[[RESULT:.*]] = coreai.decomposable.broadcasting_where %[[BOTH_INF]],
+                // CHECK:          %[[INF_RESULT:.*]] = coreai.decomposable.broadcasting_where %[[BOTH_INF]],
+                // CHECK:          %[[RESULT:.*]] = coreai.decomposable.broadcasting_where %[[ANY_NAN]], %[[NAN]], %[[INF_RESULT]]
                 // CHECK-NEXT:     coreai.output %[[RESULT]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -1284,9 +1294,11 @@ class TestAtan2IR:
                 // CHECK:          %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK:          %[[Y_NEG:.*]] = coreai.decomposable.broadcasting_or
                 // CHECK:          %[[X_NEG:.*]] = coreai.decomposable.broadcasting_or
+                // CHECK:          %[[ANY_NAN:.*]] = coreai.decomposable.broadcasting_or
                 // CHECK:          %[[BOTH_INF:.*]] = coreai.decomposable.broadcasting_and
                 // CHECK:          %[[BASE:.*]] = coreai.atan
-                // CHECK:          %[[RESULT:.*]] = coreai.decomposable.broadcasting_where %[[BOTH_INF]],
+                // CHECK:          %[[INF_RESULT:.*]] = coreai.decomposable.broadcasting_where %[[BOTH_INF]],
+                // CHECK:          %[[RESULT:.*]] = coreai.decomposable.broadcasting_where %[[ANY_NAN]],
                 // CHECK-NEXT:     coreai.output %[[RESULT]] : tensor<4xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
