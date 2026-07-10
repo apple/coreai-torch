@@ -2227,11 +2227,11 @@ def replace_maxpool2d_with_indices(
     x = _get_operand(values_map, node, 0)
     args = node.args
     kernel_size = args[1]
-    if isinstance(args[2], fx.Node):
+    if len(args) > 2 and isinstance(args[2], fx.Node):
         raise ValueError(
             f"Encountered dynamic stride at maxpool2d: node: {node}, name: {node.name}"
         )
-    stride = args[2]
+    stride = args[2] if len(args) >= 3 else kernel_size
     padding = args[3] if len(args) >= 4 else [0, 0]
     dilation = args[4] if len(args) >= 5 else [1, 1]
     ceil_mode = args[5] if len(args) >= 6 else False

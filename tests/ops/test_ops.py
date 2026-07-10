@@ -2686,6 +2686,8 @@ async def test_maximum(x: Tensor, y: Tensor, dynamic: bool) -> None:
 @pytest.mark.parametrize(
     "input_shape, dtype, kernel_size, stride, padding, dilation, ceil_mode, dynamic_dims",
     [
+        # Default parameters
+        ((2, 4, 16, 16), torch.float32, 3, None, 0, 1, False, tuple()),
         # Static — all pool configs, multiple shapes and dtypes
         ((2, 4, 16, 16), torch.float32, 3, 2, 1, 1, False, tuple()),
         ((2, 4, 16, 16), torch.float32, 3, 2, 0, 1, True, tuple()),
