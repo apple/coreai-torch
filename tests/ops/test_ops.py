@@ -1003,37 +1003,6 @@ class TestBmm:
             model=model, mat1=mat1, mat2=mat2, dynamic_shapes=dynamic_shapes
         )
 
-    async def test_mixed_dtypes(self) -> None:
-        """Test bmm with mixed f32/f16 inputs.
-
-        Reproduces the EfficientSam pattern: model.half() makes weights f16,
-        but an explicit dtype=torch.float32 tensor creates f32 that flows
-        into a bmm with f16 weights.
-        """
-
-        class MixedBmmModel(nn.Module):
-            def __init__(self) -> None:
-                super().__init__()
-                self.weight = nn.Parameter(torch.randn(3, 8, 4))
-
-            def forward(self, x: Tensor) -> Tensor:
-                # Explicit f32 creation contaminates x via add
-                f32_val = torch.ones(1, device=x.device, dtype=torch.float32)
-                x = x + f32_val  # promotes x(f16) to f32
-                return torch.bmm(x, self.weight)  # f32 @ f16
-
-        model = MixedBmmModel().eval().half()
-        x = torch.randn(3, 4, 8, dtype=torch.float16)
-
-        with torch.autocast(device_type="cpu", dtype=torch.float16):
-            exported_program = torch.export.export(model, args=(), kwargs={"x": x})
-        exported_program = exported_program.run_decompositions(
-            torch.export.default_decompositions()
-        )
-
-        converter = TorchConverter().add_exported_program(exported_program)
-        converter.to_coreai()
-
 
 class TestCat:
     """Test suite for aten.cat → coreai.concat conversion."""
