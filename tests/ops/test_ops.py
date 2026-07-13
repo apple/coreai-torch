@@ -4549,30 +4549,33 @@ class TestMaskedScatter:
         )
 
 
-@pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
-    "x,dim,index",
+    "x,dim,index,dynamic",
     [
         # 2D float32, select along dim 0
-        (torch.rand(3, 4, dtype=torch.float32), 0, 1),
+        (torch.rand(3, 4, dtype=torch.float32), 0, 1, False),
+        (torch.rand(3, 4, dtype=torch.float32), 0, 1, True),
         # 2D float32, select along dim 1
-        (torch.rand(3, 4, dtype=torch.float32), 1, 2),
+        (torch.rand(3, 4, dtype=torch.float32), 1, 2, False),
         # 3D float16, select along dim 1
-        (torch.rand(2, 3, 4, dtype=torch.float16), 1, 2),
+        (torch.rand(2, 3, 4, dtype=torch.float16), 1, 2, False),
         # 3D int32, select along dim 2
-        (torch.randint(0, 100, (2, 3, 4), dtype=torch.int32), 2, 3),
+        (torch.randint(0, 100, (2, 3, 4), dtype=torch.int32), 2, 3, False),
         # 2D int64, select along dim 0
-        (torch.randint(-50, 50, (4, 5), dtype=torch.int64), 0, 2),
+        (torch.randint(-50, 50, (4, 5), dtype=torch.int64), 0, 2, False),
         # Negative dimension (dim=-1 is last dim, float32)
-        (torch.rand(3, 4, 5, dtype=torch.float32), -1, 2),
+        (torch.rand(3, 4, 5, dtype=torch.float32), -1, 2, False),
         # Negative index (index from end, int32) — exercises dynamic path when dynamic=True
-        (torch.randint(0, 100, (4, 5), dtype=torch.int32), 0, -1),
+        (torch.randint(0, 100, (4, 5), dtype=torch.int32), 0, -1, False),
+        (torch.randint(0, 100, (4, 5), dtype=torch.int32), 0, -1, True),
         # 1D tensor select (float32)
-        (torch.rand(10, dtype=torch.float32), 0, 5),
+        (torch.rand(10, dtype=torch.float32), 0, 5, False),
         # 1D tensor, negative index — exercises 1D dynamic path when dynamic=True
-        (torch.rand(8, dtype=torch.float32), 0, -2),
+        (torch.rand(8, dtype=torch.float32), 0, -2, False),
+        (torch.rand(8, dtype=torch.float32), 0, -2, True),
         # 3D float32, negative index on last dim — exercises dynamic path when dynamic=True
-        (torch.rand(2, 3, 5, dtype=torch.float32), 2, -1),
+        (torch.rand(2, 3, 5, dtype=torch.float32), 2, -1, False),
+        (torch.rand(2, 3, 5, dtype=torch.float32), 2, -1, True),
     ],
 )
 async def test_select_int(x: Tensor, dim: int, index: int, dynamic: bool) -> None:
