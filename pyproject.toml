@@ -20,7 +20,7 @@ dependencies = [
     "packaging",
     "scipy",
     "sympy",
-    "torch>=2.8.0,<=2.13.0",
+    "torch>=2.8.0",
     "typing-extensions",
     "strenum",
     "rich>=13.0,<16.0",
@@ -38,8 +38,9 @@ test = [
     "pytest-rerunfailures",
     "pytest-sugar",
     "pytest-xdist",
-    "torchaudio",
-    "torchvision",
+    "torch==2.13.0",
+    "torchaudio==2.11.0",
+    "torchvision==0.28.0",
     "transformers==4.57.3",
 ]
 docs = [
