@@ -20,7 +20,7 @@ dependencies = [
     "packaging",
     "scipy",
     "sympy",
-    "torch>=2.8.0,<=2.11.0",
+    "torch>=2.8.0,<=2.13.0",
     "typing-extensions",
     "strenum",
     "rich>=13.0,<16.0",

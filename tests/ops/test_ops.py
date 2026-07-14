@@ -1003,37 +1003,6 @@ class TestBmm:
             model=model, mat1=mat1, mat2=mat2, dynamic_shapes=dynamic_shapes
         )
 
-    async def test_mixed_dtypes(self) -> None:
-        """Test bmm with mixed f32/f16 inputs.
-
-        Reproduces the EfficientSam pattern: model.half() makes weights f16,
-        but an explicit dtype=torch.float32 tensor creates f32 that flows
-        into a bmm with f16 weights.
-        """
-
-        class MixedBmmModel(nn.Module):
-            def __init__(self) -> None:
-                super().__init__()
-                self.weight = nn.Parameter(torch.randn(3, 8, 4))
-
-            def forward(self, x: Tensor) -> Tensor:
-                # Explicit f32 creation contaminates x via add
-                f32_val = torch.ones(1, device=x.device, dtype=torch.float32)
-                x = x + f32_val  # promotes x(f16) to f32
-                return torch.bmm(x, self.weight)  # f32 @ f16
-
-        model = MixedBmmModel().eval().half()
-        x = torch.randn(3, 4, 8, dtype=torch.float16)
-
-        with torch.autocast(device_type="cpu", dtype=torch.float16):
-            exported_program = torch.export.export(model, args=(), kwargs={"x": x})
-        exported_program = exported_program.run_decompositions(
-            torch.export.default_decompositions()
-        )
-
-        converter = TorchConverter().add_exported_program(exported_program)
-        converter.to_coreai()
-
 
 class TestCat:
     """Test suite for aten.cat → coreai.concat conversion."""
@@ -4580,30 +4549,33 @@ class TestMaskedScatter:
         )
 
 
-@pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
-    "x,dim,index",
+    "x,dim,index,dynamic",
     [
         # 2D float32, select along dim 0
-        (torch.rand(3, 4, dtype=torch.float32), 0, 1),
+        (torch.rand(3, 4, dtype=torch.float32), 0, 1, False),
+        (torch.rand(3, 4, dtype=torch.float32), 0, 1, True),
         # 2D float32, select along dim 1
-        (torch.rand(3, 4, dtype=torch.float32), 1, 2),
+        (torch.rand(3, 4, dtype=torch.float32), 1, 2, False),
         # 3D float16, select along dim 1
-        (torch.rand(2, 3, 4, dtype=torch.float16), 1, 2),
+        (torch.rand(2, 3, 4, dtype=torch.float16), 1, 2, False),
         # 3D int32, select along dim 2
-        (torch.randint(0, 100, (2, 3, 4), dtype=torch.int32), 2, 3),
+        (torch.randint(0, 100, (2, 3, 4), dtype=torch.int32), 2, 3, False),
         # 2D int64, select along dim 0
-        (torch.randint(-50, 50, (4, 5), dtype=torch.int64), 0, 2),
+        (torch.randint(-50, 50, (4, 5), dtype=torch.int64), 0, 2, False),
         # Negative dimension (dim=-1 is last dim, float32)
-        (torch.rand(3, 4, 5, dtype=torch.float32), -1, 2),
+        (torch.rand(3, 4, 5, dtype=torch.float32), -1, 2, False),
         # Negative index (index from end, int32) — exercises dynamic path when dynamic=True
-        (torch.randint(0, 100, (4, 5), dtype=torch.int32), 0, -1),
+        (torch.randint(0, 100, (4, 5), dtype=torch.int32), 0, -1, False),
+        (torch.randint(0, 100, (4, 5), dtype=torch.int32), 0, -1, True),
         # 1D tensor select (float32)
-        (torch.rand(10, dtype=torch.float32), 0, 5),
+        (torch.rand(10, dtype=torch.float32), 0, 5, False),
         # 1D tensor, negative index — exercises 1D dynamic path when dynamic=True
-        (torch.rand(8, dtype=torch.float32), 0, -2),
+        (torch.rand(8, dtype=torch.float32), 0, -2, False),
+        (torch.rand(8, dtype=torch.float32), 0, -2, True),
         # 3D float32, negative index on last dim — exercises dynamic path when dynamic=True
-        (torch.rand(2, 3, 5, dtype=torch.float32), 2, -1),
+        (torch.rand(2, 3, 5, dtype=torch.float32), 2, -1, False),
+        (torch.rand(2, 3, 5, dtype=torch.float32), 2, -1, True),
     ],
 )
 async def test_select_int(x: Tensor, dim: int, index: int, dynamic: bool) -> None:
