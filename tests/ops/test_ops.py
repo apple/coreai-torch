@@ -1320,207 +1320,347 @@ async def test_clamp(
         )
 
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize(
-    "in_ch,out_ch,kernel,stride,padding,dilation,groups,bias,input_len",
-    [
-        # Basic Conv1d, no padding
-        (3, 16, 3, 1, 0, 1, 1, True, 8),
-        # Stride=5, no padding, no bias
-        (3, 16, 3, 5, 0, 1, 1, False, 25),
-        # Non-zero padding (exercises the pad branch in replace_conv for rank==3)
-        (3, 16, 3, 1, 1, 1, 1, True, 8),
-        (4, 8, 5, 1, 2, 1, 1, False, 16),
-        # Padding + dilation
-        (3, 8, 3, 1, 2, 2, 1, True, 16),
-    ],
-)
-async def test_conv1d(
-    in_ch: int,
-    out_ch: int,
-    kernel: int,
-    stride: int,
-    padding: int,
-    dilation: int,
-    groups: int,
-    bias: bool,
-    input_len: int,
-    dynamic: bool,
-) -> None:
-    x = torch.rand(2, in_ch, input_len)
+class TestConvolution:
+    """Regular and transposed convolution conversions."""
 
-    class Conv1dModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.conv = nn.Conv1d(
-                in_ch,
-                out_ch,
-                kernel_size=kernel,
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize(
+        "in_ch,out_ch,kernel,stride,padding,dilation,groups,bias,input_len",
+        [
+            # Basic Conv1d, no padding
+            (3, 16, 3, 1, 0, 1, 1, True, 8),
+            # Stride=5, no padding, no bias
+            (3, 16, 3, 5, 0, 1, 1, False, 25),
+            # Non-zero padding (exercises the pad branch in replace_conv for rank==3)
+            (3, 16, 3, 1, 1, 1, 1, True, 8),
+            (4, 8, 5, 1, 2, 1, 1, False, 16),
+            # Padding + dilation
+            (3, 8, 3, 1, 2, 2, 1, True, 16),
+        ],
+    )
+    async def test_conv1d(
+        self,
+        in_ch: int,
+        out_ch: int,
+        kernel: int,
+        stride: int,
+        padding: int,
+        dilation: int,
+        groups: int,
+        bias: bool,
+        input_len: int,
+        dynamic: bool,
+    ) -> None:
+        x = torch.rand(2, in_ch, input_len)
+
+        class Conv1dModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.conv = nn.Conv1d(
+                    in_ch,
+                    out_ch,
+                    kernel_size=kernel,
+                    stride=stride,
+                    padding=padding,
+                    dilation=dilation,
+                    groups=groups,
+                    bias=bias,
+                )
+
+            def forward(self, x: Tensor) -> Tensor:
+                return self.conv(x)
+
+        model = Conv1dModel().eval()
+        # Batch (dim 0) and spatial length (dim 2) can be dynamic; channel (dim 1) is fixed by the layer.
+        # min_len ensures output_len >= 2 (avoids specialization when output == 1) and length >= kernel.
+        # max=2**20 keeps us within the upper bound torch.export derives from conv arithmetic.
+        if dynamic:
+            min_len = max(kernel, stride + dilation * (kernel - 1) + 1 - 2 * padding)
+            dynamic_shapes = {
+                "x": {
+                    0: torch.export.Dim("batch", min=1),
+                    2: torch.export.Dim("length", min=min_len, max=2**20),
+                }
+            }
+        else:
+            dynamic_shapes = None
+        await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize(
+        "in_ch,out_ch,kernel,padding,dilation,groups,bias,input_shape",
+        [
+            # Basic 2D conv with bias
+            (3, 16, 3, 1, 1, 1, True, (1, 3, 8, 8)),
+            # Without bias
+            (3, 16, 3, 1, 1, 1, False, (1, 3, 8, 8)),
+            # Depthwise: groups == in_channels
+            (4, 4, 3, 1, 1, 4, True, (1, 4, 8, 8)),
+            (8, 8, 3, 1, 1, 8, True, (2, 8, 6, 6)),
+            # Dilation > 1 (atrous convolution)
+            (3, 8, 3, 2, 2, 1, True, (1, 3, 16, 16)),
+            (3, 8, 3, (2, 3), (2, 3), 1, True, (1, 3, 16, 16)),
+        ],
+    )
+    async def test_conv2d(
+        self,
+        in_ch: int,
+        out_ch: int,
+        kernel: int,
+        padding: int | tuple[int, int],
+        dilation: int | tuple[int, int],
+        groups: int,
+        bias: bool,
+        input_shape: tuple[int, int, int, int],
+        dynamic: bool,
+    ) -> None:
+        x = torch.rand(2, *input_shape[1:])
+
+        class Conv2dModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.conv = nn.Conv2d(
+                    in_ch,
+                    out_ch,
+                    kernel_size=kernel,
+                    padding=padding,
+                    dilation=dilation,
+                    groups=groups,
+                    bias=bias,
+                )
+
+            def forward(self, x: Tensor) -> Tensor:
+                return self.conv(x)
+
+        model = Conv2dModel().eval()
+        # Batch (dim 0) and spatial H/W (dims 2, 3) can be dynamic; channel (dim 1) is fixed by the layer.
+        dynamic_shapes = (
+            {
+                "x": {
+                    0: torch.export.Dim("batch", min=1),
+                    2: torch.export.Dim("H", min=kernel),
+                    3: torch.export.Dim("W", min=kernel),
+                }
+            }
+            if dynamic
+            else None
+        )
+        await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize(
+        "in_ch,out_ch,kernel,stride,padding,dilation,groups,bias,input_shape",
+        [
+            # Basic 3D conv with bias, no padding
+            (3, 8, 3, 1, 0, 1, 1, True, (2, 3, 6, 6, 6)),
+            # Without bias
+            (3, 8, 3, 1, 0, 1, 1, False, (2, 3, 6, 6, 6)),
+            # Non-zero padding (exercises the pad branch in replace_conv for rank==5)
+            (3, 8, 3, 1, 1, 1, 1, True, (2, 3, 6, 6, 6)),
+            # Anisotropic kernel / padding / dilation across D, H, W
+            (3, 8, (3, 3, 3), 1, (1, 2, 0), (1, 2, 1), 1, True, (2, 3, 6, 8, 6)),
+            # Stride > 1
+            (3, 8, 3, 2, 1, 1, 1, True, (2, 3, 8, 8, 8)),
+            # Depthwise: groups == in_channels
+            (4, 4, 3, 1, 1, 1, 4, True, (2, 4, 6, 6, 6)),
+        ],
+    )
+    async def test_conv3d(
+        self,
+        in_ch: int,
+        out_ch: int,
+        kernel: int | tuple[int, int, int],
+        stride: int,
+        padding: int | tuple[int, int, int],
+        dilation: int | tuple[int, int, int],
+        groups: int,
+        bias: bool,
+        input_shape: tuple[int, int, int, int, int],
+        dynamic: bool,
+    ) -> None:
+        x = torch.rand(*input_shape)
+
+        class Conv3dModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.conv = nn.Conv3d(
+                    in_ch,
+                    out_ch,
+                    kernel_size=kernel,
+                    stride=stride,
+                    padding=padding,
+                    dilation=dilation,
+                    groups=groups,
+                    bias=bias,
+                )
+
+            def forward(self, x: Tensor) -> Tensor:
+                return self.conv(x)
+
+        model = Conv3dModel().eval()
+
+        # Batch (dim 0) and spatial D/H/W (dims 2, 3, 4) can be dynamic; channel (dim 1) is fixed.
+        # Per-axis min matches the conv1d logic: large enough that kernel fits AND output >= 2
+        # (an output of 1 gets specialized, breaking the dynamic guard).
+        def _triple(v: int | tuple[int, int, int]) -> tuple[int, int, int]:
+            return v if isinstance(v, tuple) else (v, v, v)
+
+        k = _triple(kernel)
+        p = _triple(padding)
+        d = _triple(dilation)
+        s = _triple(stride)
+        min_d = max(k[0], s[0] + d[0] * (k[0] - 1) + 1 - 2 * p[0])
+        min_h = max(k[1], s[1] + d[1] * (k[1] - 1) + 1 - 2 * p[1])
+        min_w = max(k[2], s[2] + d[2] * (k[2] - 1) + 1 - 2 * p[2])
+        dynamic_shapes = (
+            {
+                "x": {
+                    0: torch.export.Dim("batch", min=1),
+                    2: torch.export.Dim("D", min=min_d, max=2**20),
+                    3: torch.export.Dim("H", min=min_h, max=2**20),
+                    4: torch.export.Dim("W", min=min_w, max=2**20),
+                }
+            }
+            if dynamic
+            else None
+        )
+        await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize(
+        "in_channels,out_channels,kernel_size,stride,padding,dilation,output_padding,groups,is_1d",
+        [
+            # ConvTranspose2d: Basic cases with stride=2 (upsampling)
+            (1, 1, 3, (2, 2), (1, 1), (1, 1), (0, 0), 1, False),
+            # ConvTranspose2d: Different kernel/stride combinations
+            (3, 6, 3, (1, 1), (0, 0), (1, 1), (0, 0), 1, False),
+            # ConvTranspose2d: With padding and stride
+            (2, 4, 3, (2, 2), (1, 1), (1, 1), (0, 0), 1, False),
+            # ConvTranspose2d: With dilation
+            (2, 4, 3, (1, 1), (2, 2), (2, 2), (0, 0), 1, False),
+            # ConvTranspose2d: With output_padding
+            (1, 1, 3, (2, 2), (1, 1), (1, 1), (1, 1), 1, False),
+            # ConvTranspose2d: Grouped convolution
+            (4, 4, 3, (2, 2), (1, 1), (1, 1), (0, 0), 2, False),
+            # ConvTranspose1d: Basic case
+            (1, 1, 3, (2,), (1,), (1,), (0,), 1, True),
+            # ConvTranspose1d: With stride and padding
+            (2, 4, 3, (2,), (1,), (1,), (0,), 1, True),
+            # ConvTranspose1d: With output_padding
+            (2, 4, 3, (2,), (1,), (1,), (1,), 1, True),
+        ],
+    )
+    async def test_conv_transpose(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: Any,
+        padding: Any,
+        dilation: Any,
+        output_padding: Any,
+        groups: int,
+        is_1d: bool,
+        dynamic: bool,
+    ) -> None:
+        """Test conv_transpose1d and conv_transpose2d operations."""
+        conv_layer: Any = None
+        if is_1d:
+            x = torch.rand(2, in_channels, 8)
+            conv_layer = nn.ConvTranspose1d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride[0],
+                padding=padding[0],
+                dilation=dilation[0],
+                output_padding=output_padding[0],
+                groups=groups,
+                bias=True,
+            )
+        else:
+            x = torch.rand(2, in_channels, 8, 8)
+            conv_layer = nn.ConvTranspose2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
                 stride=stride,
                 padding=padding,
                 dilation=dilation,
+                output_padding=output_padding,
                 groups=groups,
-                bias=bias,
+                bias=True,
             )
 
-        def forward(self, x: Tensor) -> Tensor:
-            return self.conv(x)
+        class ConvTransposeModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.conv_transpose = conv_layer
 
-    model = Conv1dModel().eval()
-    # Batch (dim 0) and spatial length (dim 2) can be dynamic; channel (dim 1) is fixed by the layer.
-    # min_len ensures output_len >= 2 (avoids specialization when output == 1) and length >= kernel.
-    # max=2**20 keeps us within the upper bound torch.export derives from conv arithmetic.
-    if dynamic:
-        min_len = max(kernel, stride + dilation * (kernel - 1) + 1 - 2 * padding)
-        dynamic_shapes = {
-            "x": {
-                0: torch.export.Dim("batch", min=1),
-                2: torch.export.Dim("length", min=min_len, max=2**20),
-            }
-        }
-    else:
-        dynamic_shapes = None
-    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+            def forward(self, x: Tensor) -> Tensor:
+                return self.conv_transpose(x)
 
-
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize(
-    "in_ch,out_ch,kernel,padding,dilation,groups,bias,input_shape",
-    [
-        # Basic 2D conv with bias
-        (3, 16, 3, 1, 1, 1, True, (1, 3, 8, 8)),
-        # Without bias
-        (3, 16, 3, 1, 1, 1, False, (1, 3, 8, 8)),
-        # Depthwise: groups == in_channels
-        (4, 4, 3, 1, 1, 4, True, (1, 4, 8, 8)),
-        (8, 8, 3, 1, 1, 8, True, (2, 8, 6, 6)),
-        # Dilation > 1 (atrous convolution)
-        (3, 8, 3, 2, 2, 1, True, (1, 3, 16, 16)),
-        (3, 8, 3, (2, 3), (2, 3), 1, True, (1, 3, 16, 16)),
-    ],
-)
-async def test_conv2d(
-    in_ch: int,
-    out_ch: int,
-    kernel: int,
-    padding: int | tuple[int, int],
-    dilation: int | tuple[int, int],
-    groups: int,
-    bias: bool,
-    input_shape: tuple[int, int, int, int],
-    dynamic: bool,
-) -> None:
-    x = torch.rand(2, *input_shape[1:])
-
-    class Conv2dModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.conv = nn.Conv2d(
-                in_ch,
-                out_ch,
-                kernel_size=kernel,
-                padding=padding,
-                dilation=dilation,
-                groups=groups,
-                bias=bias,
+        model = ConvTransposeModel().eval()
+        # Batch (dim 0) and spatial dimensions can be dynamic; channel (dim 1) is fixed by the layer.
+        if dynamic:
+            dynamic_shapes = (
+                {
+                    "x": {
+                        0: torch.export.Dim("batch", min=1),
+                        2: torch.export.Dim("L", min=kernel_size, max=2**20),
+                    }
+                }
+                if is_1d
+                else {
+                    "x": {
+                        0: torch.export.Dim("batch", min=1),
+                        2: torch.export.Dim("H", min=kernel_size),
+                        3: torch.export.Dim("W", min=kernel_size),
+                    }
+                }
             )
+        else:
+            dynamic_shapes = None
+        await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
-        def forward(self, x: Tensor) -> Tensor:
-            return self.conv(x)
-
-    model = Conv2dModel().eval()
-    # Batch (dim 0) and spatial H/W (dims 2, 3) can be dynamic; channel (dim 1) is fixed by the layer.
-    dynamic_shapes = (
-        {
-            "x": {
-                0: torch.export.Dim("batch", min=1),
-                2: torch.export.Dim("H", min=kernel),
-                3: torch.export.Dim("W", min=kernel),
-            }
-        }
-        if dynamic
-        else None
+    @pytest.mark.parametrize(
+        "is_1d, output_padding",
+        [
+            (True, 0),  # radar repro: conv_transpose1d + squeeze, static shapes
+            (True, 1),  # output_padding > padding (previously wrong output size)
+            (False, 0),
+            (False, 1),
+        ],
     )
-    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+    async def test_conv_transpose_static_shape_squeeze(
+        self, is_1d: bool, output_padding: int
+    ) -> None:
+        """A squeeze/reshape after a transposed conv with fully static input must
+        keep static shapes end-to-end so ``save_asset`` passes MLIR verification
+        (rdar://181169322: the 1D reshape-back used to erase the static shape,
+        tripping ``coreai.shrink_dims`` on dynamic dims)."""
 
+        class Model(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.ct = (
+                    nn.ConvTranspose1d(4, 1, 8, stride=2, output_padding=output_padding)
+                    if is_1d
+                    else nn.ConvTranspose2d(
+                        4, 1, 3, stride=2, output_padding=output_padding
+                    )
+                )
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize(
-    "in_ch,out_ch,kernel,stride,padding,dilation,groups,bias,input_shape",
-    [
-        # Basic 3D conv with bias, no padding
-        (3, 8, 3, 1, 0, 1, 1, True, (2, 3, 6, 6, 6)),
-        # Without bias
-        (3, 8, 3, 1, 0, 1, 1, False, (2, 3, 6, 6, 6)),
-        # Non-zero padding (exercises the pad branch in replace_conv for rank==5)
-        (3, 8, 3, 1, 1, 1, 1, True, (2, 3, 6, 6, 6)),
-        # Anisotropic kernel / padding / dilation across D, H, W
-        (3, 8, (3, 3, 3), 1, (1, 2, 0), (1, 2, 1), 1, True, (2, 3, 6, 8, 6)),
-        # Stride > 1
-        (3, 8, 3, 2, 1, 1, 1, True, (2, 3, 8, 8, 8)),
-        # Depthwise: groups == in_channels
-        (4, 4, 3, 1, 1, 1, 4, True, (2, 4, 6, 6, 6)),
-    ],
-)
-async def test_conv3d(
-    in_ch: int,
-    out_ch: int,
-    kernel: int | tuple[int, int, int],
-    stride: int,
-    padding: int | tuple[int, int, int],
-    dilation: int | tuple[int, int, int],
-    groups: int,
-    bias: bool,
-    input_shape: tuple[int, int, int, int, int],
-    dynamic: bool,
-) -> None:
-    x = torch.rand(*input_shape)
+            def forward(self, x: Tensor) -> Tensor:
+                # squeeze the singleton out-channel dim, then reshape — the pattern
+                # that previously produced `shrink_dims` on dynamic dims.
+                y = self.ct(x).squeeze(1)
+                return y.reshape(y.shape[0], -1)
 
-    class Conv3dModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.conv = nn.Conv3d(
-                in_ch,
-                out_ch,
-                kernel_size=kernel,
-                stride=stride,
-                padding=padding,
-                dilation=dilation,
-                groups=groups,
-                bias=bias,
-            )
-
-        def forward(self, x: Tensor) -> Tensor:
-            return self.conv(x)
-
-    model = Conv3dModel().eval()
-
-    # Batch (dim 0) and spatial D/H/W (dims 2, 3, 4) can be dynamic; channel (dim 1) is fixed.
-    # Per-axis min matches the conv1d logic: large enough that kernel fits AND output >= 2
-    # (an output of 1 gets specialized, breaking the dynamic guard).
-    def _triple(v: int | tuple[int, int, int]) -> tuple[int, int, int]:
-        return v if isinstance(v, tuple) else (v, v, v)
-
-    k = _triple(kernel)
-    p = _triple(padding)
-    d = _triple(dilation)
-    s = _triple(stride)
-    min_d = max(k[0], s[0] + d[0] * (k[0] - 1) + 1 - 2 * p[0])
-    min_h = max(k[1], s[1] + d[1] * (k[1] - 1) + 1 - 2 * p[1])
-    min_w = max(k[2], s[2] + d[2] * (k[2] - 1) + 1 - 2 * p[2])
-    dynamic_shapes = (
-        {
-            "x": {
-                0: torch.export.Dim("batch", min=1),
-                2: torch.export.Dim("D", min=min_d, max=2**20),
-                3: torch.export.Dim("H", min=min_h, max=2**20),
-                4: torch.export.Dim("W", min=min_w, max=2**20),
-            }
-        }
-        if dynamic
-        else None
-    )
-    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+        x = torch.randn(1, 4, 32) if is_1d else torch.randn(1, 4, 8, 8)
+        # validate_numerical_output saves the asset (exercising MLIR verification)
+        # and checks numerics against torch eager.
+        await validate_numerical_output(model=Model().eval(), x=x)
 
 
 class TestCopy:
@@ -5563,143 +5703,6 @@ class TestIndexTensor:
                 x={}, row_idx={0: "N"}, col_idx={0: "N"}
             ),
         )
-
-
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize(
-    "in_channels,out_channels,kernel_size,stride,padding,dilation,output_padding,groups,is_1d",
-    [
-        # ConvTranspose2d: Basic cases with stride=2 (upsampling)
-        (1, 1, 3, (2, 2), (1, 1), (1, 1), (0, 0), 1, False),
-        # ConvTranspose2d: Different kernel/stride combinations
-        (3, 6, 3, (1, 1), (0, 0), (1, 1), (0, 0), 1, False),
-        # ConvTranspose2d: With padding and stride
-        (2, 4, 3, (2, 2), (1, 1), (1, 1), (0, 0), 1, False),
-        # ConvTranspose2d: With dilation
-        (2, 4, 3, (1, 1), (2, 2), (2, 2), (0, 0), 1, False),
-        # ConvTranspose2d: With output_padding
-        (1, 1, 3, (2, 2), (1, 1), (1, 1), (1, 1), 1, False),
-        # ConvTranspose2d: Grouped convolution
-        (4, 4, 3, (2, 2), (1, 1), (1, 1), (0, 0), 2, False),
-        # ConvTranspose1d: Basic case
-        (1, 1, 3, (2,), (1,), (1,), (0,), 1, True),
-        # ConvTranspose1d: With stride and padding
-        (2, 4, 3, (2,), (1,), (1,), (0,), 1, True),
-        # ConvTranspose1d: With output_padding
-        (2, 4, 3, (2,), (1,), (1,), (1,), 1, True),
-    ],
-)
-async def test_conv_transpose(
-    in_channels: int,
-    out_channels: int,
-    kernel_size: int,
-    stride: Any,
-    padding: Any,
-    dilation: Any,
-    output_padding: Any,
-    groups: int,
-    is_1d: bool,
-    dynamic: bool,
-) -> None:
-    """Test conv_transpose1d and conv_transpose2d operations."""
-    conv_layer: Any = None
-    if is_1d:
-        x = torch.rand(2, in_channels, 8)
-        conv_layer = nn.ConvTranspose1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride[0],
-            padding=padding[0],
-            dilation=dilation[0],
-            output_padding=output_padding[0],
-            groups=groups,
-            bias=True,
-        )
-    else:
-        x = torch.rand(2, in_channels, 8, 8)
-        conv_layer = nn.ConvTranspose2d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            output_padding=output_padding,
-            groups=groups,
-            bias=True,
-        )
-
-    class ConvTransposeModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.conv_transpose = conv_layer
-
-        def forward(self, x: Tensor) -> Tensor:
-            return self.conv_transpose(x)
-
-    model = ConvTransposeModel().eval()
-    # Batch (dim 0) and spatial dimensions can be dynamic; channel (dim 1) is fixed by the layer.
-    if dynamic:
-        dynamic_shapes = (
-            {
-                "x": {
-                    0: torch.export.Dim("batch", min=1),
-                    2: torch.export.Dim("L", min=kernel_size, max=2**20),
-                }
-            }
-            if is_1d
-            else {
-                "x": {
-                    0: torch.export.Dim("batch", min=1),
-                    2: torch.export.Dim("H", min=kernel_size),
-                    3: torch.export.Dim("W", min=kernel_size),
-                }
-            }
-        )
-    else:
-        dynamic_shapes = None
-    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
-
-
-@pytest.mark.parametrize(
-    "is_1d, output_padding",
-    [
-        (True, 0),  # radar repro: conv_transpose1d + squeeze, static shapes
-        (True, 1),  # output_padding > padding (previously wrong output size)
-        (False, 0),
-        (False, 1),
-    ],
-)
-async def test_conv_transpose_static_shape_squeeze(
-    is_1d: bool, output_padding: int
-) -> None:
-    """A squeeze/reshape after a transposed conv with fully static input must
-    keep static shapes end-to-end so ``save_asset`` passes MLIR verification
-    (rdar://181169322: the 1D reshape-back used to erase the static shape,
-    tripping ``coreai.shrink_dims`` on dynamic dims)."""
-
-    class Model(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.ct = (
-                nn.ConvTranspose1d(4, 1, 8, stride=2, output_padding=output_padding)
-                if is_1d
-                else nn.ConvTranspose2d(
-                    4, 1, 3, stride=2, output_padding=output_padding
-                )
-            )
-
-        def forward(self, x: Tensor) -> Tensor:
-            # squeeze the singleton out-channel dim, then reshape — the pattern
-            # that previously produced `shrink_dims` on dynamic dims.
-            y = self.ct(x).squeeze(1)
-            return y.reshape(y.shape[0], -1)
-
-    x = torch.randn(1, 4, 32) if is_1d else torch.randn(1, 4, 8, 8)
-    # validate_numerical_output saves the asset (exercising MLIR verification)
-    # and checks numerics against torch eager.
-    await validate_numerical_output(model=Model().eval(), x=x)
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
