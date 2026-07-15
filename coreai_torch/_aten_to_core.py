@@ -1148,7 +1148,8 @@ def _conv_transpose(
     """Handles transposed convolution (conv_transpose1d and conv_transpose2d).
 
     For 1D, expands to 2D, performs conv_transpose2d, then shrinks back.
-    Handles output_padding via pre-padding input and post-cropping output.
+    ``padding`` and ``output_padding`` are handled natively by the Core AI
+    ``conv_transpose2d`` op (matching PyTorch semantics).
     """
     is_1d = x.type.rank == 3
     if is_1d:
@@ -1160,66 +1161,29 @@ def _conv_transpose(
         dilation = dilation + [1]
         output_padding = output_padding + [0]
 
-    x_rank = x.type.rank
-    effective_padding = padding
-    pre_pad_amt = [0] * (x_rank * 2)
-    post_crop_amt = [0] * (x_rank * 2)
-
-    if any(p > 0 for p in output_padding):
-        effective_padding = [0] * len(padding)
-        pre_pad_amt = [0] * (x_rank * 2)
-        post_crop_amt = [0] * (x_rank * 2)
-        # For each spatial dim: initialize symmetric crop from padding,
-        # then shift the output_padding amount from crop → pre-pad if needed
-        for i, (p, op) in enumerate(zip(padding, output_padding)):
-            before = 4 + 2 * i
-            after = 4 + 2 * i + 1
-            post_crop_amt[before] = p
-            post_crop_amt[after] = p
-            if post_crop_amt[after] >= op:
-                post_crop_amt[after] -= op
-            else:
-                pre_pad_amt[after] = op - post_crop_amt[after]
-                post_crop_amt[after] = 0
-
-    if any(p > 0 for p in pre_pad_amt):
-        x = coreai.pad(
-            x,
-            np.array(pre_pad_amt, dtype=np.uint32),
-            coreai.constant(0, dtype=x.type.element_type),
-        )
-    stride = coreai.constant(stride, np.uint32)
-    effective_padding = coreai.constant(effective_padding, np.uint32)
-    dilation = coreai.constant(dilation, np.uint32)
-    output_padding = coreai.constant([0, 0], dtype=np.uint32)
-    groups = coreai.constant(groups, np.uint32)
     result = coreai.conv_transpose2d(
         input=x,
         weight=weight,
-        stride=stride,
-        padding=effective_padding,
-        dilation=dilation,
-        output_pad=output_padding,
-        groups=groups,
+        stride=coreai.constant(stride, np.uint32),
+        padding=coreai.constant(padding, np.uint32),
+        dilation=coreai.constant(dilation, np.uint32),
+        output_pad=coreai.constant(output_padding, np.uint32),
+        groups=coreai.constant(groups, np.uint32),
     )
 
-    if any(p > 0 for p in post_crop_amt):
-        stop_val = coreai.sub(
-            coreai.cast(coreai.get_shape(result), dtype=np.int32),
-            [post_crop_amt[2 * d + 1] for d in range(x_rank)],
-        )
-        result = coreai.slice_(
-            result,
-            [post_crop_amt[2 * d] for d in range(x_rank)],
-            stop_val,
-            [1] * x_rank,
-        )
-
     if is_1d:
-        # Shrink back to 3D: [N,C,W,1] → [N,C,W]
-        result = coreai.reshape(
-            result, coreai.slice_(coreai.get_shape(result), [0], [3], [1])
-        )
+        # Shrink back to 3D: [N,C,W,1] → [N,C,W]. When the trailing (added) dim
+        # is statically 1, use shrink_dims — the inverse of the expand_dims
+        # above — which preserves the statically-known output shape so
+        # downstream ops (e.g. squeeze) stay static (rdar://181169322). Under a
+        # dynamic input the conv op reports every dim (incl. the added one) as
+        # dynamic, so fall back to a reshape driven by the runtime shape.
+        if result.type.shape[-1] == 1:
+            result = coreai.shrink_dims(result, [-1])
+        else:
+            result = coreai.reshape(
+                result, coreai.slice_(coreai.get_shape(result), [0], [3], [1])
+            )
 
     if bias is not None:
         bias_shape = (

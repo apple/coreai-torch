@@ -2614,17 +2614,12 @@ class TestConvolutionIR:
             check_file="""
                 // CHECK-LABEL: module {
                 // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x8x8x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
-                // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[1, 8, 9, 9]> : tensor<4xsi32>
-                // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<4xsi32>
-                // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<[0, 0, 1, 1]> : tensor<4xsi32>
-                // CHECK-NEXT:     %[[V3:.*]] = coreai.constant dense<{{.*}}> : tensor<3x8x3x3xf32>
-                // CHECK-NEXT:     %[[V4:.*]] = coreai.constant dense<2> : tensor<2xui32>
-                // CHECK-NEXT:     %[[V5:.*]] = coreai.constant dense<0> : tensor<2xui32>
-                // CHECK-NEXT:     %[[V6:.*]] = coreai.constant dense<1> : tensor<2xui32>
-                // CHECK-NEXT:     %[[V7:.*]] = coreai.constant dense<1> : tensor<ui32>
-                // CHECK-NEXT:     %[[V8:.*]] = coreai.conv_transpose2d %[[ARG0]], %[[V3]], %[[V4]], %[[V5]], %[[V6]], %[[V5]], %[[V7]] : (tensor<1x3x4x4xf32>, tensor<3x8x3x3xf32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>, tensor<ui32>) -> tensor<1x8x9x9xf32>
-                // CHECK-NEXT:     %[[V9:.*]] = coreai.slice %[[V8]], %[[V2]], %[[V0]], %[[V1]] : (tensor<1x8x9x9xf32>, tensor<4xsi32>, tensor<4xsi32>, tensor<4xsi32>) -> tensor<1x8x8x8xf32>
-                // CHECK-NEXT:     coreai.output %[[V9]] : tensor<1x8x8x8xf32>
+                // CHECK-NEXT:     %[[W:.*]] = coreai.constant dense<{{.*}}> : tensor<3x8x3x3xf32>
+                // CHECK-NEXT:     %[[STRIDE:.*]] = coreai.constant dense<2> : tensor<2xui32>
+                // CHECK-NEXT:     %[[ONE:.*]] = coreai.constant dense<1> : tensor<2xui32>
+                // CHECK-NEXT:     %[[GROUPS:.*]] = coreai.constant dense<1> : tensor<ui32>
+                // CHECK-NEXT:     %[[R:.*]] = coreai.conv_transpose2d %[[ARG0]], %[[W]], %[[STRIDE]], %[[ONE]], %[[ONE]], %[[ONE]], %[[GROUPS]] : (tensor<1x3x4x4xf32>, tensor<3x8x3x3xf32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>, tensor<ui32>) -> tensor<1x8x8x8xf32>
+                // CHECK-NEXT:     coreai.output %[[R]] : tensor<1x8x8x8xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,

@@ -5662,6 +5662,46 @@ async def test_conv_transpose(
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
+@pytest.mark.parametrize(
+    "is_1d, output_padding",
+    [
+        (True, 0),  # radar repro: conv_transpose1d + squeeze, static shapes
+        (True, 1),  # output_padding > padding (previously wrong output size)
+        (False, 0),
+        (False, 1),
+    ],
+)
+async def test_conv_transpose_static_shape_squeeze(
+    is_1d: bool, output_padding: int
+) -> None:
+    """A squeeze/reshape after a transposed conv with fully static input must
+    keep static shapes end-to-end so ``save_asset`` passes MLIR verification
+    (rdar://181169322: the 1D reshape-back used to erase the static shape,
+    tripping ``coreai.shrink_dims`` on dynamic dims)."""
+
+    class Model(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.ct = (
+                nn.ConvTranspose1d(4, 1, 8, stride=2, output_padding=output_padding)
+                if is_1d
+                else nn.ConvTranspose2d(
+                    4, 1, 3, stride=2, output_padding=output_padding
+                )
+            )
+
+        def forward(self, x: Tensor) -> Tensor:
+            # squeeze the singleton out-channel dim, then reshape — the pattern
+            # that previously produced `shrink_dims` on dynamic dims.
+            y = self.ct(x).squeeze(1)
+            return y.reshape(y.shape[0], -1)
+
+    x = torch.randn(1, 4, 32) if is_1d else torch.randn(1, 4, 8, 8)
+    # validate_numerical_output saves the asset (exercising MLIR verification)
+    # and checks numerics against torch eager.
+    await validate_numerical_output(model=Model().eval(), x=x)
+
+
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
     "input_shape,split_sizes,dim,dtype",
