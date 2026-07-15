@@ -96,6 +96,15 @@ open docs/_build/html/index.html
 
 ## Development
 
+### Setting up pre-commit hooks
+
+This repo uses [pre-commit](https://pre-commit.com) to run linting and
+formatting checks automatically. Install the hooks once after cloning:
+
+```bash
+pre-commit install --hook-type pre-commit --hook-type pre-push
+```
+
 ### Running tests
 
 ```bash
