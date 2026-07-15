@@ -5,8 +5,12 @@
 
 """coreai-torch: Convert PyTorch models to Core AI format."""
 
+import warnings as _warnings
+
 # Re-export MetalParameter so users don't need a separate coreai import.
 from coreai.authoring import MetalParameter
+from packaging.version import Version as _Version
+from torch import __version__ as _torch_version
 
 from .__version__ import __version__
 from ._composite_declaration import generate_composite_decl
@@ -24,3 +28,12 @@ __all__ = [
     "get_decomp_table",
     "generate_composite_decl",
 ]
+
+_TORCH_MAX_VERSION = "2.13.0"
+
+if _Version(_torch_version) > _Version(_TORCH_MAX_VERSION):
+    _warnings.warn(
+        f"coreai-torch has only been validated with torch<={_TORCH_MAX_VERSION}; "
+        f"found torch {_torch_version}. Some functionality may not work as expected.",
+        stacklevel=2,
+    )
