@@ -37,7 +37,7 @@ nb_remove_code_outputs = True
 html_theme = "shibuya"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
-html_js_files = ["copy-page-button.js"]
+html_js_files = ["sidebar-wrap.js", "copy-page-button.js"]
 templates_path = ["_templates"]
 html_show_sourcelink = False
 
