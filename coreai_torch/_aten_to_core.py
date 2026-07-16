@@ -2247,6 +2247,9 @@ def replace_mean_default(
 ) -> Value:
     """Computes global mean across all dimensions, returning a scalar tensor."""
     x = _get_operand(values_map, node, 0)
+    target_type = get_output_element_type_from_node(node)
+    if x.type.element_type != target_type:
+        x = coreai.cast(x, target_type)
     all_dims = list(range(x.type.rank))
     return coreai.shrink_dims(coreai.reduce_mean(x, all_dims), all_dims)
 
@@ -2256,6 +2259,9 @@ def replace_mean_dim(
 ) -> Value:
     """Computes mean along specified dimensions."""
     x, axes = _get_operands(values_map, node, [0, 1])
+    target_type = get_output_element_type_from_node(node)
+    if x.type.element_type != target_type:
+        x = coreai.cast(x, target_type)
     keepdim = len(node.args) >= 3 and bool(node.args[2])
     result = coreai.reduce_mean(x, axes)
     return result if keepdim else coreai.shrink_dims(result, axes)
