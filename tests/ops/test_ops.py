@@ -6443,11 +6443,40 @@ async def test_sum_int_promotes_to_int64_no_overflow(x: Tensor) -> None:
 
 
 @pytest.mark.parametrize(
+    "x,dims,keepdim",
+    [
+        # Explicit dim list + keepdim, exercising the branch of
+        # replace_sum_dim_intlist that doesn't reduce all dims via the
+        # empty-list path (see test_sum_int_promotes_to_int64_no_overflow
+        # above, which only covers torch.sum(x) with no dim/keepdim args).
+        (torch.full((2, 3), 2147483647, dtype=torch.int32), [0, 1], True),
+        (torch.full((2, 3), 2147483647, dtype=torch.int32), [0, 1], False),
+    ],
+)
+async def test_sum_dim_intlist_int_promotes_to_int64_no_overflow(
+    x: Tensor, dims: list[int], keepdim: bool
+) -> None:
+    """Regression test for BUG-012, explicit dim_IntList + keepdim variant."""
+
+    class SumModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return torch.sum(x, dim=dims, keepdim=keepdim)
+
+    model = SumModel().eval()
+    torch_out = model(x)
+    assert torch_out.dtype == torch.int64
+
+    await validate_numerical_output(model=model, x=x)
+
+
+@pytest.mark.parametrize(
     "x",
     [
         # torch.prod(int32) promotes to int64: 70000 * 70000 = 4900000000,
         # which fits in int64 but overflows int32.
         torch.tensor([70000, 70000], dtype=torch.int32),
+        # Negative-value overflow: promotion to int64 is sign-agnostic.
+        torch.tensor([-70000, 70000], dtype=torch.int32),
     ],
 )
 async def test_prod_int_promotes_to_int64_no_overflow(x: Tensor) -> None:
@@ -6461,7 +6490,7 @@ async def test_prod_int_promotes_to_int64_no_overflow(x: Tensor) -> None:
     model = ProdModel().eval()
     torch_out = model(x)
     assert torch_out.dtype == torch.int64
-    assert torch_out.item() == 70000 * 70000
+    assert torch_out.item() == x[0].item() * x[1].item()
 
     await validate_numerical_output(model=model, x=x)
 
