@@ -473,6 +473,39 @@ def get_output_element_type_from_node(node: fx.Node, index: int | None = None) -
     return TORCH_TO_COREAI_DTYPE[dtype]()
 
 
+def get_unnarrowed_output_element_type_from_node(
+    node: fx.Node, index: int | None = None
+) -> Type:
+    """Return the element type for a node's output, without int64/float64 narrowing.
+
+    Like :func:`get_output_element_type_from_node`, but skips the
+    ``_NARROW_TORCH_DTYPE`` step. Intended for accumulator-style ops (e.g.
+    ``sum``/``prod`` reductions) whose torch semantics require accumulating at
+    the full promoted width (int64) to avoid overflowing early -- narrowing
+    the accumulator *before* the op runs silently changes its numeric result,
+    unlike narrowing a plain value cast, which is lossless-by-convention for
+    values already known to fit (or that the model owner accepts truncating).
+    coreai's own IR supports int64 (``si64``) as a first-class type, so
+    producing it here is not a runtime limitation -- see BUG-012.
+    """
+    val = node.meta["val"]
+    if index is not None:
+        val = val[index]
+
+    if isinstance(val, torch.Tensor):
+        dtype = val.dtype
+    elif isinstance(val, (float, torch.SymFloat)):
+        dtype = torch.float32
+    elif isinstance(val, (int, torch.SymInt)):
+        dtype = torch.int32
+    elif isinstance(val, (bool, torch.SymBool)):
+        dtype = torch.bool
+    else:
+        dtype = val.dtype  # fall back to original behaviour
+
+    return TORCH_TO_COREAI_DTYPE[dtype]()
+
+
 @dataclass
 class _StackedIndexInfo:
     """Stacked indices and permutations for gather_nd/scatter_nd.

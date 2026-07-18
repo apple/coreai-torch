@@ -6417,6 +6417,75 @@ async def test_prod_default(x: Tensor, dynamic: bool) -> None:
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
+@pytest.mark.parametrize(
+    "x",
+    [
+        # torch.sum(int32) promotes to int64: two INT32_MAX values sum to
+        # 4294967294, which fits in int64 but overflows (wraps) int32.
+        torch.tensor([2147483647, 2147483647], dtype=torch.int32),
+        torch.full((3, 4), 2147483647, dtype=torch.int32),
+    ],
+)
+async def test_sum_int_promotes_to_int64_no_overflow(x: Tensor) -> None:
+    """Regression test for BUG-012: sum's int64 accumulator must not be
+    narrowed to int32, which would make the reduction silently wrap."""
+
+    class SumModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return torch.sum(x)
+
+    model = SumModel().eval()
+    torch_out = model(x)
+    assert torch_out.dtype == torch.int64
+    assert torch_out.item() == x.numel() * 2147483647
+
+    await validate_numerical_output(model=model, x=x)
+
+
+@pytest.mark.parametrize(
+    "x",
+    [
+        # torch.prod(int32) promotes to int64: 70000 * 70000 = 4900000000,
+        # which fits in int64 but overflows int32.
+        torch.tensor([70000, 70000], dtype=torch.int32),
+    ],
+)
+async def test_prod_int_promotes_to_int64_no_overflow(x: Tensor) -> None:
+    """Regression test for BUG-012: prod's int64 accumulator must not be
+    narrowed to int32, which would make the reduction silently wrap."""
+
+    class ProdModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return torch.prod(x)
+
+    model = ProdModel().eval()
+    torch_out = model(x)
+    assert torch_out.dtype == torch.int64
+    assert torch_out.item() == 70000 * 70000
+
+    await validate_numerical_output(model=model, x=x)
+
+
+@pytest.mark.parametrize(
+    "x,dim",
+    [
+        (torch.tensor([[2147483647, 2147483647]], dtype=torch.int32), 1),
+    ],
+)
+async def test_prod_dim_int_promotes_to_int64_no_overflow(x: Tensor, dim: int) -> None:
+    """Regression test for BUG-012, dim_int variant of prod."""
+
+    class ProdModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return torch.prod(x, dim=dim)
+
+    model = ProdModel().eval()
+    torch_out = model(x)
+    assert torch_out.dtype == torch.int64
+
+    await validate_numerical_output(model=model, x=x)
+
+
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
     "x,dims",
