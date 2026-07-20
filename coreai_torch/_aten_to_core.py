@@ -2311,11 +2311,22 @@ def replace_min_dim(
     dim = dim + x.type.rank if dim < 0 else dim
 
     min_values = coreai.reduce_min(x, [dim])
+
+    element_type = x.type.element_type
+    is_integer = isinstance(element_type, IntegerType)
+    is_bool = element_type == IntegerType.get_signless(1)
+    if is_integer and not is_bool:
+        # ~x == x ^ ALL_ONES; -1 has all bits set in two's complement. Bitwise
+        # complement is a strictly order-reversing bijection over the whole
+        # integer range (no overflow), so argmax(~x) == argmin(x).
+        reversed_x = coreai.broadcasting_bitwise_xor(
+            x, coreai.constant(-1, dtype=element_type)
+        )
+    else:
+        reversed_x = coreai.broadcasting_mul(x, coreai.constant(-1, dtype=element_type))
+
     argmin_indices = coreai.cast(
-        coreai.argmax(
-            coreai.broadcasting_mul(x, coreai.constant(-1, dtype=x.type.element_type)),
-            dim,
-        ),
+        coreai.argmax(reversed_x, dim),
         np.int32,
     )
 

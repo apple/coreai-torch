@@ -3003,6 +3003,86 @@ async def test_min_dim(
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
+class TestMinDimArgminDtypeExtremes:
+    """min.dim argmin indices must be correct even at dtype-extremal minima.
+
+    Core AI has argmax but not argmin, so ``replace_min_dim`` derives the
+    argmin index by reversing the order of ``x`` and taking ``argmax``. The
+    reversal must be exact at the extremes of the input dtype's range:
+
+      * uint8 minimum ``0`` — a plain ``-x`` (i.e. ``x * -1``) negation maps
+        ``0`` to ``0`` rather than the top of the unsigned range, so the true
+        minimum stops being the argmax.
+      * int8 minimum ``-128`` — ``-128 * -1`` overflows the signed range and
+        (under wrapping arithmetic) lands back on ``-128``.
+
+    Both were previously wrong on interpreter/cpu/gpu. The fix reverses integer
+    inputs with the bitwise complement ``~x`` (a strictly decreasing bijection
+    over the whole integer range that never overflows), leaving the exact float
+    negation path untouched. Ground truth is ``torch.min(x, dim=...)``.
+    """
+
+    class MinDimModel(nn.Module):
+        def __init__(self, dim: int, keepdim: bool) -> None:
+            super().__init__()
+            self.dim = dim
+            self.keepdim = keepdim
+
+        def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+            return torch.min(x, dim=self.dim, keepdim=self.keepdim)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    @pytest.mark.parametrize(
+        "values,dtype",
+        [
+            # uint8: true minimum is 0 (bottom of the unsigned range).
+            ([3, 1, 0, 5], torch.uint8),
+            # Signed dtypes at their exact minimum (INT_MIN), which overflows
+            # under the old ``x * -1`` negation trick.
+            ([3, 1, -128, 5], torch.int8),
+            ([3, 1, -(2**15), 5], torch.int16),
+            ([3, 1, -(2**31), 5], torch.int32),
+            # NOTE: coreai-torch narrows int64 inputs to int32 at the graph
+            # boundary, so the exercisable extreme for the int64 dtype *path*
+            # is int32's minimum (a true int64 min of -2**63 would be
+            # truncated at that boundary, unrelated to this argmin fix).
+            ([3, 1, -(2**31), 5], torch.int64),
+        ],
+    )
+    async def test_dtype_min_value(
+        self, values: list[int], dtype: torch.dtype, keepdim: bool
+    ) -> None:
+        x = torch.tensor(values, dtype=dtype)
+        model = self.MinDimModel(dim=0, keepdim=keepdim).eval()
+        await validate_numerical_output(model=model, x=x)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    @pytest.mark.parametrize(
+        "values,dtype",
+        [
+            # Duplicate minima at the dtype extreme: torch returns the FIRST
+            # index (index 0 here), which the reversal must preserve.
+            ([-128, -128, 5], torch.int8),
+            ([0, 0, 5], torch.uint8),
+        ],
+    )
+    async def test_duplicate_minima_first_index(
+        self, values: list[int], dtype: torch.dtype, keepdim: bool
+    ) -> None:
+        x = torch.tensor(values, dtype=dtype)
+        # Sanity-check the ground-truth tie-break we are asserting against.
+        assert int(torch.min(x, dim=0).indices) == 0
+        model = self.MinDimModel(dim=0, keepdim=keepdim).eval()
+        await validate_numerical_output(model=model, x=x)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    async def test_float_path_untouched(self, keepdim: bool) -> None:
+        # Float negation is exact/no-overflow; confirm it still validates.
+        x = torch.tensor([3.0, 1.0, -5.0, 2.0], dtype=torch.float32)
+        model = self.MinDimModel(dim=0, keepdim=keepdim).eval()
+        await validate_numerical_output(model=model, x=x)
+
+
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
     "shape,dim,keepdim,dtype",
