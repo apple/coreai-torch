@@ -3540,6 +3540,948 @@ def replace_sdpa(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
     return result
 
 
+# ---------------------------------------------------------------------------
+# LSTM (aten.lstm.input -> "lstm" composite op)
+#
+# The composite mirrors the CoreML MIL ``lstm`` op interface so a delegate can
+# pattern-match the composite boundary (by name + attributes) and substitute
+# its native recurrent implementation, instead of matching a brittle unrolled
+# sequence of primitive ops.
+#
+# MIL ``lstm`` reference (per single layer / direction group):
+#     i_t = recurrent_activation(W_ii x_t + b_i + W_hi h_{t-1})
+#     f_t = recurrent_activation(W_if x_t + b_f + W_hf h_{t-1})
+#     z_t = cell_activation     (W_iz x_t + b_z + W_hz h_{t-1})
+#     o_t = recurrent_activation(W_io x_t + b_o + W_ho h_{t-1})
+#     c_t = f_t * c_{t-1} + i_t * z_t
+#     h_t = o_t * activation(c_t)
+#
+# For ``torch.nn.LSTM`` the activations are fixed: ``recurrent_activation`` is
+# ``sigmoid`` and both ``cell_activation`` and ``activation`` are ``tanh``.
+#
+# Weight layout differences handled here (matching coremltools' torch frontend):
+#   * PyTorch packs the four gates as ``[i, f, g(cell), o]`` (``ifzo``); MIL
+#     expects ``[i, f, o, z(cell)]`` (``ifoz``). Gate rows are reordered before
+#     being handed to the composite so its inputs already match MIL.
+#   * PyTorch keeps ``bias_ih`` and ``bias_hh`` separate; MIL takes a single
+#     combined ``bias``. They are summed before reordering.
+#
+# Multi-layer and bidirectional stacks are expressed as a chain / pair of these
+# per-direction-group composites, mirroring how MIL represents them.
+# ---------------------------------------------------------------------------
+
+# torch.nn.LSTM uses fixed activations; expose them as composite attributes so a
+# delegate reading the composite has the full MIL-equivalent description.
+_LSTM_RECURRENT_ACTIVATION = "sigmoid"
+_LSTM_CELL_ACTIVATION = "tanh"
+_LSTM_OUTPUT_ACTIVATION = "tanh"
+
+
+def _recurrent_split(t: Value, sizes: list[int], dim: int) -> list[Value]:
+    """Split ``t`` into sections along ``dim``, always returning a list.
+
+    ``coreai.split`` returns a bare ``OpResult`` (not a sequence) when there is
+    only a single output section; normalize that to a one-element list.
+    """
+    result = coreai.split(t, np.array(sizes, np.uint32), np.int32(dim))
+    if isinstance(result, (list, tuple, OpResultList)):
+        return list(result)
+    return [result]
+
+
+def _lstm_reorder_ifzo_to_ifoz(t: Value, hidden: int) -> Value:
+    """Reorder gate rows of a ``(4H, ...)`` tensor from torch ``ifzo`` to MIL ``ifoz``.
+
+    Works on both the ``(4H, X)`` weight matrices and the ``(4H,)`` bias vector,
+    since the gate axis is always dim 0.
+    """
+    chunks = _recurrent_split(t, [hidden] * 4, 0)
+    # torch order [i, f, z, o] -> MIL order [i, f, o, z].
+    return coreai.concat(0, [chunks[0], chunks[1], chunks[3], chunks[2]])
+
+
+def _lstm_recurrence(
+    x: Value,
+    h: Value,
+    c: Value,
+    weight_ih: Value,
+    weight_hh: Value,
+    bias: Value,
+    hidden: int,
+    seq_len: int,
+    *,
+    reverse: bool,
+) -> tuple[Value, Value, Value]:
+    """Emit the LSTM recurrence for a single direction, unrolled over the sequence.
+
+    Args:
+        x: Input of shape ``(S, B, I)``.
+        h: Initial hidden state ``(B, H)``.
+        c: Initial cell state ``(B, H)``.
+        weight_ih: Input weights ``(4H, I)`` in MIL ``ifoz`` layout.
+        weight_hh: Hidden weights ``(4H, H)`` in MIL ``ifoz`` layout.
+        bias: Combined bias ``(4H,)`` in MIL ``ifoz`` layout.
+        hidden: Hidden size ``H``.
+        seq_len: Static sequence length ``S``.
+        reverse: If ``True`` iterate timesteps in reverse (backward direction).
+
+    Returns:
+        ``(output_sequence (S, B, H), h_n (B, H), c_n (B, H))``.
+    """
+    # (I, 4H) and (H, 4H) so that x_t @ w_ih_t and h @ w_hh_t give (B, 4H).
+    w_ih_t = coreai.transpose(weight_ih, to_uint32_perm([1, 0], 2))
+    w_hh_t = coreai.transpose(weight_hh, to_uint32_perm([1, 0], 2))
+
+    steps = _recurrent_split(x, [1] * seq_len, 0)
+    order = range(seq_len - 1, -1, -1) if reverse else range(seq_len)
+
+    outputs: list[Value | None] = [None] * seq_len
+    for t in order:
+        x_t = coreai.shrink_dims(steps[t], [0])  # (B, I)
+        gate = coreai.broadcasting_add(
+            coreai.broadcasting_add(
+                coreai.batch_matmul(x_t, w_ih_t),
+                coreai.batch_matmul(h, w_hh_t),
+            ),
+            bias,
+        )  # (B, 4H)
+        i, f, o, z = _recurrent_split(gate, [hidden] * 4, 1)
+        i = coreai.sigmoid(i)
+        f = coreai.sigmoid(f)
+        o = coreai.sigmoid(o)
+        z = coreai.tanh(z)
+        c = coreai.broadcasting_add(
+            coreai.broadcasting_mul(f, c),
+            coreai.broadcasting_mul(i, z),
+        )
+        h = coreai.broadcasting_mul(o, coreai.tanh(c))
+        outputs[t] = coreai.expand_dims(h, [0])  # (1, B, H)
+
+    output_sequence = coreai.concat(0, outputs)  # (S, B, H)
+    return output_sequence, h, c
+
+
+def _build_lstm_composite(
+    context: Any,
+    hidden: int,
+    seq_len: int,
+    *,
+    bidirectional: bool,
+) -> coreai.GraphOp:
+    """Build a ``@coreai.graph`` composite for one LSTM layer.
+
+    Unidirectional inputs mirror MIL ``lstm``:
+    ``(x, initial_h, initial_c, weight_ih, weight_hh, bias)``.
+
+    Bidirectional adds the backward weights and packs the forward/backward
+    states on the hidden axis (``[:, :H]`` forward, ``[:, H:]`` reverse), as
+    MIL does: ``(..., weight_ih_back, weight_hh_back, bias_back)``.
+    """
+    op_attributes: dict[str, Any] = {
+        "direction": "bidirectional" if bidirectional else "forward",
+        "output_sequence": True,
+        "recurrent_activation": _LSTM_RECURRENT_ACTIVATION,
+        "cell_activation": _LSTM_CELL_ACTIVATION,
+        "activation": _LSTM_OUTPUT_ACTIVATION,
+    }
+    output_names = ["output", "h_n", "c_n"]
+
+    if bidirectional:
+        input_names = [
+            "x",
+            "initial_h",
+            "initial_c",
+            "weight_ih",
+            "weight_hh",
+            "bias",
+            "weight_ih_back",
+            "weight_hh_back",
+            "bias_back",
+        ]
+        composite_decl = generate_composite_decl(
+            context, "lstm", input_names, output_names, op_attributes
+        )
+
+        @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+        def lstm_bidirectional(
+            x: Value,
+            initial_h: Value,
+            initial_c: Value,
+            weight_ih: Value,
+            weight_hh: Value,
+            bias: Value,
+            weight_ih_back: Value,
+            weight_hh_back: Value,
+            bias_back: Value,
+        ) -> tuple[Value, Value, Value]:
+            h0_f, h0_b = _recurrent_split(initial_h, [hidden, hidden], 1)
+            c0_f, c0_b = _recurrent_split(initial_c, [hidden, hidden], 1)
+            out_f, hf, cf = _lstm_recurrence(
+                x,
+                h0_f,
+                c0_f,
+                weight_ih,
+                weight_hh,
+                bias,
+                hidden,
+                seq_len,
+                reverse=False,
+            )
+            out_b, hb, cb = _lstm_recurrence(
+                x,
+                h0_b,
+                c0_b,
+                weight_ih_back,
+                weight_hh_back,
+                bias_back,
+                hidden,
+                seq_len,
+                reverse=True,
+            )
+            output = coreai.concat(2, [out_f, out_b])  # (S, B, 2H)
+            h_n = coreai.concat(1, [hf, hb])  # (B, 2H)
+            c_n = coreai.concat(1, [cf, cb])  # (B, 2H)
+            return output, h_n, c_n
+
+        return lstm_bidirectional
+
+    input_names = ["x", "initial_h", "initial_c", "weight_ih", "weight_hh", "bias"]
+    composite_decl = generate_composite_decl(
+        context, "lstm", input_names, output_names, op_attributes
+    )
+
+    @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+    def lstm_forward(
+        x: Value,
+        initial_h: Value,
+        initial_c: Value,
+        weight_ih: Value,
+        weight_hh: Value,
+        bias: Value,
+    ) -> tuple[Value, Value, Value]:
+        return _lstm_recurrence(
+            x,
+            initial_h,
+            initial_c,
+            weight_ih,
+            weight_hh,
+            bias,
+            hidden,
+            seq_len,
+            reverse=False,
+        )
+
+    return lstm_forward
+
+
+def replace_lstm(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> list[Value]:
+    """Convert ``aten.lstm.input`` to a chain of ``"lstm"`` composite ops.
+
+    ``aten::lstm.input`` signature::
+
+        lstm(Tensor input, Tensor[] hx, Tensor[] params, bool has_biases,
+             int num_layers, float dropout, bool train, bool bidirectional,
+             bool batch_first) -> (Tensor, Tensor, Tensor)
+
+    ``params`` is a flat list grouped per (layer, direction) as
+    ``[weight_ih, weight_hh, (bias_ih, bias_hh)]``; for a bidirectional layer
+    the forward group precedes the reverse group.
+    """
+    x = _get_operand(values_map, node, 0)
+
+    hx = node.args[1]
+    h0 = values_map[hx[0].name]
+    c0 = values_map[hx[1].name]
+    params = [values_map[p.name] for p in node.args[2]]
+
+    has_biases = bool(node.args[3])
+    num_layers = int(node.args[4])
+    dropout = float(node.args[5])
+    train = bool(node.args[6])
+    bidirectional = bool(node.args[7])
+    batch_first = bool(node.args[8])
+
+    # Dropout is only applied between stacked layers during training. Exported
+    # inference graphs have train=False, so the configured dropout rate is a
+    # no-op and safely ignored; training-time dropout is not modeled.
+    if train and dropout and num_layers > 1:
+        raise NotImplementedError(
+            "aten.lstm with training-time dropout (train=True, dropout>0, "
+            "num_layers>1) is not supported"
+        )
+
+    num_directions = 2 if bidirectional else 1
+    context = x.context
+    ele_type = x.type.element_type
+
+    # MIL expects time-major input; transpose (B, S, I) -> (S, B, I).
+    if batch_first:
+        x = coreai.transpose(x, to_uint32_perm([1, 0, 2], 3))
+
+    seq_len = x.type.shape[0]
+    if seq_len < 0:
+        raise NotImplementedError(
+            "dynamic sequence length is not yet supported for the LSTM composite op"
+        )
+
+    # h0/c0 are (num_layers * num_directions, B, H) regardless of batch_first.
+    total_dirs = num_layers * num_directions
+    h0_pieces = [
+        coreai.shrink_dims(p, [0]) for p in _recurrent_split(h0, [1] * total_dirs, 0)
+    ]
+    c0_pieces = [
+        coreai.shrink_dims(p, [0]) for p in _recurrent_split(c0, [1] * total_dirs, 0)
+    ]
+
+    tensors_per_dir = 4 if has_biases else 2
+    per_layer = tensors_per_dir * num_directions
+
+    def _direction_group(base: int, hidden: int) -> tuple[Value, Value, Value]:
+        """Return MIL-layout ``(weight_ih, weight_hh, bias)`` for one direction."""
+        w_ih = _lstm_reorder_ifzo_to_ifoz(params[base + 0], hidden)
+        w_hh = _lstm_reorder_ifzo_to_ifoz(params[base + 1], hidden)
+        if has_biases:
+            combined = coreai.broadcasting_add(params[base + 2], params[base + 3])
+            bias = _lstm_reorder_ifzo_to_ifoz(combined, hidden)
+        else:
+            bias = coreai.constant(np.zeros(4 * hidden), dtype=ele_type)
+        return w_ih, w_hh, bias
+
+    layer_input = x
+    # Final states collected in torch layout order: layer0_fwd, layer0_rev,
+    # layer1_fwd, ... to match h_n/c_n shape (num_layers * num_directions, B, H).
+    h_states: list[Value] = []
+    c_states: list[Value] = []
+
+    for layer in range(num_layers):
+        base = layer * per_layer
+        # w_hh is (4H, H); recover H from its second dim.
+        hidden = params[base + 1].type.shape[1]
+
+        w_ih_f, w_hh_f, bias_f = _direction_group(base, hidden)
+        composite = _build_lstm_composite(
+            context, hidden, seq_len, bidirectional=bidirectional
+        )
+
+        if bidirectional:
+            rbase = base + tensors_per_dir
+            w_ih_b, w_hh_b, bias_b = _direction_group(rbase, hidden)
+            init_h = coreai.concat(
+                1,
+                [
+                    h0_pieces[layer * num_directions],
+                    h0_pieces[layer * num_directions + 1],
+                ],
+            )
+            init_c = coreai.concat(
+                1,
+                [
+                    c0_pieces[layer * num_directions],
+                    c0_pieces[layer * num_directions + 1],
+                ],
+            )
+            result = composite(
+                layer_input,
+                init_h,
+                init_c,
+                w_ih_f,
+                w_hh_f,
+                bias_f,
+                w_ih_b,
+                w_hh_b,
+                bias_b,
+            )
+            output, h_n, c_n = result[0], result[1], result[2]
+            hf, hb = _recurrent_split(h_n, [hidden, hidden], 1)
+            cf, cb = _recurrent_split(c_n, [hidden, hidden], 1)
+            h_states += [hf, hb]
+            c_states += [cf, cb]
+        else:
+            result = composite(
+                layer_input,
+                h0_pieces[layer],
+                c0_pieces[layer],
+                w_ih_f,
+                w_hh_f,
+                bias_f,
+            )
+            output, h_n, c_n = result[0], result[1], result[2]
+            h_states.append(h_n)
+            c_states.append(c_n)
+
+        layer_input = output
+
+    output = layer_input  # (S, B, num_directions * H)
+    if batch_first:
+        output = coreai.transpose(output, to_uint32_perm([1, 0, 2], 3))
+
+    # torch.export's fake-tensor kernel for aten.lstm reports h_n/c_n as
+    # (num_layers * num_directions, B, H) for batch 1 but inserts a spurious
+    # unit dim at axis 1 -> (num_layers * num_directions, 1, B, H) for batch > 1.
+    # Match whatever rank the node meta declares (the converter validates
+    # against it) by prepending the right number of unit dims to each (B, H)
+    # state before stacking on the leading layer*direction axis.
+    state_meta = node.meta.get("val")
+    state_rank = len(state_meta[1].shape) if state_meta is not None else 3
+    expand_axes = list(range(state_rank - 2))
+    h_n_final = coreai.concat(0, [coreai.expand_dims(h, expand_axes) for h in h_states])
+    c_n_final = coreai.concat(0, [coreai.expand_dims(c, expand_axes) for c in c_states])
+    return [output, h_n_final, c_n_final]
+
+
+# ---------------------------------------------------------------------------
+# GRU (aten.gru.input -> "gru" composite op)
+#
+# Modeled on the CoreML MIL `gru` op interface, extended to faithfully represent
+# PyTorch's GRU. PyTorch applies the reset gate AFTER the hidden matmul,
+# *including* its bias:
+#     n_t = tanh(W_in x_t + b_in + r_t * (W_hn h_{t-1} + b_hn))
+# whereas MIL `gru` applies it before and folds the hidden bias outside the
+# reset:
+#     o_t = activation(W_io x_t + b_io + r_t * W_ho h_{t-1} + b_ho)
+# This is the `reset_after` distinction. Because of it, coremltools itself does
+# NOT lower torch GRU to `mb.gru` (it hand-builds the recurrence), and the
+# hidden bias b_hn cannot be folded into a single combined bias. Hence this
+# composite:
+#   * carries a `reset_after` attribute (always True for torch.nn.GRU),
+#   * takes the input and hidden biases separately (`bias_ih`, `bias_hh`), and
+#   * uses PyTorch-native [r, z, n] (reset, update, new) gate layout.
+# The reset, update gates use `recurrent_activation` (sigmoid); the new gate
+# uses `activation` (tanh).
+# ---------------------------------------------------------------------------
+
+_GRU_RECURRENT_ACTIVATION = "sigmoid"
+_GRU_OUTPUT_ACTIVATION = "tanh"
+
+
+def _gru_recurrence(
+    x: Value,
+    h: Value,
+    weight_ih: Value,
+    weight_hh: Value,
+    bias_ih: Value,
+    bias_hh: Value,
+    hidden: int,
+    seq_len: int,
+    *,
+    reverse: bool,
+) -> tuple[Value, Value]:
+    """Emit the PyTorch GRU recurrence (reset_after=True) for one direction.
+
+    ``weight_ih`` (3H, I) / ``weight_hh`` (3H, H) and ``bias_ih`` / ``bias_hh``
+    (3H) use PyTorch's [r, z, n] gate layout. Returns
+    ``(output_sequence (S, B, H), h_n (B, H))``.
+    """
+    w_ih_t = coreai.transpose(weight_ih, to_uint32_perm([1, 0], 2))  # (I, 3H)
+    w_hh_t = coreai.transpose(weight_hh, to_uint32_perm([1, 0], 2))  # (H, 3H)
+    one = coreai.constant(1.0, dtype=h.type.element_type)
+
+    steps = _recurrent_split(x, [1] * seq_len, 0)
+    order = range(seq_len - 1, -1, -1) if reverse else range(seq_len)
+
+    outputs: list[Value | None] = [None] * seq_len
+    for t in order:
+        x_t = coreai.shrink_dims(steps[t], [0])  # (B, I)
+        gi = coreai.broadcasting_add(
+            coreai.batch_matmul(x_t, w_ih_t), bias_ih
+        )  # (B, 3H)
+        gh = coreai.broadcasting_add(coreai.batch_matmul(h, w_hh_t), bias_hh)  # (B, 3H)
+        i_r, i_z, i_n = _recurrent_split(gi, [hidden] * 3, 1)
+        h_r, h_z, h_n = _recurrent_split(gh, [hidden] * 3, 1)
+        r = coreai.sigmoid(coreai.broadcasting_add(i_r, h_r))
+        z = coreai.sigmoid(coreai.broadcasting_add(i_z, h_z))
+        # reset_after=True: the reset gate multiplies the full hidden
+        # contribution (W_hn h + b_hn), which is already folded into h_n.
+        n = coreai.tanh(coreai.broadcasting_add(i_n, coreai.broadcasting_mul(r, h_n)))
+        h = coreai.broadcasting_add(
+            coreai.broadcasting_mul(coreai.broadcasting_sub(one, z), n),
+            coreai.broadcasting_mul(z, h),
+        )
+        outputs[t] = coreai.expand_dims(h, [0])  # (1, B, H)
+
+    return coreai.concat(0, outputs), h
+
+
+def _build_gru_composite(
+    context: Any,
+    hidden: int,
+    seq_len: int,
+    *,
+    bidirectional: bool,
+) -> coreai.GraphOp:
+    """Build a ``@coreai.graph`` composite for one GRU layer."""
+    op_attributes: dict[str, Any] = {
+        "direction": "bidirectional" if bidirectional else "forward",
+        "output_sequence": True,
+        "recurrent_activation": _GRU_RECURRENT_ACTIVATION,
+        "activation": _GRU_OUTPUT_ACTIVATION,
+        "reset_after": True,
+    }
+    output_names = ["output", "h_n"]
+
+    if bidirectional:
+        input_names = [
+            "x",
+            "initial_h",
+            "weight_ih",
+            "weight_hh",
+            "bias_ih",
+            "bias_hh",
+            "weight_ih_back",
+            "weight_hh_back",
+            "bias_ih_back",
+            "bias_hh_back",
+        ]
+        composite_decl = generate_composite_decl(
+            context, "gru", input_names, output_names, op_attributes
+        )
+
+        @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+        def gru_bidirectional(
+            x: Value,
+            initial_h: Value,
+            weight_ih: Value,
+            weight_hh: Value,
+            bias_ih: Value,
+            bias_hh: Value,
+            weight_ih_back: Value,
+            weight_hh_back: Value,
+            bias_ih_back: Value,
+            bias_hh_back: Value,
+        ) -> tuple[Value, Value]:
+            h0_f, h0_b = _recurrent_split(initial_h, [hidden, hidden], 1)
+            out_f, hf = _gru_recurrence(
+                x,
+                h0_f,
+                weight_ih,
+                weight_hh,
+                bias_ih,
+                bias_hh,
+                hidden,
+                seq_len,
+                reverse=False,
+            )
+            out_b, hb = _gru_recurrence(
+                x,
+                h0_b,
+                weight_ih_back,
+                weight_hh_back,
+                bias_ih_back,
+                bias_hh_back,
+                hidden,
+                seq_len,
+                reverse=True,
+            )
+            return coreai.concat(2, [out_f, out_b]), coreai.concat(1, [hf, hb])
+
+        return gru_bidirectional
+
+    input_names = ["x", "initial_h", "weight_ih", "weight_hh", "bias_ih", "bias_hh"]
+    composite_decl = generate_composite_decl(
+        context, "gru", input_names, output_names, op_attributes
+    )
+
+    @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+    def gru_forward(
+        x: Value,
+        initial_h: Value,
+        weight_ih: Value,
+        weight_hh: Value,
+        bias_ih: Value,
+        bias_hh: Value,
+    ) -> tuple[Value, Value]:
+        return _gru_recurrence(
+            x,
+            initial_h,
+            weight_ih,
+            weight_hh,
+            bias_ih,
+            bias_hh,
+            hidden,
+            seq_len,
+            reverse=False,
+        )
+
+    return gru_forward
+
+
+def replace_gru(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> list[Value]:
+    """Convert ``aten.gru.input`` to a chain of ``"gru"`` composite ops.
+
+    ``aten::gru.input`` matches ``aten::lstm.input`` except the hidden state is
+    a single tensor (no cell state) and there are two outputs ``(output, h_n)``.
+    ``params`` is grouped per (layer, direction) as
+    ``[weight_ih, weight_hh, (bias_ih, bias_hh)]``.
+    """
+    x = _get_operand(values_map, node, 0)
+    h0 = values_map[node.args[1].name]
+    params = [values_map[p.name] for p in node.args[2]]
+
+    has_biases = bool(node.args[3])
+    num_layers = int(node.args[4])
+    dropout = float(node.args[5])
+    train = bool(node.args[6])
+    bidirectional = bool(node.args[7])
+    batch_first = bool(node.args[8])
+
+    if train and dropout and num_layers > 1:
+        raise NotImplementedError(
+            "aten.gru with training-time dropout is not supported"
+        )
+
+    num_directions = 2 if bidirectional else 1
+    context = x.context
+    ele_type = x.type.element_type
+
+    if batch_first:
+        x = coreai.transpose(x, to_uint32_perm([1, 0, 2], 3))
+
+    seq_len = x.type.shape[0]
+    if seq_len < 0:
+        raise NotImplementedError(
+            "dynamic sequence length is not yet supported for the GRU composite op"
+        )
+
+    total_dirs = num_layers * num_directions
+    h0_pieces = [
+        coreai.shrink_dims(p, [0]) for p in _recurrent_split(h0, [1] * total_dirs, 0)
+    ]
+
+    tensors_per_dir = 4 if has_biases else 2
+    per_layer = tensors_per_dir * num_directions
+
+    def _direction_group(base: int, hidden: int) -> tuple[Value, Value, Value, Value]:
+        """Return ``(weight_ih, weight_hh, bias_ih, bias_hh)`` for one direction."""
+        w_ih = params[base + 0]
+        w_hh = params[base + 1]
+        if has_biases:
+            b_ih = params[base + 2]
+            b_hh = params[base + 3]
+        else:
+            b_ih = coreai.constant(np.zeros(3 * hidden), dtype=ele_type)
+            b_hh = coreai.constant(np.zeros(3 * hidden), dtype=ele_type)
+        return w_ih, w_hh, b_ih, b_hh
+
+    layer_input = x
+    h_states: list[Value] = []
+
+    for layer in range(num_layers):
+        base = layer * per_layer
+        # w_hh is (3H, H); recover H from its second dim.
+        hidden = params[base + 1].type.shape[1]
+
+        w_ih_f, w_hh_f, b_ih_f, b_hh_f = _direction_group(base, hidden)
+        composite = _build_gru_composite(
+            context, hidden, seq_len, bidirectional=bidirectional
+        )
+
+        if bidirectional:
+            rbase = base + tensors_per_dir
+            w_ih_b, w_hh_b, b_ih_b, b_hh_b = _direction_group(rbase, hidden)
+            init_h = coreai.concat(
+                1,
+                [
+                    h0_pieces[layer * num_directions],
+                    h0_pieces[layer * num_directions + 1],
+                ],
+            )
+            result = composite(
+                layer_input,
+                init_h,
+                w_ih_f,
+                w_hh_f,
+                b_ih_f,
+                b_hh_f,
+                w_ih_b,
+                w_hh_b,
+                b_ih_b,
+                b_hh_b,
+            )
+            output, h_n = result[0], result[1]
+            hf, hb = _recurrent_split(h_n, [hidden, hidden], 1)
+            h_states += [hf, hb]
+        else:
+            result = composite(
+                layer_input, h0_pieces[layer], w_ih_f, w_hh_f, b_ih_f, b_hh_f
+            )
+            output, h_n = result[0], result[1]
+            h_states.append(h_n)
+
+        layer_input = output
+
+    output = layer_input  # (S, B, num_directions * H)
+    if batch_first:
+        output = coreai.transpose(output, to_uint32_perm([1, 0, 2], 3))
+
+    state_meta = node.meta.get("val")
+    state_rank = len(state_meta[1].shape) if state_meta is not None else 3
+    expand_axes = list(range(state_rank - 2))
+    h_n_final = coreai.concat(0, [coreai.expand_dims(h, expand_axes) for h in h_states])
+    return [output, h_n_final]
+
+
+# ---------------------------------------------------------------------------
+# RNN (aten.rnn_tanh.input / aten.rnn_relu.input -> "rnn" composite op)
+#
+# Mirrors the CoreML MIL `rnn` op:  h_t = activation(W_ih x_t + b_ih + W_hh
+# h_{t-1} + b_hh). Both biases are additive and are combined into one.
+# `activation` is "tanh" (rnn_tanh) or "relu" (rnn_relu).
+# ---------------------------------------------------------------------------
+
+
+def _rnn_recurrence(
+    x: Value,
+    h: Value,
+    weight_ih: Value,
+    weight_hh: Value,
+    bias: Value,
+    hidden: int,
+    seq_len: int,
+    activation: str,
+    *,
+    reverse: bool,
+) -> tuple[Value, Value]:
+    """Emit the simple-RNN recurrence for one direction.
+
+    ``weight_ih`` (H, I), ``weight_hh`` (H, H), combined ``bias`` (H). Returns
+    ``(output_sequence (S, B, H), h_n (B, H))``.
+    """
+    w_ih_t = coreai.transpose(weight_ih, to_uint32_perm([1, 0], 2))  # (I, H)
+    w_hh_t = coreai.transpose(weight_hh, to_uint32_perm([1, 0], 2))  # (H, H)
+    act = coreai.relu if activation == "relu" else coreai.tanh
+
+    steps = _recurrent_split(x, [1] * seq_len, 0)
+    order = range(seq_len - 1, -1, -1) if reverse else range(seq_len)
+
+    outputs: list[Value | None] = [None] * seq_len
+    for t in order:
+        x_t = coreai.shrink_dims(steps[t], [0])  # (B, I)
+        pre = coreai.broadcasting_add(
+            coreai.broadcasting_add(
+                coreai.batch_matmul(x_t, w_ih_t),
+                coreai.batch_matmul(h, w_hh_t),
+            ),
+            bias,
+        )  # (B, H)
+        h = act(pre)
+        outputs[t] = coreai.expand_dims(h, [0])  # (1, B, H)
+
+    return coreai.concat(0, outputs), h
+
+
+def _build_rnn_composite(
+    context: Any,
+    hidden: int,
+    seq_len: int,
+    activation: str,
+    *,
+    bidirectional: bool,
+) -> coreai.GraphOp:
+    """Build a ``@coreai.graph`` composite for one simple-RNN layer."""
+    op_attributes: dict[str, Any] = {
+        "direction": "bidirectional" if bidirectional else "forward",
+        "output_sequence": True,
+        "activation": activation,
+    }
+    output_names = ["output", "h_n"]
+
+    if bidirectional:
+        input_names = [
+            "x",
+            "initial_h",
+            "weight_ih",
+            "weight_hh",
+            "bias",
+            "weight_ih_back",
+            "weight_hh_back",
+            "bias_back",
+        ]
+        composite_decl = generate_composite_decl(
+            context, "rnn", input_names, output_names, op_attributes
+        )
+
+        @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+        def rnn_bidirectional(
+            x: Value,
+            initial_h: Value,
+            weight_ih: Value,
+            weight_hh: Value,
+            bias: Value,
+            weight_ih_back: Value,
+            weight_hh_back: Value,
+            bias_back: Value,
+        ) -> tuple[Value, Value]:
+            h0_f, h0_b = _recurrent_split(initial_h, [hidden, hidden], 1)
+            out_f, hf = _rnn_recurrence(
+                x,
+                h0_f,
+                weight_ih,
+                weight_hh,
+                bias,
+                hidden,
+                seq_len,
+                activation,
+                reverse=False,
+            )
+            out_b, hb = _rnn_recurrence(
+                x,
+                h0_b,
+                weight_ih_back,
+                weight_hh_back,
+                bias_back,
+                hidden,
+                seq_len,
+                activation,
+                reverse=True,
+            )
+            return coreai.concat(2, [out_f, out_b]), coreai.concat(1, [hf, hb])
+
+        return rnn_bidirectional
+
+    input_names = ["x", "initial_h", "weight_ih", "weight_hh", "bias"]
+    composite_decl = generate_composite_decl(
+        context, "rnn", input_names, output_names, op_attributes
+    )
+
+    @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+    def rnn_forward(
+        x: Value,
+        initial_h: Value,
+        weight_ih: Value,
+        weight_hh: Value,
+        bias: Value,
+    ) -> tuple[Value, Value]:
+        return _rnn_recurrence(
+            x,
+            initial_h,
+            weight_ih,
+            weight_hh,
+            bias,
+            hidden,
+            seq_len,
+            activation,
+            reverse=False,
+        )
+
+    return rnn_forward
+
+
+def _replace_rnn(
+    values_map: dict[str, Value], node: fx.Node, loc: Location, activation: str
+) -> list[Value]:
+    """Convert ``aten.rnn_{tanh,relu}.input`` to a chain of ``"rnn"`` composites."""
+    x = _get_operand(values_map, node, 0)
+    h0 = values_map[node.args[1].name]
+    params = [values_map[p.name] for p in node.args[2]]
+
+    has_biases = bool(node.args[3])
+    num_layers = int(node.args[4])
+    dropout = float(node.args[5])
+    train = bool(node.args[6])
+    bidirectional = bool(node.args[7])
+    batch_first = bool(node.args[8])
+
+    if train and dropout and num_layers > 1:
+        raise NotImplementedError(
+            "aten.rnn with training-time dropout is not supported"
+        )
+
+    num_directions = 2 if bidirectional else 1
+    context = x.context
+    ele_type = x.type.element_type
+
+    if batch_first:
+        x = coreai.transpose(x, to_uint32_perm([1, 0, 2], 3))
+
+    seq_len = x.type.shape[0]
+    if seq_len < 0:
+        raise NotImplementedError(
+            "dynamic sequence length is not yet supported for the RNN composite op"
+        )
+
+    total_dirs = num_layers * num_directions
+    h0_pieces = [
+        coreai.shrink_dims(p, [0]) for p in _recurrent_split(h0, [1] * total_dirs, 0)
+    ]
+
+    tensors_per_dir = 4 if has_biases else 2
+    per_layer = tensors_per_dir * num_directions
+
+    def _direction_group(base: int, hidden: int) -> tuple[Value, Value, Value]:
+        """Return ``(weight_ih, weight_hh, bias)`` (combined bias) for one direction."""
+        w_ih = params[base + 0]
+        w_hh = params[base + 1]
+        if has_biases:
+            bias = coreai.broadcasting_add(params[base + 2], params[base + 3])
+        else:
+            bias = coreai.constant(np.zeros(hidden), dtype=ele_type)
+        return w_ih, w_hh, bias
+
+    layer_input = x
+    h_states: list[Value] = []
+
+    for layer in range(num_layers):
+        base = layer * per_layer
+        # w_hh is (H, H); recover H from its second dim.
+        hidden = params[base + 1].type.shape[1]
+
+        w_ih_f, w_hh_f, bias_f = _direction_group(base, hidden)
+        composite = _build_rnn_composite(
+            context, hidden, seq_len, activation, bidirectional=bidirectional
+        )
+
+        if bidirectional:
+            rbase = base + tensors_per_dir
+            w_ih_b, w_hh_b, bias_b = _direction_group(rbase, hidden)
+            init_h = coreai.concat(
+                1,
+                [
+                    h0_pieces[layer * num_directions],
+                    h0_pieces[layer * num_directions + 1],
+                ],
+            )
+            result = composite(
+                layer_input, init_h, w_ih_f, w_hh_f, bias_f, w_ih_b, w_hh_b, bias_b
+            )
+            output, h_n = result[0], result[1]
+            hf, hb = _recurrent_split(h_n, [hidden, hidden], 1)
+            h_states += [hf, hb]
+        else:
+            result = composite(layer_input, h0_pieces[layer], w_ih_f, w_hh_f, bias_f)
+            output, h_n = result[0], result[1]
+            h_states.append(h_n)
+
+        layer_input = output
+
+    output = layer_input  # (S, B, num_directions * H)
+    if batch_first:
+        output = coreai.transpose(output, to_uint32_perm([1, 0, 2], 3))
+
+    state_meta = node.meta.get("val")
+    state_rank = len(state_meta[1].shape) if state_meta is not None else 3
+    expand_axes = list(range(state_rank - 2))
+    h_n_final = coreai.concat(0, [coreai.expand_dims(h, expand_axes) for h in h_states])
+    return [output, h_n_final]
+
+
+def replace_rnn_tanh(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> list[Value]:
+    """Convert ``aten.rnn_tanh.input`` to ``"rnn"`` composites (tanh activation)."""
+    return _replace_rnn(values_map, node, loc, "tanh")
+
+
+def replace_rnn_relu(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> list[Value]:
+    """Convert ``aten.rnn_relu.input`` to ``"rnn"`` composites (relu activation)."""
+    return _replace_rnn(values_map, node, loc, "relu")
+
+
 _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "_local_scalar_dense.default": replace_local_scalar_dense,
     "_log_softmax.default": replace_log_softmax,
@@ -3616,6 +4558,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "gelu.default": replace_gelu,
     "gather.default": replace_gather,
     "getitem": replace_getitem,
+    "gru.input": replace_gru,
     "gt.Scalar": replace_binary_comparision_ops,
     "gt.Tensor": replace_binary_comparision_ops,
     "hardtanh.default": replace_hard_tanh,
@@ -3639,6 +4582,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "logical_not.default": replace_logical_not,
     "logical_or.default": replace_binary_logical_ops,
     "logical_xor.default": replace_binary_logical_ops,
+    "lstm.input": replace_lstm,
     "lt.Scalar": replace_binary_comparision_ops,
     "lt.Tensor": replace_binary_comparision_ops,
     "max_pool2d_with_indices.default": replace_maxpool2d_with_indices,
@@ -3684,6 +4628,8 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "replication_pad1d.default": replace_replication_pad,
     "replication_pad2d.default": replace_replication_pad,
     "replication_pad3d.default": replace_replication_pad,
+    "rnn_relu.input": replace_rnn_relu,
+    "rnn_tanh.input": replace_rnn_tanh,
     "round.default": replace_unary_ops,
     "round.decimals": replace_round_decimals,
     "round": replace_unary_ops,

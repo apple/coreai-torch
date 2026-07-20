@@ -12,6 +12,17 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from coreai_torch import get_decomp_table
+
+from ..utils import (
+    GRUModule as _GRUModel,
+)
+from ..utils import (
+    LSTMModule as _LSTMModel,
+)
+from ..utils import (
+    RNNModule as _RNNModel,
+)
 from ..utils import (
     TorchConverter,
     _all_dims_dynamic,
@@ -7665,4 +7676,573 @@ async def test_replicate_pad_larger_than_dim(
         model=_PadModel(pad, "replicate").eval(),
         x=torch.rand(*input_shape),
         remove_decomps=[_REPLICATE_PAD_OP[ndim]],
+    )
+
+
+# ---------------------------------------------------------------------------
+# LSTM (aten.lstm.input -> "lstm" composite op)
+#
+# Numerics are checked via the pre-converted-program path rather than the
+# ``model=`` path: torch.export's fake-tensor kernel gives h_n/c_n a spurious
+# unit dim at axis 1 for batch > 1, and the converter (correctly) matches that
+# meta, so the runtime states are rank 4 while eager ``nn.LSTM`` returns rank 3.
+# ``_lstm_reference`` reshapes the eager states to the rank the exported meta
+# declares so the comparison lines up.
+# ---------------------------------------------------------------------------
+
+_LSTM_FP_TOL = {
+    torch.float32: {"atol": 1e-3, "rtol": 1e-3},
+    torch.float16: {"atol": 5e-3, "rtol": 5e-3},
+    torch.bfloat16: {"atol": 5e-2, "rtol": 5e-2},
+}
+
+
+def _lstm_inputs(
+    model: _LSTMModel,
+    *,
+    batch: int = 2,
+    seq: int = 4,
+    dtype: torch.dtype = torch.float32,
+) -> tuple[Tensor, Tensor, Tensor]:
+    lstm = model.lstm
+    directions = 2 if lstm.bidirectional else 1
+    x_shape = (
+        (batch, seq, lstm.input_size)
+        if lstm.batch_first
+        else (seq, batch, lstm.input_size)
+    )
+    state_shape = (lstm.num_layers * directions, batch, lstm.hidden_size)
+    return (
+        torch.randn(*x_shape, dtype=dtype),
+        torch.randn(*state_shape, dtype=dtype),
+        torch.randn(*state_shape, dtype=dtype),
+    )
+
+
+def _lstm_state_rank(ep: torch.export.ExportedProgram) -> int:
+    for node in ep.graph.nodes:
+        if str(node.target) == "aten.lstm.input":
+            return len(node.meta["val"][1].shape)
+    raise AssertionError("aten.lstm.input node not found in exported program")
+
+
+def _convert_lstm(
+    model: nn.Module,
+    inputs: tuple[Tensor, ...],
+    dynamic_shapes: object | None = None,
+) -> tuple[Any, int]:
+    ep = torch.export.export(
+        model, inputs, dynamic_shapes=dynamic_shapes
+    ).run_decompositions(get_decomp_table())
+    program = TorchConverter().add_exported_program(ep).to_coreai()
+    return program, _lstm_state_rank(ep)
+
+
+def _lstm_reference(
+    model: nn.Module, inputs: tuple[Tensor, ...], state_rank: int
+) -> tuple[Tensor, ...]:
+    output, h_n, c_n = model(*inputs)
+    # Match the exported meta rank (rank 4 inserts a unit dim at axis 1).
+    if state_rank == 4:
+        h_n, c_n = h_n.unsqueeze(1), c_n.unsqueeze(1)
+    return (output, h_n, c_n)
+
+
+async def _run_lstm(
+    model: nn.Module,
+    inputs: tuple[Tensor, ...],
+    *,
+    dtype: torch.dtype = torch.float32,
+    dynamic_shapes: object | None = None,
+    run_inputs: tuple[Tensor, ...] | None = None,
+) -> None:
+    program, state_rank = _convert_lstm(model, inputs, dynamic_shapes)
+    run_inputs = inputs if run_inputs is None else run_inputs
+    await validate_numerical_output(
+        coreai_program=program,
+        torch_out=_lstm_reference(model, run_inputs, state_rank),
+        x=run_inputs[0],
+        h0=run_inputs[1],
+        c0=run_inputs[2],
+        **_LSTM_FP_TOL[dtype],
+    )
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("batch_first", [True, False])
+@pytest.mark.parametrize(
+    "num_layers, bidirectional",
+    [(1, False), (2, False), (1, True), (2, True)],
+)
+async def test_lstm(
+    dtype: torch.dtype,
+    batch_first: bool,
+    num_layers: int,
+    bidirectional: bool,
+) -> None:
+    model = (
+        _LSTMModel(
+            input_size=6,
+            hidden_size=5,
+            num_layers=num_layers,
+            batch_first=batch_first,
+            bidirectional=bidirectional,
+        )
+        .to(dtype)
+        .eval()
+    )
+    inputs = _lstm_inputs(model, batch=2, seq=4, dtype=dtype)
+    await _run_lstm(model, inputs, dtype=dtype)
+
+
+@pytest.mark.parametrize("batch", [1, 2])
+@pytest.mark.parametrize("bidirectional", [False, True])
+async def test_lstm_batch_sizes(batch: int, bidirectional: bool) -> None:
+    """Cover batch=1 (rank-3 meta) and batch>1 (rank-4 meta)."""
+    model = _LSTMModel(
+        input_size=4, hidden_size=3, batch_first=True, bidirectional=bidirectional
+    ).eval()
+    await _run_lstm(model, _lstm_inputs(model, batch=batch, seq=5))
+
+
+@pytest.mark.parametrize("bias", [True, False])
+@pytest.mark.parametrize("num_layers, bidirectional", [(1, False), (2, True)])
+async def test_lstm_bias(bias: bool, num_layers: int, bidirectional: bool) -> None:
+    # Exercise the zero-bias path in the simple, stacked, and reverse-direction
+    # branches (coremltools tests bias=False combined with bidirectional/layers).
+    model = _LSTMModel(
+        input_size=4,
+        hidden_size=3,
+        num_layers=num_layers,
+        bias=bias,
+        batch_first=True,
+        bidirectional=bidirectional,
+    ).eval()
+    await _run_lstm(model, _lstm_inputs(model))
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+async def test_lstm_biasless_low_precision(dtype: torch.dtype) -> None:
+    # The zero-bias constant must materialize in the input element type; an fp32
+    # fallback would give a mixed-dtype composite boundary for fp16/bf16.
+    model = (
+        _LSTMModel(input_size=4, hidden_size=3, bias=False, batch_first=True)
+        .to(dtype)
+        .eval()
+    )
+    await _run_lstm(model, _lstm_inputs(model, dtype=dtype), dtype=dtype)
+
+
+@pytest.mark.parametrize("input_size", [1, 3])
+@pytest.mark.parametrize("hidden_size", [1, 7])
+async def test_lstm_sizes(input_size: int, hidden_size: int) -> None:
+    model = _LSTMModel(
+        input_size=input_size, hidden_size=hidden_size, batch_first=True
+    ).eval()
+    await _run_lstm(model, _lstm_inputs(model))
+
+
+async def test_lstm_single_timestep() -> None:
+    model = _LSTMModel(input_size=4, hidden_size=3, batch_first=True).eval()
+    await _run_lstm(model, _lstm_inputs(model, seq=1))
+
+
+async def test_lstm_deep_stack() -> None:
+    """Deep multi-layer bidirectional stack (mirrors coremltools num_layers>2)."""
+    model = _LSTMModel(
+        input_size=3,
+        hidden_size=5,
+        num_layers=5,
+        batch_first=True,
+        bidirectional=True,
+    ).eval()
+    await _run_lstm(model, _lstm_inputs(model))
+
+
+async def test_lstm_dropout_ignored_in_eval() -> None:
+    """A multi-layer LSTM configured with dropout converts (dropout is a
+    training-only no-op; the exported graph has train=False)."""
+    model = _LSTMModel(
+        input_size=4, hidden_size=3, num_layers=2, dropout=0.3, batch_first=True
+    ).eval()
+    await _run_lstm(model, _lstm_inputs(model))
+
+
+async def test_lstm_dynamic_batch() -> None:
+    model = _LSTMModel(input_size=4, hidden_size=3, batch_first=True).eval()
+    inputs = _lstm_inputs(model, batch=2, seq=5)
+    batch = torch.export.Dim("batch", min=1, max=16)
+    dynamic_shapes = {"x": {0: batch}, "h0": {1: batch}, "c0": {1: batch}}
+    # Export with batch=2 but run with a different batch size.
+    await _run_lstm(
+        model,
+        inputs,
+        dynamic_shapes=dynamic_shapes,
+        run_inputs=_lstm_inputs(model, batch=4, seq=5),
+    )
+
+
+class _LSTMNoStateModel(nn.Module):
+    """LSTM with default (zero) initial state."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.lstm = nn.LSTM(4, 3, batch_first=True)
+
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        output, (h_n, c_n) = self.lstm(x)
+        return output, h_n, c_n
+
+
+async def test_lstm_default_zero_state() -> None:
+    model = _LSTMNoStateModel().eval()
+    x = torch.randn(2, 5, 4)
+    ep = torch.export.export(model, (x,)).run_decompositions(get_decomp_table())
+    program = TorchConverter().add_exported_program(ep).to_coreai()
+    state_rank = _lstm_state_rank(ep)
+    output, h_n, c_n = model(x)
+    if state_rank == 4:
+        h_n, c_n = h_n.unsqueeze(1), c_n.unsqueeze(1)
+    await validate_numerical_output(
+        coreai_program=program,
+        torch_out=(output, h_n, c_n),
+        x=x,
+        **_LSTM_FP_TOL[torch.float32],
+    )
+
+
+# ---------------------------------------------------------------------------
+# GRU and RNN (aten.gru.input / aten.rnn_{tanh,relu}.input -> composite ops)
+#
+# Same conversion/comparison approach as LSTM. GRU/RNN return (output, h_n)
+# (no cell state), and their h_n meta is rank 3 for all batch sizes (no LSTM
+# rank-4 quirk); _recurrent_state_rank still matches the meta defensively.
+# ---------------------------------------------------------------------------
+
+
+def _recurrent_cell(model: nn.Module) -> nn.Module:
+    return getattr(model, "gru", None) or getattr(model, "rnn")
+
+
+def _single_state_inputs(
+    model: nn.Module,
+    *,
+    batch: int = 2,
+    seq: int = 4,
+    dtype: torch.dtype = torch.float32,
+) -> tuple[Tensor, Tensor]:
+    cell = _recurrent_cell(model)
+    directions = 2 if cell.bidirectional else 1
+    x_shape = (
+        (batch, seq, cell.input_size)
+        if cell.batch_first
+        else (seq, batch, cell.input_size)
+    )
+    state_shape = (cell.num_layers * directions, batch, cell.hidden_size)
+    return (
+        torch.randn(*x_shape, dtype=dtype),
+        torch.randn(*state_shape, dtype=dtype),
+    )
+
+
+def _recurrent_state_rank(ep: torch.export.ExportedProgram) -> int:
+    targets = {"lstm.input", "gru.input", "rnn_tanh.input", "rnn_relu.input"}
+    for node in ep.graph.nodes:
+        if getattr(node.target, "__name__", None) in targets:
+            return len(node.meta["val"][1].shape)
+    raise AssertionError("no recurrent aten node found in exported program")
+
+
+async def _run_single_state(
+    model: nn.Module,
+    inputs: tuple[Tensor, ...],
+    *,
+    dtype: torch.dtype = torch.float32,
+    dynamic_shapes: object | None = None,
+    run_inputs: tuple[Tensor, ...] | None = None,
+) -> None:
+    ep = torch.export.export(
+        model, inputs, dynamic_shapes=dynamic_shapes
+    ).run_decompositions(get_decomp_table())
+    program = TorchConverter().add_exported_program(ep).to_coreai()
+    state_rank = _recurrent_state_rank(ep)
+    run_inputs = inputs if run_inputs is None else run_inputs
+    output, h_n = model(*run_inputs)
+    if state_rank == 4:
+        h_n = h_n.unsqueeze(1)
+    await validate_numerical_output(
+        coreai_program=program,
+        torch_out=(output, h_n),
+        x=run_inputs[0],
+        h0=run_inputs[1],
+        **_LSTM_FP_TOL[dtype],
+    )
+
+
+# ---- GRU ----
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("batch_first", [True, False])
+@pytest.mark.parametrize(
+    "num_layers, bidirectional",
+    [(1, False), (2, False), (1, True), (2, True)],
+)
+async def test_gru(
+    dtype: torch.dtype,
+    batch_first: bool,
+    num_layers: int,
+    bidirectional: bool,
+) -> None:
+    model = (
+        _GRUModel(
+            input_size=6,
+            hidden_size=5,
+            num_layers=num_layers,
+            batch_first=batch_first,
+            bidirectional=bidirectional,
+        )
+        .to(dtype)
+        .eval()
+    )
+    await _run_single_state(
+        model, _single_state_inputs(model, batch=2, seq=4, dtype=dtype), dtype=dtype
+    )
+
+
+@pytest.mark.parametrize("batch", [1, 2])
+@pytest.mark.parametrize("bidirectional", [False, True])
+async def test_gru_batch_sizes(batch: int, bidirectional: bool) -> None:
+    model = _GRUModel(
+        input_size=4, hidden_size=3, batch_first=True, bidirectional=bidirectional
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model, batch=batch, seq=5))
+
+
+@pytest.mark.parametrize("bias", [True, False])
+@pytest.mark.parametrize("num_layers, bidirectional", [(1, False), (2, True)])
+async def test_gru_bias(bias: bool, num_layers: int, bidirectional: bool) -> None:
+    model = _GRUModel(
+        input_size=4,
+        hidden_size=3,
+        num_layers=num_layers,
+        bias=bias,
+        batch_first=True,
+        bidirectional=bidirectional,
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model))
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+async def test_gru_biasless_low_precision(dtype: torch.dtype) -> None:
+    model = (
+        _GRUModel(input_size=4, hidden_size=3, bias=False, batch_first=True)
+        .to(dtype)
+        .eval()
+    )
+    await _run_single_state(
+        model, _single_state_inputs(model, dtype=dtype), dtype=dtype
+    )
+
+
+@pytest.mark.parametrize("input_size", [1, 3])
+@pytest.mark.parametrize("hidden_size", [1, 7])
+async def test_gru_sizes(input_size: int, hidden_size: int) -> None:
+    model = _GRUModel(
+        input_size=input_size, hidden_size=hidden_size, batch_first=True
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model))
+
+
+async def test_gru_single_timestep() -> None:
+    model = _GRUModel(input_size=4, hidden_size=3, batch_first=True).eval()
+    await _run_single_state(model, _single_state_inputs(model, seq=1))
+
+
+async def test_gru_deep_stack() -> None:
+    model = _GRUModel(
+        input_size=3, hidden_size=5, num_layers=5, batch_first=True, bidirectional=True
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model))
+
+
+async def test_gru_dropout_ignored_in_eval() -> None:
+    model = _GRUModel(
+        input_size=4, hidden_size=3, num_layers=2, dropout=0.3, batch_first=True
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model))
+
+
+async def test_gru_dynamic_batch() -> None:
+    model = _GRUModel(input_size=4, hidden_size=3, batch_first=True).eval()
+    inputs = _single_state_inputs(model, batch=2, seq=5)
+    batch = torch.export.Dim("batch", min=1, max=16)
+    dynamic_shapes = {"x": {0: batch}, "h0": {1: batch}}
+    await _run_single_state(
+        model,
+        inputs,
+        dynamic_shapes=dynamic_shapes,
+        run_inputs=_single_state_inputs(model, batch=4, seq=5),
+    )
+
+
+class _GRUNoStateModel(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.gru = nn.GRU(4, 3, batch_first=True)
+
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        output, h_n = self.gru(x)
+        return output, h_n
+
+
+async def test_gru_default_zero_state() -> None:
+    model = _GRUNoStateModel().eval()
+    x = torch.randn(2, 5, 4)
+    ep = torch.export.export(model, (x,)).run_decompositions(get_decomp_table())
+    program = TorchConverter().add_exported_program(ep).to_coreai()
+    output, h_n = model(x)
+    if _recurrent_state_rank(ep) == 4:
+        h_n = h_n.unsqueeze(1)
+    await validate_numerical_output(
+        coreai_program=program,
+        torch_out=(output, h_n),
+        x=x,
+        **_LSTM_FP_TOL[torch.float32],
+    )
+
+
+# ---- RNN (tanh / relu) ----
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("nonlinearity", ["tanh", "relu"])
+@pytest.mark.parametrize("batch_first", [True, False])
+@pytest.mark.parametrize(
+    "num_layers, bidirectional",
+    [(1, False), (2, False), (1, True), (2, True)],
+)
+async def test_rnn(
+    dtype: torch.dtype,
+    nonlinearity: str,
+    batch_first: bool,
+    num_layers: int,
+    bidirectional: bool,
+) -> None:
+    model = (
+        _RNNModel(
+            input_size=6,
+            hidden_size=5,
+            num_layers=num_layers,
+            nonlinearity=nonlinearity,
+            batch_first=batch_first,
+            bidirectional=bidirectional,
+        )
+        .to(dtype)
+        .eval()
+    )
+    await _run_single_state(
+        model, _single_state_inputs(model, batch=2, seq=4, dtype=dtype), dtype=dtype
+    )
+
+
+@pytest.mark.parametrize("nonlinearity", ["tanh", "relu"])
+@pytest.mark.parametrize("batch", [1, 2])
+async def test_rnn_batch_sizes(nonlinearity: str, batch: int) -> None:
+    model = _RNNModel(
+        input_size=4, hidden_size=3, nonlinearity=nonlinearity, batch_first=True
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model, batch=batch, seq=5))
+
+
+@pytest.mark.parametrize("bias", [True, False])
+@pytest.mark.parametrize("num_layers, bidirectional", [(1, False), (2, True)])
+async def test_rnn_bias(bias: bool, num_layers: int, bidirectional: bool) -> None:
+    model = _RNNModel(
+        input_size=4,
+        hidden_size=3,
+        num_layers=num_layers,
+        bias=bias,
+        batch_first=True,
+        bidirectional=bidirectional,
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model))
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+async def test_rnn_biasless_low_precision(dtype: torch.dtype) -> None:
+    model = (
+        _RNNModel(input_size=4, hidden_size=3, bias=False, batch_first=True)
+        .to(dtype)
+        .eval()
+    )
+    await _run_single_state(
+        model, _single_state_inputs(model, dtype=dtype), dtype=dtype
+    )
+
+
+@pytest.mark.parametrize("input_size", [1, 3])
+@pytest.mark.parametrize("hidden_size", [1, 7])
+async def test_rnn_sizes(input_size: int, hidden_size: int) -> None:
+    model = _RNNModel(
+        input_size=input_size, hidden_size=hidden_size, batch_first=True
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model))
+
+
+async def test_rnn_single_timestep() -> None:
+    model = _RNNModel(input_size=4, hidden_size=3, batch_first=True).eval()
+    await _run_single_state(model, _single_state_inputs(model, seq=1))
+
+
+async def test_rnn_deep_stack() -> None:
+    model = _RNNModel(
+        input_size=3, hidden_size=5, num_layers=5, batch_first=True, bidirectional=True
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model))
+
+
+async def test_rnn_dropout_ignored_in_eval() -> None:
+    model = _RNNModel(
+        input_size=4, hidden_size=3, num_layers=2, dropout=0.3, batch_first=True
+    ).eval()
+    await _run_single_state(model, _single_state_inputs(model))
+
+
+async def test_rnn_dynamic_batch() -> None:
+    model = _RNNModel(input_size=4, hidden_size=3, batch_first=True).eval()
+    inputs = _single_state_inputs(model, batch=2, seq=5)
+    batch = torch.export.Dim("batch", min=1, max=16)
+    dynamic_shapes = {"x": {0: batch}, "h0": {1: batch}}
+    await _run_single_state(
+        model,
+        inputs,
+        dynamic_shapes=dynamic_shapes,
+        run_inputs=_single_state_inputs(model, batch=4, seq=5),
+    )
+
+
+class _RNNNoStateModel(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rnn = nn.RNN(4, 3, batch_first=True)
+
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        output, h_n = self.rnn(x)
+        return output, h_n
+
+
+async def test_rnn_default_zero_state() -> None:
+    model = _RNNNoStateModel().eval()
+    x = torch.randn(2, 5, 4)
+    ep = torch.export.export(model, (x,)).run_decompositions(get_decomp_table())
+    program = TorchConverter().add_exported_program(ep).to_coreai()
+    output, h_n = model(x)
+    if _recurrent_state_rank(ep) == 4:
+        h_n = h_n.unsqueeze(1)
+    await validate_numerical_output(
+        coreai_program=program,
+        torch_out=(output, h_n),
+        x=x,
+        **_LSTM_FP_TOL[torch.float32],
     )

@@ -39,6 +39,45 @@ if platform.system() == "Darwin":
 
 _ML_ASSET_EXTENSION = "aimodel"
 
+
+class LSTMModule(torch.nn.Module):
+    """Wrap ``nn.LSTM`` exposing ``(output, h_n, c_n)`` as a flat tuple."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__()
+        self.lstm = torch.nn.LSTM(**kwargs)
+
+    def forward(
+        self, x: Tensor, h0: Tensor, c0: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        output, (h_n, c_n) = self.lstm(x, (h0, c0))
+        return output, h_n, c_n
+
+
+class GRUModule(torch.nn.Module):
+    """Wrap ``nn.GRU`` exposing ``(output, h_n)`` as a flat tuple."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__()
+        self.gru = torch.nn.GRU(**kwargs)
+
+    def forward(self, x: Tensor, h0: Tensor) -> tuple[Tensor, Tensor]:
+        output, h_n = self.gru(x, h0)
+        return output, h_n
+
+
+class RNNModule(torch.nn.Module):
+    """Wrap ``nn.RNN`` exposing ``(output, h_n)`` as a flat tuple."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__()
+        self.rnn = torch.nn.RNN(**kwargs)
+
+    def forward(self, x: Tensor, h0: Tensor) -> tuple[Tensor, Tensor]:
+        output, h_n = self.rnn(x, h0)
+        return output, h_n
+
+
 # Compute unit selection driven by the --compute-unit-kind pytest option (see tests/conftest.py).
 # Default is "interpreter" so a plain `pytest` run still works.
 _COMPUTE_UNIT_KIND: str = "interpreter"
