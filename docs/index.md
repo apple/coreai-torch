@@ -2,9 +2,9 @@
 
 Bring PyTorch models to Core AI for on-device execution.
 
-## What Is Core AI?
+## What is Core AI?
 
-Core AI is a set of technologies for deploying machine learning models on Apple hardware, covering the full model deployment lifecycle: from model optimization and conversion, to debugging, to integration into your app. Models run entirely on device on Apple Silicon, with no server required.
+Core AI is a set of technologies for deploying machine learning models on Apple hardware, covering the full model deployment lifecycle: from model optimization and conversion, to debugging, to app integration. Models run entirely on device on Apple silicon, with no server required.
 
 ```{image} _images/core-ai-ecosystem.png
 :alt: Diagram of the Core AI ecosystem. At the top, Core AI Models provides ready-to-use models and examples. Core AI Optimization and Core AI PyTorch Extensions prepare models for deployment, producing a .aimodel file. Core AI Debugger and Xcode support integration and debugging. Core AI Framework runs models on device.
@@ -15,17 +15,17 @@ The Core AI ecosystem consists of the following components:
 
 - Convert PyTorch models to the Core AI model format (`.aimodel`) using [Core AI PyTorch Extensions](https://github.com/apple/coreai-torch)
 - Compress models with quantization, palettization, and pruning using [Core AI Optimization](https://github.com/apple/coreai-optimization)
-- Load and run models in your app with the [Core AI Framework](https://developer.apple.com/documentation/coreai)
+- Load and run models in an app with the [Core AI Framework](https://developer.apple.com/documentation/coreai)
 - Inspect, debug, and profile models using [Core AI Debugger](https://developer.apple.com/documentation/coreai/inspecting-debugging-and-profiling-core-ai-models)
-- Get popular open-source non-LLM and LLM models, with conversion, re-authoring, and optimization scripts, along with Swift app integration code using [Core AI Models](https://github.com/apple/coreai-models)
+- Get popular open-source models with conversion, optimization, and Swift app integration code using [Core AI Models](https://github.com/apple/coreai-models)
 
 ## Overview
 
-Core AI PyTorch Extensions (`coreai-torch`) is a Python package that bridges PyTorch and Core AI. You can use it to bring up an existing PyTorch model — exported as a `torch.export.ExportedProgram` — into a Core AI `AIProgram` ready to run on Apple hardware, traversing the FX graph node-by-node and mapping ATen operators to Core AI operations. You can equally use it to author Core AI models directly from PyTorch by composing the library of composite ops in `coreai_torch.composite_ops`, authoring new ops via `register_torch_lowering`, and authoring inline Metal GPU kernels through `TorchMetalKernel` and `register_custom_kernels` — all expressed as PyTorch `nn.Module`s and lowered to Core AI IR that the compiler recognizes and optimizes natively.
+Core AI PyTorch Extensions (`coreai-torch`) is a Python package that bridges PyTorch and Core AI. It converts an existing PyTorch model — exported as a `torch.export.ExportedProgram` — into a Core AI `AIProgram` ready to run on Apple hardware, traversing the FX graph node-by-node and mapping ATen operators to Core AI operations. The package also supports authoring Core AI models directly from PyTorch by composing the library of composite ops in `coreai_torch.composite_ops`, registering new ops via `register_torch_lowering`, and writing inline Metal GPU kernels through `TorchMetalKernel` and `register_custom_kernels` — all expressed as PyTorch `nn.Module`s and lowered to Core AI IR that the compiler recognizes and optimizes natively.
 
-The bring-up pipeline has three steps. First, export your PyTorch model with `torch.export.export` to capture the computation graph. Second, decompose the exported program with `get_decomp_table()`, which lowers composite ATen ops to the primitive set that `TorchConverter` can map while preserving the operations that `TorchConverter` lowers as composite ops. Third, call `TorchConverter().add_exported_program(ep).to_coreai()` to produce the `AIProgram`.
+The bring-up pipeline has three steps. First, export the PyTorch model with `torch.export.export` to capture the computation graph. Second, decompose the exported program by calling `ep.run_decompositions(get_decomp_table())`, which lowers composite ATen ops to the primitive set that `TorchConverter` can map while preserving the operations it lowers as composite ops. Third, call `TorchConverter().add_exported_program(ep).to_coreai()` to produce the `AIProgram`.
 
-For authoring, `coreai_torch.composite_ops` exposes well-known building blocks — such as attention, RoPE embeddings, RMSNorm, and gather-matmul (the MoE primitive) — as PyTorch modules. Passing these modules to `externalize_modules` preserves each one's operation boundary as a named composite op that the compiler can recognize and optimize. When a PyTorch op has no built-in lowering rule, register a custom lowering function with `register_torch_lowering`. For compute-intensive custom operations, `register_custom_kernels` lets you author Metal kernel source and wire it into the conversion pipeline.
+For authoring, `coreai_torch.composite_ops` exposes well-known building blocks — such as attention, RoPE embeddings, RMSNorm, and gather-matmul (the MoE primitive) — as PyTorch modules. Passing these modules to `externalize_modules` preserves each one's operation boundary as a named composite op that the compiler can recognize and optimize. When a PyTorch op has no built-in lowering rule, register a custom lowering function with `register_torch_lowering`. For compute-intensive custom operations, `TorchMetalKernel` lets authors write Metal kernel source; pass the resulting kernel objects to `register_custom_kernels` to wire them into the conversion pipeline.
 
 ## Quick example
 
@@ -40,7 +40,9 @@ coreai_program = TorchConverter().add_exported_program(ep).to_coreai()
 coreai_program.optimize()
 ```
 
-## Choosing your workflow
+## Choosing a workflow
+
+Use the following table to choose the conversion approach that matches the starting point.
 
 | Starting point | Recommended approach |
 |---|---|
@@ -52,7 +54,7 @@ coreai_program.optimize()
 
 ## Next steps
 
-- **New users:** {doc}`getting-started/installation` and {doc}`getting-started/quickstart` walk you through setup and your first end-to-end bring-up.
+- **New users:** {doc}`getting-started/installation` and {doc}`getting-started/quickstart` cover setup and a first end-to-end bring-up.
 - **Authoring Core AI models from PyTorch:** {doc}`guides/composite-ops` covers the built-in composite op library, {doc}`guides/custom-op-lowering` shows how to author Core AI IR for new torch ops, and {doc}`guides/custom-metal-kernels` walks through authoring inline Metal GPU kernels.
 - **Customizing bring-up:** {doc}`guides/conversion-workflows` covers each bring-up workflow. {doc}`guides/externalization` covers preserving submodule boundaries as composite ops.
 - **API reference:** {doc}`api/TorchConverter` documents every method and parameter. {doc}`api/composite-ops` lists all built-in composite ops. {doc}`api/TorchMetalKernel` covers the Metal-kernel authoring API.
