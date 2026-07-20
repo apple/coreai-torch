@@ -2918,6 +2918,70 @@ async def test_mean(
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
+    "x,dim,keepdim,target_dtype",
+    [
+        # mean.default: global mean (dim=None), int32 input → float32 output.
+        # torch promotes the operand to the requested dtype BEFORE averaging.
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), None, False, torch.float32),
+        (
+            torch.randint(-5, 5, (2, 3, 4), dtype=torch.int32),
+            None,
+            False,
+            torch.float32,
+        ),
+        # mean.dim: reduce along specific dimensions, int32 input → float32.
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), 1, False, torch.float32),
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), 0, True, torch.float32),
+        (
+            torch.randint(-5, 5, (2, 3, 4), dtype=torch.int32),
+            [0, 2],
+            False,
+            torch.float32,
+        ),
+        (
+            torch.randint(-5, 5, (2, 3, 4), dtype=torch.int32),
+            [0, 2],
+            True,
+            torch.float32,
+        ),
+        # dtype-agnostic: root cause is independent of the specific int operand
+        # dtype or the specific float target dtype.
+        (torch.randint(0, 10, (3, 4), dtype=torch.int64), 1, False, torch.float32),
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), None, False, torch.float16),
+    ],
+)
+async def test_mean_dtype_kwarg_integer(
+    x: Tensor,
+    dim: int | list[int] | None,
+    keepdim: bool,
+    target_dtype: torch.dtype,
+    dynamic: bool,
+) -> None:
+    """Regression: torch.mean(x, dtype=...) on an integer tensor must promote the
+    operand to the requested dtype before averaging, not crash at conversion time.
+
+    Covers both aten.mean.default (dim=None) and aten.mean.dim (dim=...) with an
+    explicit float dtype kwarg on an integer operand — the operand must be cast to
+    the output element type before reduce_mean, mirroring sum's dtype handling.
+    Parametrized across int32/int64 operands and float32/float16 targets since the
+    root cause is dtype-agnostic (the cast was simply never attempted)."""
+
+    class MeanDtypeModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+
+        def forward(self, x: Tensor) -> Tensor:
+            if dim is None:
+                return torch.mean(x, dtype=target_dtype)
+            return torch.mean(x, dim=dim, keepdim=keepdim, dtype=target_dtype)
+
+    model = MeanDtypeModel().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("x", [torch.rand(2, 2)])
 @pytest.mark.parametrize("y", [torch.rand(2, 2)])
 async def test_minimum(x: Tensor, y: Tensor, dynamic: bool) -> None:
