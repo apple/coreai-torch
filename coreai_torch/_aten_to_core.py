@@ -810,8 +810,6 @@ def replace_binary_ops(
         "add.Tensor": coreai.broadcasting_add,
         "add.Scalar": coreai.broadcasting_add,
         "add": coreai.broadcasting_add,
-        "div.Tensor": coreai.broadcasting_divide,
-        "div.Scalar": coreai.broadcasting_divide,
         "maximum.default": coreai.broadcasting_maximum,
         "minimum.default": coreai.broadcasting_minimum,
         "fmod.Tensor": coreai.broadcasting_modulo,
@@ -876,13 +874,20 @@ def replace_div_tensor_mode(
         else (node.args[2] if len(node.args) > 2 else None)
     )
 
+    if rounding_mode is None:
+        # True divide: integer operands must promote to the node's float
+        # output type before dividing, not the generic same-kind-stays-integer
+        # promotion rule used by "floor"/"trunc" below.
+        result_type = get_output_element_type_from_node(node)
+        return coreai.broadcasting_divide(
+            coreai.cast(x, result_type), coreai.cast(y, result_type)
+        )
+
     promoted_type = get_promoted_type(x.type, y.type)
     casted_x = coreai.cast(x, promoted_type)
     casted_y = coreai.cast(y, promoted_type)
 
-    if rounding_mode is None:
-        return coreai.broadcasting_divide(casted_x, casted_y)
-    elif rounding_mode == "floor":
+    if rounding_mode == "floor":
         return coreai.broadcasting_floor_divide(casted_x, casted_y)
     elif rounding_mode == "trunc":
         # Integer division already truncates toward zero, so a plain divide
@@ -3588,8 +3593,8 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "cos.default": replace_unary_ops,
     "cosh.default": replace_unary_ops,
     "cumsum.default": replace_cumsum,
-    "div.Scalar": replace_binary_ops,
-    "div.Tensor": replace_binary_ops,
+    "div.Scalar": replace_truediv,
+    "div.Tensor": replace_truediv,
     "div.Tensor_mode": replace_div_tensor_mode,
     "embedding.default": replace_embedding,
     "empty.default": replace_empty,
@@ -3719,7 +3724,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "truediv": replace_truediv,
     "to.dtype": replace_to_dtype,
     "topk.default": replace_topk,
-    "true_divide.Tensor": replace_binary_ops,
+    "true_divide.Tensor": replace_truediv,
     "trunc.default": replace_trunc,
     "trunc": replace_trunc,
     "unsqueeze.default": replace_unsqueeze,

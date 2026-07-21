@@ -1712,106 +1712,165 @@ class TestCopy:
         )
 
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("x", [torch.rand(2, 2)])
-@pytest.mark.parametrize("y", [torch.rand(2, 2)])
-async def test_div(x: Tensor, y: Tensor, dynamic: bool) -> None:
-    class DivModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
+class TestDiv:
+    """Test suite for aten.div.Tensor / div.Scalar / div.Tensor_mode /
+    true_divide.Tensor → coreai.broadcasting_divide conversion."""
 
-        def forward(self, x: Tensor, y: Tensor) -> Tensor:
-            return x / y
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize("x", [torch.rand(2, 2)])
+    @pytest.mark.parametrize("y", [torch.rand(2, 2)])
+    async def test_div(self, x: Tensor, y: Tensor, dynamic: bool) -> None:
+        class DivModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
 
-    model = DivModel().eval()
-    if dynamic:
-        dims = _all_dims_dynamic(x)
-        dynamic_shapes = {"x": dims, "y": dims}
-    else:
-        dynamic_shapes = None
-    await validate_numerical_output(
-        model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return x / y
+
+        model = DivModel().eval()
+        if dynamic:
+            dims = _all_dims_dynamic(x)
+            dynamic_shapes = {"x": dims, "y": dims}
+        else:
+            dynamic_shapes = None
+        await validate_numerical_output(
+            model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+        )
+
+    @pytest.mark.parametrize(
+        "x,y",
+        [
+            (
+                torch.tensor([7, -7, 3, 1], dtype=torch.int32),
+                torch.tensor([2, 2, 2, 4], dtype=torch.int32),
+            ),
+            (
+                torch.tensor([1, 2, 3, 4], dtype=torch.int64),
+                torch.tensor([3, 3, 3, 3], dtype=torch.int64),
+            ),
+        ],
     )
+    async def test_div_integer_promotes_to_float(self, x: Tensor, y: Tensor) -> None:
+        """aten.div.Tensor on integer operands must promote to float before dividing."""
 
+        class DivModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return x / y
 
-@pytest.mark.parametrize(
-    "x,y",
-    [
-        # Float tensors - mixed positive/negative values
-        (
-            torch.tensor([[3.5, -7.2], [-2.8, 9.1]]),
-            torch.tensor([[2.0, 3.0], [2.0, -4.0]]),
-        ),
-        # Larger tensors
-        (
-            torch.rand(3, 4) * 10 - 5,
-            torch.rand(3, 4) * 4 + 0.5,
-        ),  # Avoid division by values near zero
-        # Broadcasting case
-        (torch.rand(2, 3, 4) * 10 - 5, torch.rand(1, 3, 1) * 4 + 0.5),
-    ],
-)
-@pytest.mark.parametrize("rounding_mode", [None, "floor", "trunc"])
-async def test_div_tensor_mode(x: Tensor, y: Tensor, rounding_mode: str | None) -> None:
-    """Test division with different rounding modes.
+        model = DivModel().eval()
+        await validate_numerical_output(model=model, x=x, y=y)
 
-    aten.div.Tensor_mode(input, other, rounding_mode) supports:
-        - None: True division (standard floating-point division)
-        - "floor": Floor division (rounds toward negative infinity)
-        - "trunc": Truncated division (rounds toward zero)
-    """
+    async def test_div_scalar_integer_promotes_to_float(self) -> None:
+        """aten.div.Scalar on an integer tensor must promote to float before dividing."""
+        x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
 
-    class DivTensorModeModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
+        class DivScalarModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return x / 4
 
-        def forward(self, x: Tensor, y: Tensor) -> Tensor:
-            return torch.div(x, y, rounding_mode=rounding_mode)
+        await validate_numerical_output(model=DivScalarModel().eval(), x=x)
 
-    model = DivTensorModeModel().eval()
-    await validate_numerical_output(model=model, x=x, y=y)
+    async def test_true_divide_integer_promotes_to_float(self) -> None:
+        """aten.true_divide.Tensor on integer operands must promote to float before dividing."""
+        x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
+        y = torch.tensor([2, 2, 2, 4], dtype=torch.int32)
 
+        class TrueDivideModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.true_divide(x, y)
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize(
-    "x,y",
-    [
-        (torch.rand(2, 3) + 0.1, torch.rand(2, 3) + 0.1),
-        (torch.rand(3, 4, 5) + 0.1, torch.rand(3, 4, 5) + 0.1),
-        (torch.rand(4) + 0.1, torch.rand(4) + 0.1),
-        # FP16
-        (
-            torch.rand(2, 3, dtype=torch.float16) + 0.1,
-            torch.rand(2, 3, dtype=torch.float16) + 0.1,
-        ),
-    ],
-)
-async def test_true_divide(x: Tensor, y: Tensor, dynamic: bool) -> None:
-    class TrueDivideModel(nn.Module):
-        def forward(self, x: Tensor, y: Tensor) -> Tensor:
-            return torch.true_divide(x, y)
+        await validate_numerical_output(model=TrueDivideModel().eval(), x=x, y=y)
 
-    model = TrueDivideModel().eval()
-    if dynamic:
-        dims = _all_dims_dynamic(x)
-        dynamic_shapes = {"x": dims, "y": dims}
-    else:
-        dynamic_shapes = None
-    await validate_numerical_output(
-        model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+    async def test_div_tensor_mode_none_integer_promotes_to_float(self) -> None:
+        """aten.div.Tensor_mode with rounding_mode=None on integer operands must
+        promote to float before dividing, matching aten.div.Tensor semantics."""
+        x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
+        y = torch.tensor([2, 2, 2, 4], dtype=torch.int32)
+
+        class DivTensorModeModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.div(x, y, rounding_mode=None)
+
+        await validate_numerical_output(model=DivTensorModeModel().eval(), x=x, y=y)
+
+    @pytest.mark.parametrize(
+        "x,y",
+        [
+            # Float tensors - mixed positive/negative values
+            (
+                torch.tensor([[3.5, -7.2], [-2.8, 9.1]]),
+                torch.tensor([[2.0, 3.0], [2.0, -4.0]]),
+            ),
+            # Larger tensors
+            (
+                torch.rand(3, 4) * 10 - 5,
+                torch.rand(3, 4) * 4 + 0.5,
+            ),  # Avoid division by values near zero
+            # Broadcasting case
+            (torch.rand(2, 3, 4) * 10 - 5, torch.rand(1, 3, 1) * 4 + 0.5),
+        ],
     )
+    @pytest.mark.parametrize("rounding_mode", [None, "floor", "trunc"])
+    async def test_div_tensor_mode(
+        self, x: Tensor, y: Tensor, rounding_mode: str | None
+    ) -> None:
+        """Test division with different rounding modes.
 
+        aten.div.Tensor_mode(input, other, rounding_mode) supports:
+            - None: True division (standard floating-point division)
+            - "floor": Floor division (rounds toward negative infinity)
+            - "trunc": Truncated division (rounds toward zero)
+        """
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("x", [torch.rand(2, 3) + 0.1, torch.rand(3, 4, 5) + 0.1])
-async def test_true_divide_scalar(x: Tensor, dynamic: bool) -> None:
-    class TrueDivideScalarModel(nn.Module):
-        def forward(self, x: Tensor) -> Tensor:
-            return torch.true_divide(x, 2.0)
+        class DivTensorModeModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
 
-    model = TrueDivideScalarModel().eval()
-    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
-    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.div(x, y, rounding_mode=rounding_mode)
+
+        model = DivTensorModeModel().eval()
+        await validate_numerical_output(model=model, x=x, y=y)
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize(
+        "x,y",
+        [
+            (torch.rand(2, 3) + 0.1, torch.rand(2, 3) + 0.1),
+            (torch.rand(3, 4, 5) + 0.1, torch.rand(3, 4, 5) + 0.1),
+            (torch.rand(4) + 0.1, torch.rand(4) + 0.1),
+            # FP16
+            (
+                torch.rand(2, 3, dtype=torch.float16) + 0.1,
+                torch.rand(2, 3, dtype=torch.float16) + 0.1,
+            ),
+        ],
+    )
+    async def test_true_divide(self, x: Tensor, y: Tensor, dynamic: bool) -> None:
+        class TrueDivideModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.true_divide(x, y)
+
+        model = TrueDivideModel().eval()
+        if dynamic:
+            dims = _all_dims_dynamic(x)
+            dynamic_shapes = {"x": dims, "y": dims}
+        else:
+            dynamic_shapes = None
+        await validate_numerical_output(
+            model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+        )
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize("x", [torch.rand(2, 3) + 0.1, torch.rand(3, 4, 5) + 0.1])
+    async def test_true_divide_scalar(self, x: Tensor, dynamic: bool) -> None:
+        class TrueDivideScalarModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.true_divide(x, 2.0)
+
+        model = TrueDivideScalarModel().eval()
+        dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+        await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
