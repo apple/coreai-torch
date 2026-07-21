@@ -486,7 +486,7 @@ def get_unnarrowed_output_element_type_from_node(
     unlike narrowing a plain value cast, which is lossless-by-convention for
     values already known to fit (or that the model owner accepts truncating).
     coreai's own IR supports int64 (``si64``) as a first-class type, so
-    producing it here is not a runtime limitation -- see BUG-012.
+    producing it here is not a runtime limitation.
     """
     val = node.meta["val"]
     if index is not None:

@@ -2682,8 +2682,7 @@ def replace_sum_dim_intlist(
     reducing: torch promotes narrower integer sums to int64 specifically so
     the accumulation doesn't overflow, and reduce_sum's own IR contract is
     same-dtype-in/same-dtype-out (no internal promotion) -- narrowing the
-    accumulator here would make the reduction itself overflow early. See
-    BUG-012.
+    accumulator here would make the reduction itself overflow early.
     """
     x = _get_operand(values_map, node, 0)
     args = node.args
@@ -2746,7 +2745,7 @@ def replace_prod_default(
     """Converts aten.prod.default to coreai.reduce_product.
 
     See replace_sum_dim_intlist for why the accumulator target type must not
-    be narrowed here (BUG-012).
+    be narrowed here.
     """
     x = _get_operand(values_map, node, 0)
     target_type = get_unnarrowed_output_element_type_from_node(node)
@@ -2762,7 +2761,7 @@ def replace_prod_dim_int(
     """Converts aten.prod.dim_int to coreai.reduce_product.
 
     See replace_sum_dim_intlist for why the accumulator target type must not
-    be narrowed here (BUG-012).
+    be narrowed here.
     """
     x = _get_operand(values_map, node, 0)
     target_type = get_unnarrowed_output_element_type_from_node(node)

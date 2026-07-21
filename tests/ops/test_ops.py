@@ -6427,8 +6427,8 @@ async def test_prod_default(x: Tensor, dynamic: bool) -> None:
     ],
 )
 async def test_sum_int_promotes_to_int64_no_overflow(x: Tensor) -> None:
-    """Regression test for BUG-012: sum's int64 accumulator must not be
-    narrowed to int32, which would make the reduction silently wrap."""
+    """sum's int64 accumulator must not be narrowed to int32, which would
+    make the reduction silently wrap."""
 
     class SumModel(nn.Module):
         def forward(self, x: Tensor) -> Tensor:
@@ -6456,7 +6456,7 @@ async def test_sum_int_promotes_to_int64_no_overflow(x: Tensor) -> None:
 async def test_sum_dim_intlist_int_promotes_to_int64_no_overflow(
     x: Tensor, dims: list[int], keepdim: bool
 ) -> None:
-    """Regression test for BUG-012, explicit dim_IntList + keepdim variant."""
+    """Explicit dim_IntList + keepdim variant of the int64-promoted sum."""
 
     class SumModel(nn.Module):
         def forward(self, x: Tensor) -> Tensor:
@@ -6480,8 +6480,8 @@ async def test_sum_dim_intlist_int_promotes_to_int64_no_overflow(
     ],
 )
 async def test_prod_int_promotes_to_int64_no_overflow(x: Tensor) -> None:
-    """Regression test for BUG-012: prod's int64 accumulator must not be
-    narrowed to int32, which would make the reduction silently wrap."""
+    """prod's int64 accumulator must not be narrowed to int32, which would
+    make the reduction silently wrap."""
 
     class ProdModel(nn.Module):
         def forward(self, x: Tensor) -> Tensor:
@@ -6502,7 +6502,7 @@ async def test_prod_int_promotes_to_int64_no_overflow(x: Tensor) -> None:
     ],
 )
 async def test_prod_dim_int_promotes_to_int64_no_overflow(x: Tensor, dim: int) -> None:
-    """Regression test for BUG-012, dim_int variant of prod."""
+    """dim_int variant of the int64-promoted prod."""
 
     class ProdModel(nn.Module):
         def forward(self, x: Tensor) -> Tensor:
