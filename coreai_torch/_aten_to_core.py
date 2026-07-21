@@ -2676,14 +2676,7 @@ def replace_squeeze_dims(
 def replace_sum_dim_intlist(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
-    """Converts aten.sum.dim_IntList to coreai.reduce_sum.
-
-    Casts to the *unnarrowed* promoted type (e.g. int64, not int32) before
-    reducing: torch promotes narrower integer sums to int64 specifically so
-    the accumulation doesn't overflow, and reduce_sum's own IR contract is
-    same-dtype-in/same-dtype-out (no internal promotion) -- narrowing the
-    accumulator here would make the reduction itself overflow early.
-    """
+    """Converts aten.sum.dim_IntList to coreai.reduce_sum."""
     x = _get_operand(values_map, node, 0)
     args = node.args
 
@@ -2742,11 +2735,6 @@ def replace_topk(
 def replace_prod_default(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
-    """Converts aten.prod.default to coreai.reduce_product.
-
-    See replace_sum_dim_intlist for why the accumulator target type must not
-    be narrowed here.
-    """
     x = _get_operand(values_map, node, 0)
     target_type = get_unnarrowed_output_element_type_from_node(node)
     if x.type.element_type != target_type:
@@ -2758,11 +2746,6 @@ def replace_prod_default(
 def replace_prod_dim_int(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
-    """Converts aten.prod.dim_int to coreai.reduce_product.
-
-    See replace_sum_dim_intlist for why the accumulator target type must not
-    be narrowed here.
-    """
     x = _get_operand(values_map, node, 0)
     target_type = get_unnarrowed_output_element_type_from_node(node)
     if x.type.element_type != target_type:
