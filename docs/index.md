@@ -2,6 +2,23 @@
 
 Bring PyTorch models to Core AI for on-device execution.
 
+## What Is Core AI?
+
+Core AI is a set of technologies for deploying machine learning models on Apple hardware, covering the full model deployment lifecycle: from model optimization and conversion, to debugging, to integration into your app. Models run entirely on device on Apple Silicon, with no server required.
+
+```{image} _images/core-ai-ecosystem.png
+:alt: Diagram of the Core AI ecosystem. At the top, Core AI Models provides ready-to-use models and examples. Core AI Optimization and Core AI PyTorch Extensions prepare models for deployment, producing a .aimodel file. Core AI Debugger and Xcode support integration and debugging. Core AI Framework runs models on device.
+:align: center
+```
+
+The Core AI ecosystem consists of the following components:
+
+- Convert PyTorch models to the Core AI model format (`.aimodel`) using [Core AI PyTorch Extensions](https://github.com/apple/coreai-torch)
+- Compress models with quantization, palettization, and pruning using [Core AI Optimization](https://github.com/apple/coreai-optimization)
+- Load and run models in your app with the [Core AI Framework](https://developer.apple.com/documentation/coreai)
+- Inspect, debug, and profile models using [Core AI Debugger](https://developer.apple.com/documentation/coreai/inspecting-debugging-and-profiling-core-ai-models)
+- Get popular open-source non-LLM and LLM models, with conversion, re-authoring, and optimization scripts, along with Swift app integration code using [Core AI Models](https://github.com/apple/coreai-models)
+
 ## Overview
 
 Core AI PyTorch Extensions (`coreai-torch`) is a Python package that bridges PyTorch and Core AI. You can use it to bring up an existing PyTorch model — exported as a `torch.export.ExportedProgram` — into a Core AI `AIProgram` ready to run on Apple hardware, traversing the FX graph node-by-node and mapping ATen operators to Core AI operations. You can equally use it to author Core AI models directly from PyTorch by composing the library of composite ops in `coreai_torch.composite_ops`, authoring new ops via `register_torch_lowering`, and authoring inline Metal GPU kernels through `TorchMetalKernel` and `register_custom_kernels` — all expressed as PyTorch `nn.Module`s and lowered to Core AI IR that the compiler recognizes and optimizes natively.
