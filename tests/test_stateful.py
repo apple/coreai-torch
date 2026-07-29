@@ -26,7 +26,6 @@ from coreai_torch import TorchConverter, get_decomp_table
 from .utils import (
     filecheck_pattern,
     make_dynamic_shapes,
-    run_transforms,
     validate_numerical_output,
 )
 
@@ -229,7 +228,7 @@ class TestMutableBufferAnnotation:
             .add_exported_program(self._mutable_buffer_program())
             .to_coreai()
         )
-        await run_transforms(result)
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
@@ -395,7 +394,7 @@ class TestMutableUserInputAnnotation:
         result = (
             TorchConverter().add_exported_program(self._mutating_program()).to_coreai()
         )
-        await run_transforms(result)
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
@@ -507,7 +506,7 @@ class TestMutableBufferAndUserInputAnnotation:
             .add_exported_program(self._both_mutations_program())
             .to_coreai()
         )
-        await run_transforms(result)
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
