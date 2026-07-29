@@ -7,7 +7,13 @@ Use these module subclasses (and ATen-derived ops) to preserve an operation's bo
 **Public import:**
 
 ```python
-from coreai_torch.composite_ops import GatherMM, GatedDeltaUpdate, RMSNormImpl, RoPE, SDPA
+from coreai_torch.composite_ops import (
+    GatherMM,
+    GatedDeltaUpdate,
+    RMSNormImpl,
+    RoPE,
+    SDPA,
+)
 ```
 
 coreai-torch provides composite ops in two categories:
