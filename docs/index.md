@@ -2,6 +2,17 @@
 
 Bring PyTorch models to Core AI for on-device execution.
 
+## What Is Core AI?
+
+Core AI is Apple's framework for on-device machine learning. The Core AI ecosystem provides tools for every stage of the workflow — from ready-to-use models and optimization through conversion, debugging, and on-device execution.
+
+```{image} _images/core-ai-ecosystem.png
+:alt: Diagram of the Core AI ecosystem. At the top, Core AI Models provides ready-to-use models and examples. Core AI Optimization and Core AI PyTorch Extensions prepare models for deployment, producing a .aimodel file. Core AI Debugger and Xcode support integration and debugging. Core AI Framework runs models on device.
+:align: center
+```
+
+`coreai-torch` is the conversion step in this pipeline. It takes a PyTorch `ExportedProgram` and produces a `.aimodel` file ready to load and run with Core AI Framework.
+
 ## Overview
 
 Core AI PyTorch Extensions (`coreai-torch`) is a Python package that bridges PyTorch and Core AI. You can use it to bring up an existing PyTorch model — exported as a `torch.export.ExportedProgram` — into a Core AI `AIProgram` ready to run on Apple hardware, traversing the FX graph node-by-node and mapping ATen operators to Core AI operations. You can equally use it to author Core AI models directly from PyTorch by composing the library of composite ops in `coreai_torch.composite_ops`, authoring new ops via `register_torch_lowering`, and authoring inline Metal GPU kernels through `TorchMetalKernel` and `register_custom_kernels` — all expressed as PyTorch `nn.Module`s and lowered to Core AI IR that the compiler recognizes and optimizes natively.
