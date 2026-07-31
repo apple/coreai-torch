@@ -16,7 +16,7 @@ The Core AI ecosystem consists of the following components:
 - Convert PyTorch models to the Core AI model format (`.aimodel`) using [Core AI PyTorch Extensions](https://github.com/apple/coreai-torch)
 - Compress models with quantization, palettization, and pruning using [Core AI Optimization](https://github.com/apple/coreai-optimization)
 - Load and run models in your app with the [Core AI Framework](https://developer.apple.com/documentation/coreai)
-- Inspect, debug, and profile models using Core AI Debugger
+- Inspect, debug, and profile models using [Core AI Debugger](https://developer.apple.com/documentation/coreai/inspecting-debugging-and-profiling-core-ai-models)
 - Get popular open-source non-LLM and LLM models, with conversion, re-authoring, and optimization scripts, along with Swift app integration code using [Core AI Models](https://github.com/apple/coreai-models)
 
 ## Overview
