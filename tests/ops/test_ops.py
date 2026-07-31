@@ -1712,106 +1712,165 @@ class TestCopy:
         )
 
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("x", [torch.rand(2, 2)])
-@pytest.mark.parametrize("y", [torch.rand(2, 2)])
-async def test_div(x: Tensor, y: Tensor, dynamic: bool) -> None:
-    class DivModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
+class TestDiv:
+    """Test suite for aten.div.Tensor / div.Scalar / div.Tensor_mode /
+    true_divide.Tensor → coreai.broadcasting_divide conversion."""
 
-        def forward(self, x: Tensor, y: Tensor) -> Tensor:
-            return x / y
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize("x", [torch.rand(2, 2)])
+    @pytest.mark.parametrize("y", [torch.rand(2, 2)])
+    async def test_div(self, x: Tensor, y: Tensor, dynamic: bool) -> None:
+        class DivModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
 
-    model = DivModel().eval()
-    if dynamic:
-        dims = _all_dims_dynamic(x)
-        dynamic_shapes = {"x": dims, "y": dims}
-    else:
-        dynamic_shapes = None
-    await validate_numerical_output(
-        model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return x / y
+
+        model = DivModel().eval()
+        if dynamic:
+            dims = _all_dims_dynamic(x)
+            dynamic_shapes = {"x": dims, "y": dims}
+        else:
+            dynamic_shapes = None
+        await validate_numerical_output(
+            model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+        )
+
+    @pytest.mark.parametrize(
+        "x,y",
+        [
+            (
+                torch.tensor([7, -7, 3, 1], dtype=torch.int32),
+                torch.tensor([2, 2, 2, 4], dtype=torch.int32),
+            ),
+            (
+                torch.tensor([1, 2, 3, 4], dtype=torch.int64),
+                torch.tensor([3, 3, 3, 3], dtype=torch.int64),
+            ),
+        ],
     )
+    async def test_div_integer_promotes_to_float(self, x: Tensor, y: Tensor) -> None:
+        """aten.div.Tensor on integer operands must promote to float before dividing."""
 
+        class DivModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return x / y
 
-@pytest.mark.parametrize(
-    "x,y",
-    [
-        # Float tensors - mixed positive/negative values
-        (
-            torch.tensor([[3.5, -7.2], [-2.8, 9.1]]),
-            torch.tensor([[2.0, 3.0], [2.0, -4.0]]),
-        ),
-        # Larger tensors
-        (
-            torch.rand(3, 4) * 10 - 5,
-            torch.rand(3, 4) * 4 + 0.5,
-        ),  # Avoid division by values near zero
-        # Broadcasting case
-        (torch.rand(2, 3, 4) * 10 - 5, torch.rand(1, 3, 1) * 4 + 0.5),
-    ],
-)
-@pytest.mark.parametrize("rounding_mode", [None, "floor", "trunc"])
-async def test_div_tensor_mode(x: Tensor, y: Tensor, rounding_mode: str | None) -> None:
-    """Test division with different rounding modes.
+        model = DivModel().eval()
+        await validate_numerical_output(model=model, x=x, y=y)
 
-    aten.div.Tensor_mode(input, other, rounding_mode) supports:
-        - None: True division (standard floating-point division)
-        - "floor": Floor division (rounds toward negative infinity)
-        - "trunc": Truncated division (rounds toward zero)
-    """
+    async def test_div_scalar_integer_promotes_to_float(self) -> None:
+        """aten.div.Scalar on an integer tensor must promote to float before dividing."""
+        x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
 
-    class DivTensorModeModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
+        class DivScalarModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return x / 4
 
-        def forward(self, x: Tensor, y: Tensor) -> Tensor:
-            return torch.div(x, y, rounding_mode=rounding_mode)
+        await validate_numerical_output(model=DivScalarModel().eval(), x=x)
 
-    model = DivTensorModeModel().eval()
-    await validate_numerical_output(model=model, x=x, y=y)
+    async def test_true_divide_integer_promotes_to_float(self) -> None:
+        """aten.true_divide.Tensor on integer operands must promote to float before dividing."""
+        x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
+        y = torch.tensor([2, 2, 2, 4], dtype=torch.int32)
 
+        class TrueDivideModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.true_divide(x, y)
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize(
-    "x,y",
-    [
-        (torch.rand(2, 3) + 0.1, torch.rand(2, 3) + 0.1),
-        (torch.rand(3, 4, 5) + 0.1, torch.rand(3, 4, 5) + 0.1),
-        (torch.rand(4) + 0.1, torch.rand(4) + 0.1),
-        # FP16
-        (
-            torch.rand(2, 3, dtype=torch.float16) + 0.1,
-            torch.rand(2, 3, dtype=torch.float16) + 0.1,
-        ),
-    ],
-)
-async def test_true_divide(x: Tensor, y: Tensor, dynamic: bool) -> None:
-    class TrueDivideModel(nn.Module):
-        def forward(self, x: Tensor, y: Tensor) -> Tensor:
-            return torch.true_divide(x, y)
+        await validate_numerical_output(model=TrueDivideModel().eval(), x=x, y=y)
 
-    model = TrueDivideModel().eval()
-    if dynamic:
-        dims = _all_dims_dynamic(x)
-        dynamic_shapes = {"x": dims, "y": dims}
-    else:
-        dynamic_shapes = None
-    await validate_numerical_output(
-        model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+    async def test_div_tensor_mode_none_integer_promotes_to_float(self) -> None:
+        """aten.div.Tensor_mode with rounding_mode=None on integer operands must
+        promote to float before dividing, matching aten.div.Tensor semantics."""
+        x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
+        y = torch.tensor([2, 2, 2, 4], dtype=torch.int32)
+
+        class DivTensorModeModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.div(x, y, rounding_mode=None)
+
+        await validate_numerical_output(model=DivTensorModeModel().eval(), x=x, y=y)
+
+    @pytest.mark.parametrize(
+        "x,y",
+        [
+            # Float tensors - mixed positive/negative values
+            (
+                torch.tensor([[3.5, -7.2], [-2.8, 9.1]]),
+                torch.tensor([[2.0, 3.0], [2.0, -4.0]]),
+            ),
+            # Larger tensors
+            (
+                torch.rand(3, 4) * 10 - 5,
+                torch.rand(3, 4) * 4 + 0.5,
+            ),  # Avoid division by values near zero
+            # Broadcasting case
+            (torch.rand(2, 3, 4) * 10 - 5, torch.rand(1, 3, 1) * 4 + 0.5),
+        ],
     )
+    @pytest.mark.parametrize("rounding_mode", [None, "floor", "trunc"])
+    async def test_div_tensor_mode(
+        self, x: Tensor, y: Tensor, rounding_mode: str | None
+    ) -> None:
+        """Test division with different rounding modes.
 
+        aten.div.Tensor_mode(input, other, rounding_mode) supports:
+            - None: True division (standard floating-point division)
+            - "floor": Floor division (rounds toward negative infinity)
+            - "trunc": Truncated division (rounds toward zero)
+        """
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("x", [torch.rand(2, 3) + 0.1, torch.rand(3, 4, 5) + 0.1])
-async def test_true_divide_scalar(x: Tensor, dynamic: bool) -> None:
-    class TrueDivideScalarModel(nn.Module):
-        def forward(self, x: Tensor) -> Tensor:
-            return torch.true_divide(x, 2.0)
+        class DivTensorModeModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
 
-    model = TrueDivideScalarModel().eval()
-    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
-    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.div(x, y, rounding_mode=rounding_mode)
+
+        model = DivTensorModeModel().eval()
+        await validate_numerical_output(model=model, x=x, y=y)
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize(
+        "x,y",
+        [
+            (torch.rand(2, 3) + 0.1, torch.rand(2, 3) + 0.1),
+            (torch.rand(3, 4, 5) + 0.1, torch.rand(3, 4, 5) + 0.1),
+            (torch.rand(4) + 0.1, torch.rand(4) + 0.1),
+            # FP16
+            (
+                torch.rand(2, 3, dtype=torch.float16) + 0.1,
+                torch.rand(2, 3, dtype=torch.float16) + 0.1,
+            ),
+        ],
+    )
+    async def test_true_divide(self, x: Tensor, y: Tensor, dynamic: bool) -> None:
+        class TrueDivideModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.true_divide(x, y)
+
+        model = TrueDivideModel().eval()
+        if dynamic:
+            dims = _all_dims_dynamic(x)
+            dynamic_shapes = {"x": dims, "y": dims}
+        else:
+            dynamic_shapes = None
+        await validate_numerical_output(
+            model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+        )
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize("x", [torch.rand(2, 3) + 0.1, torch.rand(3, 4, 5) + 0.1])
+    async def test_true_divide_scalar(self, x: Tensor, dynamic: bool) -> None:
+        class TrueDivideScalarModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.true_divide(x, 2.0)
+
+        model = TrueDivideScalarModel().eval()
+        dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+        await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
@@ -2918,6 +2977,70 @@ async def test_mean(
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
+    "x,dim,keepdim,target_dtype",
+    [
+        # mean.default: global mean (dim=None), int32 input → float32 output.
+        # torch promotes the operand to the requested dtype BEFORE averaging.
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), None, False, torch.float32),
+        (
+            torch.randint(-5, 5, (2, 3, 4), dtype=torch.int32),
+            None,
+            False,
+            torch.float32,
+        ),
+        # mean.dim: reduce along specific dimensions, int32 input → float32.
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), 1, False, torch.float32),
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), 0, True, torch.float32),
+        (
+            torch.randint(-5, 5, (2, 3, 4), dtype=torch.int32),
+            [0, 2],
+            False,
+            torch.float32,
+        ),
+        (
+            torch.randint(-5, 5, (2, 3, 4), dtype=torch.int32),
+            [0, 2],
+            True,
+            torch.float32,
+        ),
+        # dtype-agnostic: root cause is independent of the specific int operand
+        # dtype or the specific float target dtype.
+        (torch.randint(0, 10, (3, 4), dtype=torch.int64), 1, False, torch.float32),
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), None, False, torch.float16),
+    ],
+)
+async def test_mean_dtype_kwarg_integer(
+    x: Tensor,
+    dim: int | list[int] | None,
+    keepdim: bool,
+    target_dtype: torch.dtype,
+    dynamic: bool,
+) -> None:
+    """Regression: torch.mean(x, dtype=...) on an integer tensor must promote the
+    operand to the requested dtype before averaging, not crash at conversion time.
+
+    Covers both aten.mean.default (dim=None) and aten.mean.dim (dim=...) with an
+    explicit float dtype kwarg on an integer operand — the operand must be cast to
+    the output element type before reduce_mean, mirroring sum's dtype handling.
+    Parametrized across int32/int64 operands and float32/float16 targets since the
+    root cause is dtype-agnostic (the cast was simply never attempted)."""
+
+    class MeanDtypeModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+
+        def forward(self, x: Tensor) -> Tensor:
+            if dim is None:
+                return torch.mean(x, dtype=target_dtype)
+            return torch.mean(x, dim=dim, keepdim=keepdim, dtype=target_dtype)
+
+    model = MeanDtypeModel().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("x", [torch.rand(2, 2)])
 @pytest.mark.parametrize("y", [torch.rand(2, 2)])
 async def test_minimum(x: Tensor, y: Tensor, dynamic: bool) -> None:
@@ -3001,6 +3124,86 @@ async def test_min_dim(
     model = MinDimModel().eval()
     dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+class TestMinDimArgminDtypeExtremes:
+    """min.dim argmin indices must be correct even at dtype-extremal minima.
+
+    Core AI has argmax but not argmin, so ``replace_min_dim`` derives the
+    argmin index by reversing the order of ``x`` and taking ``argmax``. The
+    reversal must be exact at the extremes of the input dtype's range:
+
+      * uint8 minimum ``0`` — a plain ``-x`` (i.e. ``x * -1``) negation maps
+        ``0`` to ``0`` rather than the top of the unsigned range, so the true
+        minimum stops being the argmax.
+      * int8 minimum ``-128`` — ``-128 * -1`` overflows the signed range and
+        (under wrapping arithmetic) lands back on ``-128``.
+
+    Both were previously wrong on interpreter/cpu/gpu. The fix reverses integer
+    inputs with the bitwise complement ``~x`` (a strictly decreasing bijection
+    over the whole integer range that never overflows), leaving the exact float
+    negation path untouched. Ground truth is ``torch.min(x, dim=...)``.
+    """
+
+    class MinDimModel(nn.Module):
+        def __init__(self, dim: int, keepdim: bool) -> None:
+            super().__init__()
+            self.dim = dim
+            self.keepdim = keepdim
+
+        def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+            return torch.min(x, dim=self.dim, keepdim=self.keepdim)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    @pytest.mark.parametrize(
+        "values,dtype",
+        [
+            # uint8: true minimum is 0 (bottom of the unsigned range).
+            ([3, 1, 0, 5], torch.uint8),
+            # Signed dtypes at their exact minimum (INT_MIN), which overflows
+            # under the old ``x * -1`` negation trick.
+            ([3, 1, -128, 5], torch.int8),
+            ([3, 1, -(2**15), 5], torch.int16),
+            ([3, 1, -(2**31), 5], torch.int32),
+            # NOTE: coreai-torch narrows int64 inputs to int32 at the graph
+            # boundary, so the exercisable extreme for the int64 dtype *path*
+            # is int32's minimum (a true int64 min of -2**63 would be
+            # truncated at that boundary, unrelated to this argmin fix).
+            ([3, 1, -(2**31), 5], torch.int64),
+        ],
+    )
+    async def test_dtype_min_value(
+        self, values: list[int], dtype: torch.dtype, keepdim: bool
+    ) -> None:
+        x = torch.tensor(values, dtype=dtype)
+        model = self.MinDimModel(dim=0, keepdim=keepdim).eval()
+        await validate_numerical_output(model=model, x=x)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    @pytest.mark.parametrize(
+        "values,dtype",
+        [
+            # Duplicate minima at the dtype extreme: torch returns the FIRST
+            # index (index 0 here), which the reversal must preserve.
+            ([-128, -128, 5], torch.int8),
+            ([0, 0, 5], torch.uint8),
+        ],
+    )
+    async def test_duplicate_minima_first_index(
+        self, values: list[int], dtype: torch.dtype, keepdim: bool
+    ) -> None:
+        x = torch.tensor(values, dtype=dtype)
+        # Sanity-check the ground-truth tie-break we are asserting against.
+        assert int(torch.min(x, dim=0).indices) == 0
+        model = self.MinDimModel(dim=0, keepdim=keepdim).eval()
+        await validate_numerical_output(model=model, x=x)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    async def test_float_path_untouched(self, keepdim: bool) -> None:
+        # Float negation is exact/no-overflow; confirm it still validates.
+        x = torch.tensor([3.0, 1.0, -5.0, 2.0], dtype=torch.float32)
+        model = self.MinDimModel(dim=0, keepdim=keepdim).eval()
+        await validate_numerical_output(model=model, x=x)
 
 
 @pytest.mark.parametrize("dynamic", [False, True])

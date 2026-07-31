@@ -16,9 +16,6 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import torch
-from coreai._compiler._transforms import GlobalOptions, PassEntry, apply_passes
-from coreai._compiler._transforms.passes import CorePasses
-from coreai.authoring import AIProgram
 from coreai.runtime import NDArray, StorageKind
 from filecheck.matcher import Matcher
 from filecheck.options import Options
@@ -79,19 +76,6 @@ def _get_test_specialization_options() -> "SpecializationOptions | None":
         )
     msg = f"Unknown compute unit kind: {_COMPUTE_UNIT_KIND!r}"
     raise ValueError(msg)
-
-
-async def run_transforms(coreai_program: AIProgram) -> None:
-    """Run essential transformation passes."""
-    await apply_passes(
-        coreai_program._mlir_module,
-        passes=[
-            PassEntry.get(CorePasses._CORE_OPTIMIZE),
-            PassEntry.get(CorePasses._UPDATE_SIGNATURE_TO_HANDLES),
-            PassEntry.get(CorePasses._PROPAGATE_HANDLE_UPDATES),
-        ],
-        options=GlobalOptions(Path()),
-    )
 
 
 def make_dynamic_shapes(
