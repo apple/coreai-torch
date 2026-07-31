@@ -42,7 +42,7 @@ coreai_program.optimize()
 
 ## What is Core AI?
 
-Core AI is a set of technologies for deploying machine learning models on Apple hardware, covering the full model deployment lifecycle: from model optimization and conversion, to debugging, to app integration. Models run entirely on device on Apple silicon, with no server required.
+Core AI is a set of technologies for deploying machine learning models on Apple hardware, covering the full model deployment lifecycle: from model conversion, debugging, optimization, and integration into your app. Models run entirely on device on Apple silicon, with no server required.
 
 ```{image} _images/core-ai-ecosystem.png
 :alt: Diagram of the Core AI ecosystem. At the top, Core AI Models provides ready-to-use models and examples. Core AI Optimization and Core AI PyTorch Extensions prepare models for deployment, producing a .aimodel file. Core AI Debugger and Xcode support integration and debugging. Core AI Framework runs models on device.
@@ -51,11 +51,11 @@ Core AI is a set of technologies for deploying machine learning models on Apple 
 
 The Core AI ecosystem consists of the following components:
 
-- Convert PyTorch models to the Core AI model format (`.aimodel`) using [Core AI PyTorch Extensions](https://github.com/apple/coreai-torch)
+- Convert PyTorch models to the Core AI model format (`.aimodel`) using [Core AI PyTorch Package](https://github.com/apple/coreai-torch)
 - Compress models with quantization, palettization, and pruning using [Core AI Optimization](https://github.com/apple/coreai-optimization)
 - Load and run models in an app with the [Core AI Framework](https://developer.apple.com/documentation/coreai)
 - Inspect, debug, and profile models using [Core AI Debugger](https://developer.apple.com/documentation/coreai/inspecting-debugging-and-profiling-core-ai-models)
-- Get popular open-source models with conversion, optimization, and Swift app integration code using [Core AI Models](https://github.com/apple/coreai-models)
+- Get popular open-source covered models with optimization and Swift app integration code using [Core AI Models](https://github.com/apple/coreai-models)
 
 ## Links
 
