@@ -4,11 +4,15 @@ Bring PyTorch models to Core AI for on-device execution.
 
 ## Overview
 
-Core AI PyTorch Extensions (`coreai-torch`) is a Python package that bridges PyTorch and Core AI. You can use it to bring up an existing PyTorch model — exported as a `torch.export.ExportedProgram` — into a Core AI `AIProgram` ready to run on Apple hardware, traversing the FX graph node-by-node and mapping ATen operators to Core AI operations. You can equally use it to author Core AI models directly from PyTorch by composing the library of composite ops in `coreai_torch.composite_ops`, authoring new ops via `register_torch_lowering`, and authoring inline Metal GPU kernels through `TorchMetalKernel` and `register_custom_kernels` — all expressed as PyTorch `nn.Module`s and lowered to Core AI IR that the compiler recognizes and optimizes natively. For an overview of the Core AI ecosystem and how coreai-torch fits in, see [What is Core AI?](#what-is-core-ai).
+`coreai-torch` is a Python package that bridges PyTorch and Core AI. It converts PyTorch models — exported as `torch.export.ExportedProgram` — into a Core AI `AIProgram` by traversing the FX graph and mapping ATen operators to Core AI operations. For an overview of the Core AI ecosystem and how coreai-torch fits in, see [What is Core AI?](#what-is-core-ai).
 
-The bring-up pipeline has three steps. First, export your PyTorch model with `torch.export.export` to capture the computation graph. Second, decompose the exported program with `get_decomp_table()`, which lowers composite ATen ops to the primitive set that `TorchConverter` can map while preserving the operations that `TorchConverter` lowers as composite ops. Third, call `TorchConverter().add_exported_program(ep).to_coreai()` to produce the `AIProgram`.
+`coreai-torch` is built around the following capabilities:
 
-For authoring, `coreai_torch.composite_ops` exposes well-known building blocks — such as attention, RoPE embeddings, RMSNorm, and gather-matmul (the MoE primitive) — as PyTorch modules. Passing these modules to `externalize_modules` preserves each one's operation boundary as a named composite op that the compiler can recognize and optimize. When a PyTorch op has no built-in lowering rule, register a custom lowering function with `register_torch_lowering`. For compute-intensive custom operations, `register_custom_kernels` lets you author Metal kernel source and wire it into the conversion pipeline.
+- **Bring up existing models.** Export your model with `torch.export.export`, decompose with `get_decomp_table()`, then call `TorchConverter().add_exported_program(ep).to_coreai()` to produce an `AIProgram` ready to run on Apple hardware.
+
+- **Author Core AI models from PyTorch.** `coreai_torch.composite_ops` provides building blocks — attention, RoPE embeddings, RMSNorm, and gather-matmul — as PyTorch modules. Use `externalize_modules` to preserve operation boundaries as named composite ops the compiler can recognize and optimize.
+
+- **Extend with custom ops and Metal kernels.** Register custom lowering functions with `register_torch_lowering` for ops with no built-in rule, or author inline Metal GPU kernels with `TorchMetalKernel` and `register_custom_kernels`.
 
 ## Quick example
 
