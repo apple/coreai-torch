@@ -86,7 +86,7 @@ from ._utils import (
 class ExternalizeSpec:
     """User-facing config describing which submodule class to externalize.
 
-    Used by ``_mark_externalize`` (step 1) to identify matching submodules.
+    Used by ``_mark_externalize`` (Phase 1) to identify matching submodules.
 
     Args:
         target_class: ``nn.Module`` subclass to match (via ``isinstance``).
@@ -115,7 +115,7 @@ class ExternalizeSpec:
 
 @dataclass
 class _ExternalizedExportedProgram:
-    """Final export result for one call site, ready for lowering (step 5).
+    """Final export result for one call site, ready for lowering (Phase 3).
 
     Produced by ``_finalize_module_export``. Each instance becomes one
     ``coreai.graph noinline`` and its corresponding ``coreai.invoke`` lowering
@@ -136,7 +136,7 @@ class _ExternalizedExportedProgram:
 
 @dataclass
 class _PreparedModule:
-    """Intermediate state for one call site before ``torch.export`` (step 3).
+    """Intermediate state for one call site before ``torch.export`` (Phase 2).
 
     Produced by ``_prepare_module_export``. Holds the fake inputs, dynamic
     shapes, and composite metadata needed to run ``torch.export.export`` on
@@ -197,7 +197,7 @@ def _derive_composite_io_names(
 def _torch_export_module(
     prep: _PreparedModule,
 ) -> ExportedProgram:
-    """Step 4: Run ``torch.export.export`` on a single submodule call site.
+    """Phase 3: Run ``torch.export.export`` on a single submodule call site.
 
     Uses the ``_PreparedModule``'s fake inputs and dynamic shapes to export.
     After export, composite I/O names are derived from the graph signature.
@@ -245,7 +245,7 @@ def _finalize_module_export(
     prep: _PreparedModule,
     exported_program: ExportedProgram,
 ) -> _ExternalizedExportedProgram:
-    """Step 5: Pack a ``_PreparedModule`` and its exported program into an ``_ExternalizedExportedProgram``.
+    """Phase 3: Pack a ``_PreparedModule`` and its exported program into an ``_ExternalizedExportedProgram``.
 
     Also registers the program in the session so nested children can find
     their parent's custom op nodes.
@@ -280,7 +280,7 @@ def _prepare_module(
     submodule: torch.nn.Module,
     op_name_suffix: str,
 ) -> None:
-    """Step 1b: Replace ``submodule.forward`` with a ``torch.library.custom_op``.
+    """Phase 1: Replace ``submodule.forward`` with a ``torch.library.custom_op``.
 
     Called by ``_mark_externalize`` for each matching submodule. Saves the
     original forward as ``_original_forward`` and attaches ``_externalize_name``
@@ -402,7 +402,7 @@ def _prepare_module_export(
     submodule: torch.nn.Module,
     exported_program: ExportedProgram,
 ) -> list[_PreparedModule]:
-    """Step 3: Extract call-site info from the whole-model export for one submodule.
+    """Phase 2: Extract call-site info from the whole-model export for one submodule.
 
     Finds all FX nodes that call this submodule's custom op, extracts fake
     inputs and dynamic shapes from each, restores the original forward, and
@@ -474,7 +474,7 @@ def _mark_externalize(
     module: torch.nn.Module,
     targets: list[type | ExternalizeSpec],
 ) -> None:
-    """Step 1: Walk ``module`` and patch every matching submodule's forward.
+    """Phase 1: Walk ``module`` and patch every matching submodule's forward.
 
     For each submodule whose class matches a target, calls
     ``_prepare_module`` (replacing forward with a custom op) and stores
@@ -522,7 +522,7 @@ def _mark_externalize(
 
 
 class _PreparedModules:
-    """Iterator for step 3: yields one ``_PreparedModule`` per call site.
+    """Phase 2 iterator: yields one ``_PreparedModule`` per call site.
 
     Iterates marked submodules in shallowest-first order. For nested
     externalization, resolves the correct parent ``ExportedProgram`` so each
@@ -737,7 +737,7 @@ def _patch_model_for_externalization(
 
 
 def _restore_externalized(marked: list[torch.nn.Module]) -> None:
-    """Step 6: Undo all patches from step 1.
+    """Undo all patches from Phase 1.
 
     Restores original forward methods and removes all externalization markers.
     Called after the pipeline completes (or on error via ``finally``).
