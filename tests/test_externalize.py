@@ -42,12 +42,13 @@ async def _validate_numerics(
     model: torch.nn.Module,
     sample: tuple[torch.Tensor, ...],
     input_names: tuple[str, ...] = ("x",),
+    function_name: str = "main",
 ) -> None:
     """Compile, run in Core AI runtime, and compare against PyTorch output."""
     with TemporaryDirectory(suffix=".aimodel") as tmp:
         asset = coreai_program.save_asset(Path(tmp))
         async with asset.executable() as ai_model:
-            rt_func = ai_model.load_function("main")
+            rt_func = ai_model.load_function(function_name)
             inputs = {
                 name: NDArray(tensor) for name, tensor in zip(input_names, sample)
             }
@@ -4034,3 +4035,71 @@ async def test_externalize_unused_submodule_numerics() -> None:
         coreai_program = converter.to_coreai()
 
     await _validate_numerics(coreai_program, model, sample)
+
+
+async def test_externalize_multiple_staged_entries_numerics() -> None:
+    """Two staged entries in one to_coreai(), only one using externalization.
+
+    ``TorchConverter._externalized_exported_programs`` is converter-level
+    state, but externalization is per-entry: only the entry that asked for it
+    may emit submodule graphs and ``coreai.invoke`` call sites. ``to_coreai``
+    resets that field per entry via ``_init_conversion_state()``, so the plain
+    ``add_exported_program`` entry must stay flat even though it is converted
+    in the same call as an externalized one.
+
+    Checking numerics on both entrypoints pins that invariant end to end: a
+    leak would duplicate the composite into ``plain`` and change its output.
+    """
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.norm = RMSNorm(dim=DIM)
+            self.fc = nn.Linear(DIM, DIM)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.fc(self.norm(x))
+
+    class Plain(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(DIM, DIM)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return torch.relu(self.fc(x))
+
+    torch.manual_seed(42)
+    model = Model().eval()
+    sample = (torch.randn(2, DIM),)
+
+    torch.manual_seed(7)
+    plain_model = Plain().eval()
+    plain_sample = (torch.randn(2, DIM),)
+    plain_ep = torch.export.export(plain_model, args=plain_sample).run_decompositions(
+        get_decomp_table()
+    )
+
+    coreai_program = (
+        TorchConverter()
+        .add_pytorch_module(
+            model,
+            export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+                get_decomp_table()
+            ),
+            externalize_modules=[
+                ExternalizeSpec(
+                    target_class=RMSNormImpl,
+                    composite_op_name="rms_norm",
+                    composite_attrs=["axes", "eps", "version"],
+                )
+            ],
+            entrypoint_name="with_ext",
+        )
+        .add_exported_program(plain_ep, entrypoint_name="plain")
+        .to_coreai()
+    )
+
+    await _validate_numerics(coreai_program, model, sample, function_name="with_ext")
+    await _validate_numerics(
+        coreai_program, plain_model, plain_sample, function_name="plain"
+    )

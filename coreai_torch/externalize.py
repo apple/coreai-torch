@@ -527,6 +527,14 @@ class _PreparedModules:
     Iterates marked submodules in shallowest-first order. For nested
     externalization, resolves the correct parent ``ExportedProgram`` so each
     submodule's custom op nodes can be found.
+
+    Note: this is the second of two "no call site" warning paths, and both are
+    live. :func:`_drop_missing_call_sites` runs first and handles *top-level*
+    marked submodules missing from the whole-model program (typically because
+    the model was exported before it was patched). ``__iter__`` handles the
+    *nested* case that the earlier check cannot see: a submodule whose parent
+    does have a call site, but which is itself absent from that parent's
+    sub-export — which only exists once iteration reaches the parent.
     """
 
     def __init__(
@@ -582,6 +590,11 @@ def _drop_missing_call_sites(
     Only top-level marked modules are checked directly; nested ones do not
     appear in the top-level ``exported_program`` — they show up in the
     sub-export of their enclosing module.
+
+    Nested submodules are therefore handled by the sibling warning path in
+    :meth:`_PreparedModules.__iter__` ("skipping unused submodule"), which can
+    only run once the enclosing module's sub-export exists. Both paths are
+    reachable; neither supersedes the other.
     """
     marked = _find_marked_submodules(model)
     marked_names = {mod._externalize_name for mod in marked}  # type: ignore[attr-defined]
@@ -635,6 +648,11 @@ def _subexport_and_restore(
     ``UserWarning`` rather than raising. The original ``forward`` methods
     are always restored in a ``finally`` block regardless of whether the
     export succeeds.
+
+    Marked submodules with no call site are skipped via one of two paths
+    depending on depth: :func:`_drop_missing_call_sites` for top-level ones,
+    :meth:`_PreparedModules.__iter__` for nested ones. See those docstrings
+    for why the split is necessary.
 
     Calling this a second time on an already-restored ``model`` finds no
     marked submodules and returns ``[]``.
