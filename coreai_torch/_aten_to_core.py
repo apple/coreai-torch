@@ -706,16 +706,27 @@ def replace_batch_norm(
     def batch_norm(
         input: Value, gamma: Value, beta: Value, mean: Value, variance: Value
     ) -> Value:
+        # Match ATen: compute in fp32 and narrow only the result. Downcasting
+        # the fp32 params to fp16 loses precision and overflows to inf.
+        input_compute, compute_type, needs_downcast = prepare_compute_type_for_norm(
+            input, ele_type, loc
+        )
+
         eps_casted = coreai.constant(node.args[6])
 
-        eps_casted = coreai.cast(eps_casted, ele_type)
+        def to_compute_type(v: Value) -> Value:
+            if v.type.element_type == compute_type:
+                return v
+            return coreai.cast(v, compute_type)
+
+        eps_casted = to_compute_type(eps_casted)
 
         expand_dims = [0] + list(
             range(2, x_type.rank)
         )  # expand [C] to [1, C, 1, ...] for broadcasting
 
         def expand_and_cast(v: Value) -> Value:
-            return coreai.cast(coreai.expand_dims(v, expand_dims), ele_type)
+            return to_compute_type(coreai.expand_dims(v, expand_dims))
 
         weight, bias, running_mean, running_var = (
             expand_and_cast(v) for v in [gamma, beta, mean, variance]
@@ -724,12 +735,15 @@ def replace_batch_norm(
         # ((x - mean) / sqrt(var + eps)) * weight + bias
         std = coreai.sqrt(coreai.broadcasting_add(running_var, eps_casted))
         normalized = coreai.broadcasting_divide(
-            coreai.broadcasting_sub(input, running_mean), std
+            coreai.broadcasting_sub(input_compute, running_mean), std
         )
 
-        return coreai.broadcasting_add(
+        result = coreai.broadcasting_add(
             coreai.broadcasting_mul(normalized, weight), bias
         )
+        if needs_downcast:
+            result = coreai.cast(result, ele_type)
+        return result
 
     # In inference mode, outputs[1] and [2] are empty placeholder tensors (shape [0]).
     np_dtype = _get_coreai_to_numpy_dtype()[ele_type]

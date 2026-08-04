@@ -577,16 +577,16 @@ class TestLogSoftmaxIR:
 
 
 class TestBatchNormIR:
+    class BatchNormModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.bn = nn.BatchNorm2d(3)
+
+        def forward(self, x: Tensor) -> Tensor:
+            return self.bn(x)
+
     def test_static_composite(self) -> None:
-        class BatchNormModel(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.bn = nn.BatchNorm2d(3)
-
-            def forward(self, x: Tensor) -> Tensor:
-                return self.bn(x)
-
-        ir = get_ir(BatchNormModel().eval(), x=torch.rand(1, 3, 4, 4))
+        ir = get_ir(self.BatchNormModel().eval(), x=torch.rand(1, 3, 4, 4))
         filecheck_pattern(
             ir,
             check_file="""
@@ -611,6 +611,43 @@ class TestBatchNormIR:
                 // CHECK-NEXT:     %[[V1]] = coreai.constant dense<0.000000e+00> : tensor<3xf32>
                 // CHECK-NEXT:     %[[V2]] = coreai.invoke @batch_norm_{{.*}}(%[[ARG0]], %[[V0]], %[[V1]], %[[V1]], %[[V0]])  : (tensor<1x3x4x4xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<1x3x4x4xf32>
                 // CHECK-NEXT:     coreai.output %[[V2]] : tensor<1x3x4x4xf32>
+                // CHECK-NEXT:   }
+                // CHECK-NEXT: }
+            """,
+        )
+
+    def test_fp16_input_computes_in_fp32(self) -> None:
+        """fp16 input is promoted, the fp32 params are used as-is, and only the
+        result is narrowed back to fp16."""
+        ir = get_ir(
+            self.BatchNormModel().eval(), x=torch.rand(1, 3, 4, 4, dtype=torch.float16)
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK-LABEL: module {
+                // CHECK-NEXT:   coreai.graph private noinline @batch_norm_{{.*}}(%[[ARG0:.*]]: tensor<1x3x4x4xf16> {coreai.name = "input"}, %[[ARG1:.*]]: tensor<3xf32> {coreai.name = "gamma"}, %[[ARG2:.*]]: tensor<3xf32> {coreai.name = "beta"}, %[[ARG3:.*]]: tensor<3xf32> {coreai.name = "mean"}, %[[ARG4:.*]]: tensor<3xf32> {coreai.name = "variance"}) -> tensor<1x3x4x4xf16> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"batch_norm" = {input_names = ["input", "gamma", "beta", "mean", "variance"], op_attrs = {eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "batch_norm"} {
+                // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[1, 3, 1, 1]> : tensor<4xui32>
+                // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<9.99999974E-6> : tensor<f32>
+                // CHECK-NEXT:     %[[V2:.*]] = coreai.cast %[[ARG0]] : tensor<1x3x4x4xf16> to tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V3:.*]] = coreai.reshape %[[ARG1]], %[[V0]] : (tensor<3xf32>, tensor<4xui32>) -> tensor<1x3x1x1xf32>
+                // CHECK-NEXT:     %[[V4:.*]] = coreai.reshape %[[ARG2]], %[[V0]] : (tensor<3xf32>, tensor<4xui32>) -> tensor<1x3x1x1xf32>
+                // CHECK-NEXT:     %[[V5:.*]] = coreai.reshape %[[ARG3]], %[[V0]] : (tensor<3xf32>, tensor<4xui32>) -> tensor<1x3x1x1xf32>
+                // CHECK-NEXT:     %[[V6:.*]] = coreai.decomposable.broadcasting_add %[[ARG4]], %[[V1]] : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+                // CHECK-NEXT:     %[[V7:.*]] = coreai.reshape %[[V6]], %[[V0]] : (tensor<3xf32>, tensor<4xui32>) -> tensor<1x3x1x1xf32>
+                // CHECK-NEXT:     %[[V8:.*]] = coreai.sqrt %[[V7]] : tensor<1x3x1x1xf32> -> tensor<1x3x1x1xf32>
+                // CHECK-NEXT:     %[[V9:.*]] = coreai.decomposable.broadcasting_sub %[[V2]], %[[V5]] : (tensor<1x3x4x4xf32>, tensor<1x3x1x1xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V10:.*]] = coreai.decomposable.broadcasting_divide %[[V9]], %[[V8]] : (tensor<1x3x4x4xf32>, tensor<1x3x1x1xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V11:.*]] = coreai.decomposable.broadcasting_mul %[[V10]], %[[V3]] : (tensor<1x3x4x4xf32>, tensor<1x3x1x1xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V12:.*]] = coreai.decomposable.broadcasting_add %[[V11]], %[[V4]] : (tensor<1x3x4x4xf32>, tensor<1x3x1x1xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V13:.*]] = coreai.cast %[[V12]] : tensor<1x3x4x4xf32> to tensor<1x3x4x4xf16>
+                // CHECK-NEXT:     coreai.output %[[V13]] : tensor<1x3x4x4xf16>
+                // CHECK-NEXT:   }
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x4x4xf16> {coreai.name = "x"}) -> (tensor<1x3x4x4xf16> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:     %[[V0]] = coreai.constant dense<1.000000e+00> : tensor<3xf32>
+                // CHECK-NEXT:     %[[V1]] = coreai.constant dense<0.000000e+00> : tensor<3xf32>
+                // CHECK-NEXT:     %[[V2]] = coreai.invoke @batch_norm_{{.*}}(%[[ARG0]], %[[V0]], %[[V1]], %[[V1]], %[[V0]])  : (tensor<1x3x4x4xf16>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<1x3x4x4xf16>
+                // CHECK-NEXT:     coreai.output %[[V2]] : tensor<1x3x4x4xf16>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,
