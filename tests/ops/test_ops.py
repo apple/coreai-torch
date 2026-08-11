@@ -692,17 +692,9 @@ class TestAtan2:
         await validate_numerical_output(model=model, y=y, x=x)
 
 
-@pytest.mark.parametrize(
-    "x",
-    [
-        torch.rand(2, 3, 8, 8),
-        torch.rand(2, 3, 8, 8, dtype=torch.float16),  # fp16
-    ],
-)
-@pytest.mark.parametrize(
-    "dynamic_dims", [tuple(), (0,), (2,), (3,), (0, 2), (0, 3), (0, 2, 3)]
-)
-async def test_batchnorm(x: Tensor, dynamic_dims: tuple[int]) -> None:
+class TestBatchNorm:
+    """Tests for native_batch_norm → coreai batch_norm composite."""
+
     class BatchNormModel(nn.Module):
         def __init__(self) -> None:
             super().__init__()
@@ -711,10 +703,47 @@ async def test_batchnorm(x: Tensor, dynamic_dims: tuple[int]) -> None:
         def forward(self, x: Tensor) -> Tensor:
             return self.bn(x)
 
-    model = BatchNormModel().eval()
-    dim_names = {0: "batch", 1: "channels", 2: "height", 3: "width"}
-    dynamic_shapes = make_dynamic_shapes(x={d: dim_names[d] for d in dynamic_dims})
-    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+    @pytest.mark.parametrize(
+        "x",
+        [
+            torch.rand(2, 3, 8, 8),
+            torch.rand(2, 3, 8, 8, dtype=torch.float16),  # fp16
+        ],
+    )
+    @pytest.mark.parametrize(
+        "dynamic_dims", [tuple(), (0,), (2,), (3,), (0, 2), (0, 3), (0, 2, 3)]
+    )
+    async def test_basic(self, x: Tensor, dynamic_dims: tuple[int]) -> None:
+        model = self.BatchNormModel().eval()
+        dim_names = {0: "batch", 1: "channels", 2: "height", 3: "width"}
+        dynamic_shapes = make_dynamic_shapes(x={d: dim_names[d] for d in dynamic_dims})
+        await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+    @pytest.mark.parametrize(
+        "running_var, running_mean, weight",
+        [
+            # running_var past the fp16 max (65504) becomes inf when the params are
+            # downcast before the sqrt, which silently zeroes the whole output.
+            ([1e6, 2e5, 9e4], [0.0, 1.0, -2.0], [2000.0, 1000.0, 500.0]),
+            # Tiny variances make eps and the param mantissas precision-critical.
+            ([1e-6, 4e-5, 2.0], [0.5, -0.25, 100.0], [1.0, 2.0, 0.5]),
+        ],
+    )
+    async def test_fp16_input_fp32_params(
+        self,
+        running_var: list[float],
+        running_mean: list[float],
+        weight: list[float],
+    ) -> None:
+        """An fp16 activation with fp32 params must be computed in fp32."""
+        model = self.BatchNormModel().eval()
+        model.bn.running_var.data = torch.tensor(running_var)
+        model.bn.running_mean.data = torch.tensor(running_mean)
+        model.bn.weight.data = torch.tensor(weight)
+        model.bn.bias.data = torch.tensor([0.0, 1.0, -1.0])
+
+        x = (torch.rand(2, 3, 4, 4) * 2 - 1).half()
+        await validate_numerical_output(model=model, x=x)
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
