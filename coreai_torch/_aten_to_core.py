@@ -1956,11 +1956,11 @@ def replace_layer_norm(
     bias = None if node.args[3] is None else _get_operand(values_map, node, 3)
     eps = node.args[4]
 
-    numel = int(np.prod(normalized_shape))
+    # Identity gamma/beta keep normalized_shape to match the declared `axes`.
     if weight is None:
-        weight = coreai.constant([1.0] * numel, dtype=np.float32)
+        weight = coreai.constant(np.ones(normalized_shape, dtype=np.float32))
     if bias is None:
-        bias = coreai.constant([0.0] * numel, dtype=np.float32)
+        bias = coreai.constant(np.zeros(normalized_shape, dtype=np.float32))
 
     input_rank = x.type.rank
     input_ele_type = x.type.element_type
@@ -2008,11 +2008,7 @@ def replace_layer_norm(
         weight = coreai.cast(gamma, input_ele_type)
         bias = coreai.cast(beta, input_ele_type)
 
-        # Reshape for multi-dim normalized_shape (e.g. [32] → [4, 8]).
-        if len(normalized_shape) > 1:
-            weight = coreai.reshape(weight, list(normalized_shape))
-            bias = coreai.reshape(bias, list(normalized_shape))
-
+        # gamma/beta always arrive shaped like normalized_shape.
         # Broadcast gamma/beta to match the norm output shape.
         norm_shape = coreai.get_shape(norm)
         w_shape = coreai.constant(list(normalized_shape), dtype=np.uint32)

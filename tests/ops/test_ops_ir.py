@@ -6015,6 +6015,39 @@ class TestNativeLayerNormIR:
             """,
         )
 
+    def test_multi_dim_normalized_shape_without_affine(self) -> None:
+        """Synthesized gamma/beta keep normalized_shape, matching `axes`."""
+
+        class LayerNormModel(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.ln = nn.LayerNorm((4, 8), elementwise_affine=False)
+
+            def forward(self, x: Tensor) -> Tensor:
+                return self.ln(x)
+
+        ir = get_ir(LayerNormModel().eval(), x=torch.rand(2, 4, 8))
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK-LABEL: module {
+                // CHECK-NEXT:   coreai.graph private noinline @layer_norm_{{.*}}(%[[INPUT:.*]]: tensor<2x4x8xf32> {coreai.name = "input"}, %[[GAMMA:.*]]: tensor<4x8xf32> {coreai.name = "gamma"}, %[[BETA:.*]]: tensor<4x8xf32> {coreai.name = "beta"}) -> tensor<2x4x8xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"layer_norm" = {input_names = ["input", "gamma", "beta"], op_attrs = {axes = [1 : si64, 2 : si64], eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "layer_norm"} {
+                // CHECK-NOT:       coreai.reshape
+                // CHECK:           %[[NORM:.*]] = coreai.decomposable.broadcasting_mul %{{.*}}, %{{.*}} : (tensor<2x4x8xf32>, tensor<2x1x1xf32>) -> tensor<2x4x8xf32>
+                // CHECK-NEXT:      %[[SCALED:.*]] = coreai.decomposable.broadcasting_mul %[[NORM]], %[[GAMMA]] : (tensor<2x4x8xf32>, tensor<4x8xf32>) -> tensor<2x4x8xf32>
+                // CHECK-NEXT:      %[[SHIFTED:.*]] = coreai.decomposable.broadcasting_add %[[SCALED]], %[[BETA]] : (tensor<2x4x8xf32>, tensor<4x8xf32>) -> tensor<2x4x8xf32>
+                // CHECK-NEXT:      coreai.output %[[SHIFTED]] : tensor<2x4x8xf32>
+                // CHECK-NEXT:    }
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x4x8xf32> {coreai.name = "x"}) -> (tensor<2x4x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:      %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<4x8xf32>
+                // CHECK-NEXT:      %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<4x8xf32>
+                // CHECK-NEXT:      %[[R:.*]] = coreai.invoke @layer_norm_{{.*}}(%[[X]], %[[ONE]], %[[ZERO]])  : (tensor<2x4x8xf32>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<2x4x8xf32>
+                // CHECK-NEXT:      coreai.output %[[R]] : tensor<2x4x8xf32>
+                // CHECK-NEXT:    }
+                // CHECK-NEXT:  }
+            """,
+        )
+
 
 class TestNeScalarIR:
     def test_static(self) -> None:
