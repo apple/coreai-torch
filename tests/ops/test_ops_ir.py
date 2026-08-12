@@ -50,7 +50,7 @@ class TestUnaryOpsIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}) -> (tensor<2x3xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}) -> (tensor<2x3xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:      %[[R:.*]] = {coreai_op} %[[X]] : tensor<2x3xf32> -> tensor<2x3xf32>
                 // CHECK-NEXT:      coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:    }}
@@ -97,7 +97,7 @@ class TestUnaryOpsIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {{coreai.name = "x"}}) -> (tensor<?x?xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {{coreai.name = "x"}}) -> (tensor<?x?xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:      %[[R:.*]] = {coreai_op} %[[X]] : tensor<?x?xf32> -> tensor<?x?xf32>
                 // CHECK-NEXT:      coreai.output %[[R]] : tensor<?x?xf32>
                 // CHECK-NEXT:    }}
@@ -115,7 +115,7 @@ class TestUnaryOpsIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<3xsi32> {coreai.name = "x"}) -> (tensor<3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<3xsi32> {coreai.name = "x"}) -> (tensor<3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.abs %[[ARG0]] : tensor<3xsi32> -> tensor<3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<3xsi32>
                 // CHECK-NEXT:   }
@@ -141,7 +141,7 @@ class TestBinaryOpsIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}, %[[Y:.*]]: tensor<2x3xf32> {{coreai.name = "y"}}) -> (tensor<2x3xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}, %[[Y:.*]]: tensor<2x3xf32> {{coreai.name = "y"}}) -> (tensor<2x3xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:      %[[R:.*]] = {coreai_op} %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:      coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:    }}
@@ -172,7 +172,7 @@ class TestBinaryOpsIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {{coreai.name = "x"}}, %[[Y:.*]]: tensor<?x?xf32> {{coreai.name = "y"}}) -> (tensor<?x?xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {{coreai.name = "x"}}, %[[Y:.*]]: tensor<?x?xf32> {{coreai.name = "y"}}) -> (tensor<?x?xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:      %[[R:.*]] = {coreai_op} %[[X]], %[[Y]] : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:      coreai.output %[[R]] : tensor<?x?xf32>
                 // CHECK-NEXT:    }}
@@ -190,7 +190,7 @@ class TestBinaryOpsIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_add %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -214,7 +214,7 @@ class TestBinaryOpsIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}) -> (tensor<2x3xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}) -> (tensor<2x3xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:      %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:      %[[R:.*]] = {coreai_op} %[[X]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:      coreai.output %[[R]] : tensor<2x3xf32>
@@ -244,7 +244,7 @@ class TestBinaryOpsIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {{coreai.name = "x"}}) -> (tensor<?x?xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {{coreai.name = "x"}}) -> (tensor<?x?xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:      %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:      %[[R:.*]] = {coreai_op} %[[X]], %[[C]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:      coreai.output %[[R]] : tensor<?x?xf32>
@@ -269,7 +269,7 @@ class TestAddmmIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x4xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x4xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<3x4xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<{{.*}}> : tensor<3xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<[1, 0]> : tensor<2xui32>
@@ -301,7 +301,7 @@ class TestAddmmIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x4xf32> {coreai.name = "x"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x4xf32> {coreai.name = "x"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<3x4xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<{{.*}}> : tensor<3xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<[1, 0]> : tensor<2xui32>
@@ -326,7 +326,7 @@ class TestAliasIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     coreai.output %[[ARG0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -348,7 +348,7 @@ class TestAliasIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     coreai.output %[[ARG0]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -374,7 +374,7 @@ class TestAmaxAminIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}) -> (tensor<2xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}) -> (tensor<2xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:      %[[SHAPE:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:      %[[DIMS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:      %[[RED:.*]] = {coreai_op} %[[X]], %[[DIMS]] : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<2x1xf32>
@@ -407,7 +407,7 @@ class TestAmaxAminIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {{coreai.name = "x"}}) -> (tensor<?xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {{coreai.name = "x"}}) -> (tensor<?xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:      %[[DIMS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:      %[[RED:.*]] = {coreai_op} %[[X]], %[[DIMS]] : (tensor<?x?xf32>, tensor<1xsi32>) -> tensor<?x1xf32>
                 // CHECK-NEXT:      %[[R:.*]] = coreai.shrink_dims %[[RED]], %[[DIMS]] : (tensor<?x1xf32>, tensor<1xsi32>) to tensor<?xf32>
@@ -434,7 +434,7 @@ class TestAmaxAminIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}) -> (tensor<2x1xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {{coreai.name = "x"}}) -> (tensor<2x1xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:      %[[DIMS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:      %[[R:.*]] = {coreai_op} %[[X]], %[[DIMS]] : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<2x1xf32>
                 // CHECK-NEXT:      coreai.output %[[R]] : tensor<2x1xf32>
@@ -455,7 +455,7 @@ class TestAdaptiveAvgPool2dIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x3x2x2xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x3x2x2xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.600000e+01> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<4> : tensor<2xui32>
@@ -479,7 +479,7 @@ class TestSoftmaxIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2x5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2x5xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.softmax %[[ARG0]], %[[V0]] : (tensor<2x5xf32>, tensor<si32>) -> tensor<2x5xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x5xf32>
@@ -503,7 +503,7 @@ class TestSoftmaxIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.softmax %[[ARG0]], %[[V0]] : (tensor<?x?xf32>, tensor<si32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x?xf32>
@@ -524,7 +524,7 @@ class TestLogSoftmaxIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @log_softmax_{{.*}}(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "input"}) -> tensor<2x5xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"log_softmax" = {input_names = ["input"], op_attrs = {axis = 1 : si64, version = 1 : si64}, output_names = ["output"]}>, template_op = "log_softmax"} {
+                // CHECK-NEXT:   coreai.graph private noinline @log_softmax_{{.*}}(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "input"}) -> tensor<2x5xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"log_softmax" = {input_names = ["input"], op_attrs = {axis = 1 : si64, version = 1 : si64}, output_names = ["output"]}>, template_op = "log_softmax"} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.reduce_max %[[ARG0]], %[[V0]] : (tensor<2x5xf32>, tensor<1xsi32>) -> tensor<2x1xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.decomposable.broadcasting_sub %[[ARG0]], %[[V1]] : (tensor<2x5xf32>, tensor<2x1xf32>) -> tensor<2x5xf32>
@@ -534,9 +534,9 @@ class TestLogSoftmaxIR:
                 // CHECK-NEXT:     %[[V6:.*]] = coreai.decomposable.broadcasting_sub %[[V2]], %[[V5]] : (tensor<2x5xf32>, tensor<2x1xf32>) -> tensor<2x5xf32>
                 // CHECK-NEXT:     coreai.output %[[V6]] : tensor<2x5xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2x5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
-                // CHECK-NEXT:     %[[V0]] = coreai.invoke @log_softmax_{{.*}}(%[[ARG0]])  : (tensor<2x5xf32>) -> tensor<2x5xf32>
-                // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x5xf32>
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2x5xf32> {coreai.name = "{{.*}}"}){{.*}} {
+                // CHECK-NEXT:     %[[V0_R20:.*]] = coreai.invoke @log_softmax_{{.*}}(%[[ARG0]])  : (tensor<2x5xf32>) -> tensor<2x5xf32>
+                // CHECK-NEXT:     coreai.output %[[V0_R20]] : tensor<2x5xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,
@@ -557,7 +557,7 @@ class TestLogSoftmaxIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @log_softmax_{{.*}}(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "input"}) -> tensor<?x?xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"log_softmax" = {input_names = ["input"], op_attrs = {axis = 1 : si64, version = 1 : si64}, output_names = ["output"]}>, template_op = "log_softmax"} {
+                // CHECK-NEXT:   coreai.graph private noinline @log_softmax_{{.*}}(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "input"}) -> tensor<?x?xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"log_softmax" = {input_names = ["input"], op_attrs = {axis = 1 : si64, version = 1 : si64}, output_names = ["output"]}>, template_op = "log_softmax"} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.reduce_max %[[ARG0]], %[[V0]] : (tensor<?x?xf32>, tensor<1xsi32>) -> tensor<?x1xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.decomposable.broadcasting_sub %[[ARG0]], %[[V1]] : (tensor<?x?xf32>, tensor<?x1xf32>) -> tensor<?x?xf32>
@@ -567,9 +567,9 @@ class TestLogSoftmaxIR:
                 // CHECK-NEXT:     %[[V6:.*]] = coreai.decomposable.broadcasting_sub %[[V2]], %[[V5]] : (tensor<?x?xf32>, tensor<?x1xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V6]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
-                // CHECK-NEXT:     %[[V0]] = coreai.invoke @log_softmax_{{.*}}(%[[ARG0]])  : (tensor<?x?xf32>) -> tensor<?x?xf32>
-                // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x?xf32>
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
+                // CHECK-NEXT:     %[[V0_R22:.*]] = coreai.invoke @log_softmax_{{.*}}(%[[ARG0]])  : (tensor<?x?xf32>) -> tensor<?x?xf32>
+                // CHECK-NEXT:     coreai.output %[[V0_R22]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,
@@ -591,7 +591,7 @@ class TestBatchNormIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @batch_norm_{{.*}}(%[[ARG0:.*]]: tensor<1x3x4x4xf32> {coreai.name = "input"}, %[[ARG1:.*]]: tensor<3xf32> {coreai.name = "gamma"}, %[[ARG2:.*]]: tensor<3xf32> {coreai.name = "beta"}, %[[ARG3:.*]]: tensor<3xf32> {coreai.name = "mean"}, %[[ARG4:.*]]: tensor<3xf32> {coreai.name = "variance"}) -> tensor<1x3x4x4xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"batch_norm" = {input_names = ["input", "gamma", "beta", "mean", "variance"], op_attrs = {eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "batch_norm"} {
+                // CHECK-NEXT:   coreai.graph private noinline @batch_norm_{{.*}}(%[[ARG0:.*]]: tensor<1x3x4x4xf32> {coreai.name = "input"}, %[[ARG1:.*]]: tensor<3xf32> {coreai.name = "gamma"}, %[[ARG2:.*]]: tensor<3xf32> {coreai.name = "beta"}, %[[ARG3:.*]]: tensor<3xf32> {coreai.name = "mean"}, %[[ARG4:.*]]: tensor<3xf32> {coreai.name = "variance"}) -> tensor<1x3x4x4xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"batch_norm" = {input_names = ["input", "gamma", "beta", "mean", "variance"], op_attrs = {eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "batch_norm"} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<9.99999974E-6> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[1, 3, 1, 1]> : tensor<4xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.reshape %[[ARG1]], %[[V1]] : (tensor<3xf32>, tensor<4xui32>) -> tensor<1x3x1x1xf32>
@@ -606,11 +606,11 @@ class TestBatchNormIR:
                 // CHECK-NEXT:     %[[V11:.*]] = coreai.decomposable.broadcasting_add %[[V10]], %[[V3]] : (tensor<1x3x4x4xf32>, tensor<1x3x1x1xf32>) -> tensor<1x3x4x4xf32>
                 // CHECK-NEXT:     coreai.output %[[V11]] : tensor<1x3x4x4xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
-                // CHECK-NEXT:     %[[V0]] = coreai.constant dense<1.000000e+00> : tensor<3xf32>
-                // CHECK-NEXT:     %[[V1]] = coreai.constant dense<0.000000e+00> : tensor<3xf32>
-                // CHECK-NEXT:     %[[V2]] = coreai.invoke @batch_norm_{{.*}}(%[[ARG0]], %[[V0]], %[[V1]], %[[V1]], %[[V0]])  : (tensor<1x3x4x4xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<1x3x4x4xf32>
-                // CHECK-NEXT:     coreai.output %[[V2]] : tensor<1x3x4x4xf32>
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
+                // CHECK-NEXT:     %[[V0_R24:.*]] = coreai.constant dense<1.000000e+00> : tensor<3xf32>
+                // CHECK-NEXT:     %[[V1_R24:.*]] = coreai.constant dense<0.000000e+00> : tensor<3xf32>
+                // CHECK-NEXT:     %[[V2_R24:.*]] = coreai.invoke @batch_norm_{{.*}}(%[[ARG0]], %[[V0_R24]], %[[V1_R24]], %[[V1_R24]], %[[V0_R24]])  : (tensor<1x3x4x4xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     coreai.output %[[V2_R24]] : tensor<1x3x4x4xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,
@@ -626,7 +626,7 @@ class TestBatchNormIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @batch_norm_{{.*}}(%[[ARG0:.*]]: tensor<1x3x4x4xf16> {coreai.name = "input"}, %[[ARG1:.*]]: tensor<3xf32> {coreai.name = "gamma"}, %[[ARG2:.*]]: tensor<3xf32> {coreai.name = "beta"}, %[[ARG3:.*]]: tensor<3xf32> {coreai.name = "mean"}, %[[ARG4:.*]]: tensor<3xf32> {coreai.name = "variance"}) -> tensor<1x3x4x4xf16> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"batch_norm" = {input_names = ["input", "gamma", "beta", "mean", "variance"], op_attrs = {eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "batch_norm"} {
+                // CHECK-NEXT:   coreai.graph private noinline @batch_norm_{{.*}}(%[[ARG0:.*]]: tensor<1x3x4x4xf16> {coreai.name = "input"}, %[[ARG1:.*]]: tensor<3xf32> {coreai.name = "gamma"}, %[[ARG2:.*]]: tensor<3xf32> {coreai.name = "beta"}, %[[ARG3:.*]]: tensor<3xf32> {coreai.name = "mean"}, %[[ARG4:.*]]: tensor<3xf32> {coreai.name = "variance"}) -> tensor<1x3x4x4xf16> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"batch_norm" = {input_names = ["input", "gamma", "beta", "mean", "variance"], op_attrs = {eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "batch_norm"} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[1, 3, 1, 1]> : tensor<4xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<9.99999974E-6> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.cast %[[ARG0]] : tensor<1x3x4x4xf16> to tensor<1x3x4x4xf32>
@@ -643,11 +643,11 @@ class TestBatchNormIR:
                 // CHECK-NEXT:     %[[V13:.*]] = coreai.cast %[[V12]] : tensor<1x3x4x4xf32> to tensor<1x3x4x4xf16>
                 // CHECK-NEXT:     coreai.output %[[V13]] : tensor<1x3x4x4xf16>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x4x4xf16> {coreai.name = "x"}) -> (tensor<1x3x4x4xf16> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
-                // CHECK-NEXT:     %[[V0]] = coreai.constant dense<1.000000e+00> : tensor<3xf32>
-                // CHECK-NEXT:     %[[V1]] = coreai.constant dense<0.000000e+00> : tensor<3xf32>
-                // CHECK-NEXT:     %[[V2]] = coreai.invoke @batch_norm_{{.*}}(%[[ARG0]], %[[V0]], %[[V1]], %[[V1]], %[[V0]])  : (tensor<1x3x4x4xf16>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<1x3x4x4xf16>
-                // CHECK-NEXT:     coreai.output %[[V2]] : tensor<1x3x4x4xf16>
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x4x4xf16> {coreai.name = "x"}) -> (tensor<1x3x4x4xf16> {coreai.name = "{{.*}}"})
+                // CHECK-NEXT:     %[[M0:.*]] = coreai.constant dense<1.000000e+00> : tensor<3xf32>
+                // CHECK-NEXT:     %[[M1:.*]] = coreai.constant dense<0.000000e+00> : tensor<3xf32>
+                // CHECK-NEXT:     %[[M2:.*]] = coreai.invoke @batch_norm_{{.*}}(%[[ARG0]], %[[M0]], %[[M1]], %[[M1]], %[[M0]])  : (tensor<1x3x4x4xf16>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<1x3x4x4xf16>
+                // CHECK-NEXT:     coreai.output %[[M2]] : tensor<1x3x4x4xf16>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,
@@ -665,7 +665,7 @@ class TestToCopyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf16> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf16> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.cast %[[ARG0]] : tensor<2x3xf32> to tensor<2x3xf16>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf16>
                 // CHECK-NEXT:   }
@@ -683,7 +683,7 @@ class TestToCopyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.cast %[[ARG0]] : tensor<2x3xf32> to tensor<2x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xsi32>
                 // CHECK-NEXT:   }
@@ -703,7 +703,7 @@ class TestUnsafeViewIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<6xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<6xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<6> : tensor<1xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.reshape %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<1xui32>) -> tensor<6xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<6xf32>
@@ -726,7 +726,7 @@ class TestPolarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "abs_val"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "angle"}) -> (tensor<2x3xcomplex<f32>> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "abs_val"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "angle"}) -> (tensor<2x3xcomplex<f32>> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.cos %[[ARG1]] : tensor<2x3xf32> -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_mul %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.sin %[[ARG1]] : tensor<2x3xf32> -> tensor<2x3xf32>
@@ -758,7 +758,7 @@ class TestPolarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "abs_val"}, %[[ARG1:.*]]: tensor<?x?xf32> {coreai.name = "angle"}) -> (tensor<?x?xcomplex<f32>> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "abs_val"}, %[[ARG1:.*]]: tensor<?x?xf32> {coreai.name = "angle"}) -> (tensor<?x?xcomplex<f32>> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.cos %[[ARG1]] : tensor<?x?xf32> -> tensor<?x?xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_mul %[[ARG0]], %[[V0]] : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.sin %[[ARG1]] : tensor<?x?xf32> -> tensor<?x?xf32>
@@ -780,7 +780,7 @@ class TestPolarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<5xf32> {coreai.name = "abs_val"}, %[[ARG1:.*]]: tensor<5xf32> {coreai.name = "angle"}) -> (tensor<5xcomplex<f32>> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<5xf32> {coreai.name = "abs_val"}, %[[ARG1:.*]]: tensor<5xf32> {coreai.name = "angle"}) -> (tensor<5xcomplex<f32>> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.cos %[[ARG1]] : tensor<5xf32> -> tensor<5xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_mul %[[ARG0]], %[[V0]] : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.sin %[[ARG1]] : tensor<5xf32> -> tensor<5xf32>
@@ -804,7 +804,7 @@ class TestAnyDefaultIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xi1> {coreai.name = "x"}) -> (tensor<i1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xi1> {coreai.name = "x"}) -> (tensor<i1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.any %[[ARG0]], %[[V1]] : (tensor<2x3xi1>, tensor<2xsi32>) -> tensor<1x1xi1>
@@ -830,7 +830,7 @@ class TestAnyDefaultIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xi1> {coreai.name = "x"}) -> (tensor<i1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xi1> {coreai.name = "x"}) -> (tensor<i1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.any %[[ARG0]], %[[V1]] : (tensor<?x?xi1>, tensor<2xsi32>) -> tensor<1x1xi1>
@@ -853,7 +853,7 @@ class TestAnyDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xi1> {coreai.name = "x"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xi1> {coreai.name = "x"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.any %[[ARG0]], %[[V1]] : (tensor<2x3xi1>, tensor<1xsi32>) -> tensor<2x1xi1>
@@ -879,7 +879,7 @@ class TestAnyDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xi1> {coreai.name = "x"}) -> (tensor<?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xi1> {coreai.name = "x"}) -> (tensor<?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.any %[[ARG0]], %[[V0]] : (tensor<?x?xi1>, tensor<1xsi32>) -> tensor<?x1xi1>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.shrink_dims %[[V1]], %[[V0]] : (tensor<?x1xi1>, tensor<1xsi32>) to tensor<?xi1>
@@ -899,7 +899,7 @@ class TestAnyDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xi1> {coreai.name = "x"}) -> (tensor<2x1xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xi1> {coreai.name = "x"}) -> (tensor<2x1xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.any %[[ARG0]], %[[V0]] : (tensor<2x3xi1>, tensor<1xsi32>) -> tensor<2x1xi1>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x1xi1>
@@ -918,7 +918,7 @@ class TestAnyDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
@@ -943,7 +943,7 @@ class TestAnyDimsIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3x4xi1> {coreai.name = "x"}) -> (tensor<4xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3x4xi1> {coreai.name = "x"}) -> (tensor<4xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<4> : tensor<1xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.any %[[ARG0]], %[[V1]] : (tensor<2x3x4xi1>, tensor<2xsi32>) -> tensor<1x1x4xi1>
@@ -969,7 +969,7 @@ class TestAnyDimsIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?x?xi1> {coreai.name = "x"}) -> (tensor<?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?x?xi1> {coreai.name = "x"}) -> (tensor<?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.any %[[ARG0]], %[[V0]] : (tensor<?x?x?xi1>, tensor<2xsi32>) -> tensor<1x1x?xi1>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.shrink_dims %[[V1]], %[[V0]] : (tensor<1x1x?xi1>, tensor<2xsi32>) to tensor<?xi1>
@@ -989,7 +989,7 @@ class TestAnyDimsIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3x4xi1> {coreai.name = "x"}) -> (tensor<1x1x4xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3x4xi1> {coreai.name = "x"}) -> (tensor<1x1x4xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.any %[[ARG0]], %[[V0]] : (tensor<2x3x4xi1>, tensor<2xsi32>) -> tensor<1x1x4xi1>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<1x1x4xi1>
@@ -1012,7 +1012,7 @@ class TestArangeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<5x3xf32> {coreai.name = "x"}) -> (tensor<5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<5x3xf32> {coreai.name = "x"}) -> (tensor<5xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<5xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<5xf32>
                 // CHECK-NEXT:   }
@@ -1104,7 +1104,7 @@ class TestArgmaxIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.argmax %[[ARG0]], %[[V1]] : (tensor<2x5xf32>, tensor<si32>) -> tensor<2x1xui32>
@@ -1131,7 +1131,7 @@ class TestArgmaxIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.argmax %[[ARG0]], %[[V1]] : (tensor<?x?xf32>, tensor<si32>) -> tensor<?x1xui32>
@@ -1153,7 +1153,7 @@ class TestArgmaxIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<si32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<si32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<10> : tensor<1xui32>
@@ -1182,7 +1182,7 @@ class TestArgmaxIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<si32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<si32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<0> : tensor<1xsi32>
@@ -1210,7 +1210,7 @@ class TestAtan2IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}, %[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}, %[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK:          %[[NEG_INF:.*]] = coreai.constant dense<0xFF800000> : tensor<f32>
                 // CHECK:          %[[POS_INF:.*]] = coreai.constant dense<0x7F800000> : tensor<f32>
                 // CHECK:          %[[NAN:.*]] = coreai.constant dense<0x7FC00000> : tensor<f32>
@@ -1272,7 +1272,7 @@ class TestAtan2IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[Y:.*]]: tensor<?x?xf32> {coreai.name = "y"}, %[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[Y:.*]]: tensor<?x?xf32> {coreai.name = "y"}, %[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK:          %[[NEG_INF:.*]] = coreai.constant dense<0xFF800000> : tensor<f32>
                 // CHECK:          %[[POS_INF:.*]] = coreai.constant dense<0x7F800000> : tensor<f32>
                 // CHECK:          %[[NAN:.*]] = coreai.constant dense<0x7FC00000> : tensor<f32>
@@ -1327,7 +1327,7 @@ class TestAtan2IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[Y:.*]]: tensor<4xf32> {coreai.name = "y"}, %[[X:.*]]: tensor<4xf32> {coreai.name = "x"}) -> (tensor<4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[Y:.*]]: tensor<4xf32> {coreai.name = "y"}, %[[X:.*]]: tensor<4xf32> {coreai.name = "x"}) -> (tensor<4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK:          %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK:          %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK:          %[[Y_NEG:.*]] = coreai.decomposable.broadcasting_or
@@ -1359,7 +1359,7 @@ class TestAvgPool2dIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @avg_pool2d_composite_{{.*}}(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "input_tensor"}, %[[ARG1:.*]]: tensor<2xsi32> {coreai.name = "kernel_size"}, %[[ARG2:.*]]: tensor<2xsi32> {coreai.name = "stride"}, %[[ARG3:.*]]: tensor<2xsi32> {coreai.name = "padding"}, %[[ARG4:.*]]: tensor<i1> {coreai.name = "ceil_mode"}, %[[ARG5:.*]]: tensor<i1> {coreai.name = "count_include_pad"}, %[[ARG6:.*]]: tensor<si32> {coreai.name = "divisor_override"}) -> tensor<1x3x4x4xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"avg_pool_2d" = {input_names = ["input", "kernel_size", "stride", "padding", "ceil_mode", "count_include_pad", "divisor_override"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "avg_pool2d_composite"} {
+                // CHECK-NEXT:   coreai.graph private noinline @avg_pool2d_composite_{{.*}}(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "input_tensor"}, %[[ARG1:.*]]: tensor<2xsi32> {coreai.name = "kernel_size"}, %[[ARG2:.*]]: tensor<2xsi32> {coreai.name = "stride"}, %[[ARG3:.*]]: tensor<2xsi32> {coreai.name = "padding"}, %[[ARG4:.*]]: tensor<i1> {coreai.name = "ceil_mode"}, %[[ARG5:.*]]: tensor<i1> {coreai.name = "count_include_pad"}, %[[ARG6:.*]]: tensor<si32> {coreai.name = "divisor_override"}) -> tensor<1x3x4x4xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"avg_pool_2d" = {input_names = ["input", "kernel_size", "stride", "padding", "ceil_mode", "count_include_pad", "divisor_override"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "avg_pool2d_composite"} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<4.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
@@ -1379,14 +1379,14 @@ class TestAvgPool2dIR:
                 // CHECK-NEXT:     %[[V16:.*]] = coreai.decomposable.broadcasting_divide %[[V15]], %[[V1]] : (tensor<1x3x4x4xf32>, tensor<f32>) -> tensor<1x3x4x4xf32>
                 // CHECK-NEXT:     coreai.output %[[V16]] : tensor<1x3x4x4xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x3x4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
-                // CHECK-NEXT:     %[[V0]] = coreai.constant dense<2> : tensor<2xsi32>
-                // CHECK-NEXT:     %[[V1]] = coreai.constant dense<0> : tensor<2xsi32>
-                // CHECK-NEXT:     %[[V2]] = coreai.constant dense<false> : tensor<i1>
-                // CHECK-NEXT:     %[[V3]] = coreai.constant dense<true> : tensor<i1>
-                // CHECK-NEXT:     %[[V4]] = coreai.constant dense<0> : tensor<si32>
-                // CHECK-NEXT:     %[[V5]] = coreai.invoke @avg_pool2d_composite_{{.*}}(%[[ARG0]], %[[V0]], %[[V0]], %[[V1]], %[[V2]], %[[V3]], %[[V4]])  : (tensor<1x3x8x8xf32>, tensor<2xsi32>, tensor<2xsi32>, tensor<2xsi32>, tensor<i1>, tensor<i1>, tensor<si32>) -> tensor<1x3x4x4xf32>
-                // CHECK-NEXT:     coreai.output %[[V5]] : tensor<1x3x4x4xf32>
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x3x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
+                // CHECK-NEXT:     %[[V0_R51:.*]] = coreai.constant dense<2> : tensor<2xsi32>
+                // CHECK-NEXT:     %[[V1_R51:.*]] = coreai.constant dense<0> : tensor<2xsi32>
+                // CHECK-NEXT:     %[[V2_R51:.*]] = coreai.constant dense<false> : tensor<i1>
+                // CHECK-NEXT:     %[[V3_R51:.*]] = coreai.constant dense<true> : tensor<i1>
+                // CHECK-NEXT:     %[[V4_R51:.*]] = coreai.constant dense<0> : tensor<si32>
+                // CHECK-NEXT:     %[[V5_R51:.*]] = coreai.invoke @avg_pool2d_composite_{{.*}}(%[[ARG0]], %[[V0_R51]], %[[V0_R51]], %[[V1_R51]], %[[V2_R51]], %[[V3_R51]], %[[V4_R51]])  : (tensor<1x3x8x8xf32>, tensor<2xsi32>, tensor<2xsi32>, tensor<2xsi32>, tensor<i1>, tensor<i1>, tensor<si32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     coreai.output %[[V5_R51]] : tensor<1x3x4x4xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,
@@ -1406,7 +1406,7 @@ class TestAvgPool2dIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @avg_pool2d_composite_{{.*}}(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "input_tensor"}, %[[ARG1:.*]]: tensor<2xsi32> {coreai.name = "kernel_size"}, %[[ARG2:.*]]: tensor<2xsi32> {coreai.name = "stride"}, %[[ARG3:.*]]: tensor<2xsi32> {coreai.name = "padding"}, %[[ARG4:.*]]: tensor<i1> {coreai.name = "ceil_mode"}, %[[ARG5:.*]]: tensor<i1> {coreai.name = "count_include_pad"}, %[[ARG6:.*]]: tensor<si32> {coreai.name = "divisor_override"}) -> tensor<1x3x4x4xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"avg_pool_2d" = {input_names = ["input", "kernel_size", "stride", "padding", "ceil_mode", "count_include_pad", "divisor_override"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "avg_pool2d_composite"} {
+                // CHECK-NEXT:   coreai.graph private noinline @avg_pool2d_composite_{{.*}}(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "input_tensor"}, %[[ARG1:.*]]: tensor<2xsi32> {coreai.name = "kernel_size"}, %[[ARG2:.*]]: tensor<2xsi32> {coreai.name = "stride"}, %[[ARG3:.*]]: tensor<2xsi32> {coreai.name = "padding"}, %[[ARG4:.*]]: tensor<i1> {coreai.name = "ceil_mode"}, %[[ARG5:.*]]: tensor<i1> {coreai.name = "count_include_pad"}, %[[ARG6:.*]]: tensor<si32> {coreai.name = "divisor_override"}) -> tensor<1x3x4x4xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"avg_pool_2d" = {input_names = ["input", "kernel_size", "stride", "padding", "ceil_mode", "count_include_pad", "divisor_override"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "avg_pool2d_composite"} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<9.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
@@ -1426,15 +1426,15 @@ class TestAvgPool2dIR:
                 // CHECK-NEXT:     %[[V16:.*]] = coreai.decomposable.broadcasting_divide %[[V15]], %[[V1]] : (tensor<1x3x4x4xf32>, tensor<f32>) -> tensor<1x3x4x4xf32>
                 // CHECK-NEXT:     coreai.output %[[V16]] : tensor<1x3x4x4xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x3x4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
-                // CHECK-NEXT:     %[[V0]] = coreai.constant dense<3> : tensor<2xsi32>
-                // CHECK-NEXT:     %[[V1]] = coreai.constant dense<2> : tensor<2xsi32>
-                // CHECK-NEXT:     %[[V2]] = coreai.constant dense<1> : tensor<2xsi32>
-                // CHECK-NEXT:     %[[V3]] = coreai.constant dense<false> : tensor<i1>
-                // CHECK-NEXT:     %[[V4]] = coreai.constant dense<true> : tensor<i1>
-                // CHECK-NEXT:     %[[V5]] = coreai.constant dense<0> : tensor<si32>
-                // CHECK-NEXT:     %[[V6]] = coreai.invoke @avg_pool2d_composite_{{.*}}(%[[ARG0]], %[[V0]], %[[V1]], %[[V2]], %[[V3]], %[[V4]], %[[V5]])  : (tensor<1x3x8x8xf32>, tensor<2xsi32>, tensor<2xsi32>, tensor<2xsi32>, tensor<i1>, tensor<i1>, tensor<si32>) -> tensor<1x3x4x4xf32>
-                // CHECK-NEXT:     coreai.output %[[V6]] : tensor<1x3x4x4xf32>
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x3x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
+                // CHECK-NEXT:     %[[V0_R53:.*]] = coreai.constant dense<3> : tensor<2xsi32>
+                // CHECK-NEXT:     %[[V1_R53:.*]] = coreai.constant dense<2> : tensor<2xsi32>
+                // CHECK-NEXT:     %[[V2_R53:.*]] = coreai.constant dense<1> : tensor<2xsi32>
+                // CHECK-NEXT:     %[[V3_R53:.*]] = coreai.constant dense<false> : tensor<i1>
+                // CHECK-NEXT:     %[[V4_R53:.*]] = coreai.constant dense<true> : tensor<i1>
+                // CHECK-NEXT:     %[[V5_R53:.*]] = coreai.constant dense<0> : tensor<si32>
+                // CHECK-NEXT:     %[[V6_R53:.*]] = coreai.invoke @avg_pool2d_composite_{{.*}}(%[[ARG0]], %[[V0_R53]], %[[V1_R53]], %[[V2_R53]], %[[V3_R53]], %[[V4_R53]], %[[V5_R53]])  : (tensor<1x3x8x8xf32>, tensor<2xsi32>, tensor<2xsi32>, tensor<2xsi32>, tensor<i1>, tensor<i1>, tensor<si32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     coreai.output %[[V6_R53]] : tensor<1x3x4x4xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,
@@ -1456,7 +1456,7 @@ class TestAvgPool3dIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @avg_pool3d_composite_{{.*}}(%[[ARG0:.*]]: tensor<1x3x4x4x4xf32> {coreai.name = "input_tensor"}, %[[ARG1:.*]]: tensor<3xsi32> {coreai.name = "kernel_size"}, %[[ARG2:.*]]: tensor<3xsi32> {coreai.name = "stride"}, %[[ARG3:.*]]: tensor<3xsi32> {coreai.name = "padding"}, %[[ARG4:.*]]: tensor<i1> {coreai.name = "ceil_mode"}, %[[ARG5:.*]]: tensor<i1> {coreai.name = "count_include_pad"}, %[[ARG6:.*]]: tensor<si32> {coreai.name = "divisor_override"}) -> tensor<1x3x2x2x2xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"avg_pool_3d" = {input_names = ["input", "kernel_size", "stride", "padding", "ceil_mode", "count_include_pad", "divisor_override"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "avg_pool3d_composite"} {
+                // CHECK-NEXT:   coreai.graph private noinline @avg_pool3d_composite_{{.*}}(%[[ARG0:.*]]: tensor<1x3x4x4x4xf32> {coreai.name = "input_tensor"}, %[[ARG1:.*]]: tensor<3xsi32> {coreai.name = "kernel_size"}, %[[ARG2:.*]]: tensor<3xsi32> {coreai.name = "stride"}, %[[ARG3:.*]]: tensor<3xsi32> {coreai.name = "padding"}, %[[ARG4:.*]]: tensor<i1> {coreai.name = "ceil_mode"}, %[[ARG5:.*]]: tensor<i1> {coreai.name = "count_include_pad"}, %[[ARG6:.*]]: tensor<si32> {coreai.name = "divisor_override"}) -> tensor<1x3x2x2x2xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"avg_pool_3d" = {input_names = ["input", "kernel_size", "stride", "padding", "ceil_mode", "count_include_pad", "divisor_override"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "avg_pool3d_composite"} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<3xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<8.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
@@ -1478,14 +1478,14 @@ class TestAvgPool3dIR:
                 // CHECK-NEXT:     %[[V18:.*]] = coreai.decomposable.broadcasting_divide %[[V17]], %[[V1]] : (tensor<1x3x2x2x2xf32>, tensor<f32>) -> tensor<1x3x2x2x2xf32>
                 // CHECK-NEXT:     coreai.output %[[V18]] : tensor<1x3x2x2x2xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x4x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x2x2x2xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
-                // CHECK-NEXT:     %[[V0]] = coreai.constant dense<2> : tensor<3xsi32>
-                // CHECK-NEXT:     %[[V1]] = coreai.constant dense<0> : tensor<3xsi32>
-                // CHECK-NEXT:     %[[V2]] = coreai.constant dense<false> : tensor<i1>
-                // CHECK-NEXT:     %[[V3]] = coreai.constant dense<true> : tensor<i1>
-                // CHECK-NEXT:     %[[V4]] = coreai.constant dense<0> : tensor<si32>
-                // CHECK-NEXT:     %[[V5]] = coreai.invoke @avg_pool3d_composite_{{.*}}(%[[ARG0]], %[[V0]], %[[V0]], %[[V1]], %[[V2]], %[[V3]], %[[V4]])  : (tensor<1x3x4x4x4xf32>, tensor<3xsi32>, tensor<3xsi32>, tensor<3xsi32>, tensor<i1>, tensor<i1>, tensor<si32>) -> tensor<1x3x2x2x2xf32>
-                // CHECK-NEXT:     coreai.output %[[V5]] : tensor<1x3x2x2x2xf32>
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x4x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x2x2x2xf32> {coreai.name = "{{.*}}"}){{.*}} {
+                // CHECK-NEXT:     %[[V0_R55:.*]] = coreai.constant dense<2> : tensor<3xsi32>
+                // CHECK-NEXT:     %[[V1_R55:.*]] = coreai.constant dense<0> : tensor<3xsi32>
+                // CHECK-NEXT:     %[[V2_R55:.*]] = coreai.constant dense<false> : tensor<i1>
+                // CHECK-NEXT:     %[[V3_R55:.*]] = coreai.constant dense<true> : tensor<i1>
+                // CHECK-NEXT:     %[[V4_R55:.*]] = coreai.constant dense<0> : tensor<si32>
+                // CHECK-NEXT:     %[[V5_R55:.*]] = coreai.invoke @avg_pool3d_composite_{{.*}}(%[[ARG0]], %[[V0_R55]], %[[V0_R55]], %[[V1_R55]], %[[V2_R55]], %[[V3_R55]], %[[V4_R55]])  : (tensor<1x3x4x4x4xf32>, tensor<3xsi32>, tensor<3xsi32>, tensor<3xsi32>, tensor<i1>, tensor<i1>, tensor<si32>) -> tensor<1x3x2x2x2xf32>
+                // CHECK-NEXT:     coreai.output %[[V5_R55]] : tensor<1x3x2x2x2xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,
@@ -1507,7 +1507,7 @@ class TestBitwiseAndIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_bitwise_and %[[ARG0]], %[[ARG1]] : (tensor<2x3xsi32>, tensor<2x3xsi32>) -> tensor<2x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xsi32>
                 // CHECK-NEXT:   }
@@ -1532,7 +1532,7 @@ class TestBitwiseAndIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x?xsi32> {coreai.name = "y"}) -> (tensor<?x?xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x?xsi32> {coreai.name = "y"}) -> (tensor<?x?xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_bitwise_and %[[ARG0]], %[[ARG1]] : (tensor<?x?xsi32>, tensor<?x?xsi32>) -> tensor<?x?xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x?xsi32>
                 // CHECK-NEXT:   }
@@ -1552,7 +1552,7 @@ class TestBitwiseNotIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xi1> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xi1> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.not %[[ARG0]] : tensor<2x3xi1> -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xi1>
                 // CHECK-NEXT:   }
@@ -1575,7 +1575,7 @@ class TestBitwiseNotIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xi1> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xi1> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.not %[[ARG0]] : tensor<?x?xi1> -> tensor<?x?xi1>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x?xi1>
                 // CHECK-NEXT:   }
@@ -1596,7 +1596,7 @@ class TestBitwiseNotIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<-1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.cast %[[ARG0]] : tensor<2x3xsi32> to tensor<2x3xf32>
@@ -1624,7 +1624,7 @@ class TestBitwiseNotIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}) -> (tensor<?x?xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}) -> (tensor<?x?xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<-1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.cast %[[ARG0]] : tensor<?x?xsi32> to tensor<?x?xf32>
@@ -1653,7 +1653,7 @@ class TestBitwiseOrIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_bitwise_or %[[ARG0]], %[[ARG1]] : (tensor<2x3xsi32>, tensor<2x3xsi32>) -> tensor<2x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xsi32>
                 // CHECK-NEXT:   }
@@ -1678,7 +1678,7 @@ class TestBitwiseOrIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x?xsi32> {coreai.name = "y"}) -> (tensor<?x?xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x?xsi32> {coreai.name = "y"}) -> (tensor<?x?xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_bitwise_or %[[ARG0]], %[[ARG1]] : (tensor<?x?xsi32>, tensor<?x?xsi32>) -> tensor<?x?xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x?xsi32>
                 // CHECK-NEXT:   }
@@ -1702,7 +1702,7 @@ class TestBitwiseXorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_bitwise_xor %[[ARG0]], %[[ARG1]] : (tensor<2x3xsi32>, tensor<2x3xsi32>) -> tensor<2x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xsi32>
                 // CHECK-NEXT:   }
@@ -1727,7 +1727,7 @@ class TestBitwiseXorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x?xsi32> {coreai.name = "y"}) -> (tensor<?x?xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x?xsi32> {coreai.name = "y"}) -> (tensor<?x?xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_bitwise_xor %[[ARG0]], %[[ARG1]] : (tensor<?x?xsi32>, tensor<?x?xsi32>) -> tensor<?x?xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x?xsi32>
                 // CHECK-NEXT:   }
@@ -1747,7 +1747,7 @@ class TestBmmIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3x4xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x4x5xf32> {coreai.name = "y"}) -> (tensor<2x3x5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3x4xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x4x5xf32> {coreai.name = "y"}) -> (tensor<2x3x5xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_batch_matmul %[[ARG0]], %[[ARG1]] : (tensor<2x3x4xf32>, tensor<2x4x5xf32>) -> tensor<2x3x5xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3x5xf32>
                 // CHECK-NEXT:   }
@@ -1776,7 +1776,7 @@ class TestBmmIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3x4xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x4x5xf32> {coreai.name = "y"}) -> (tensor<?x3x5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3x4xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x4x5xf32> {coreai.name = "y"}) -> (tensor<?x3x5xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_batch_matmul %[[ARG0]], %[[ARG1]] : (tensor<?x3x4xf32>, tensor<?x4x5xf32>) -> tensor<?x3x5xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x3x5xf32>
                 // CHECK-NEXT:   }
@@ -1796,7 +1796,7 @@ class TestCatIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x4xf32> {coreai.name = "y"}) -> (tensor<2x7xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x4xf32> {coreai.name = "y"}) -> (tensor<2x7xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.concat %[[V0]], %[[ARG0]], %[[ARG1]] : (tensor<si32>, tensor<2x3xf32>, tensor<2x4xf32>) -> tensor<2x7xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x7xf32>
@@ -1823,7 +1823,7 @@ class TestCatIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x4xf32> {coreai.name = "y"}) -> (tensor<?x7xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x4xf32> {coreai.name = "y"}) -> (tensor<?x7xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.concat %[[V0]], %[[ARG0]], %[[ARG1]] : (tensor<si32>, tensor<?x3xf32>, tensor<?x4xf32>) -> tensor<?x7xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x7xf32>
@@ -1842,7 +1842,7 @@ class TestCatIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<4x3xf32> {coreai.name = "y"}) -> (tensor<6x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<4x3xf32> {coreai.name = "y"}) -> (tensor<6x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.concat %[[V0]], %[[ARG0]], %[[ARG1]] : (tensor<si32>, tensor<2x3xf32>, tensor<4x3xf32>) -> tensor<6x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<6x3xf32>
@@ -1871,7 +1871,7 @@ class TestCatIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.concat %[[V0]], %[[ARG0]], %[[ARG1]] : (tensor<si32>, tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x3xf32>
@@ -1892,7 +1892,7 @@ class TestCeilIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<-1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.decomposable.broadcasting_mul %[[ARG0]], %[[V1]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
@@ -1919,7 +1919,7 @@ class TestCeilIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<-1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.decomposable.broadcasting_mul %[[ARG0]], %[[V1]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
@@ -1943,7 +1943,7 @@ class TestClampIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.decomposable.broadcasting_maximum %[[ARG0]], %[[V1]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
@@ -1969,7 +1969,7 @@ class TestClampIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.decomposable.broadcasting_maximum %[[ARG0]], %[[V1]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
@@ -1990,7 +1990,7 @@ class TestClampIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_maximum %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -2009,7 +2009,7 @@ class TestClampIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_minimum %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -2035,7 +2035,7 @@ class TestClampTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "low"}, %[[ARG2:.*]]: tensor<2x3xf32> {coreai.name = "high"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "low"}, %[[ARG2:.*]]: tensor<2x3xf32> {coreai.name = "high"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_maximum %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_minimum %[[V0]], %[[ARG2]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -2067,7 +2067,7 @@ class TestClampTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x?xf32> {coreai.name = "low"}, %[[ARG2:.*]]: tensor<?x?xf32> {coreai.name = "high"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x?xf32> {coreai.name = "low"}, %[[ARG2:.*]]: tensor<?x?xf32> {coreai.name = "high"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_maximum %[[ARG0]], %[[ARG1]] : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_minimum %[[V0]], %[[ARG2]] : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x?xf32>
@@ -2088,7 +2088,7 @@ class TestCloneIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     coreai.output %[[ARG0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -2110,7 +2110,7 @@ class TestCloneIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     coreai.output %[[ARG0]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -2129,7 +2129,7 @@ class TestComplexIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "real"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "imag"}) -> (tensor<2x3xcomplex<f32>> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "real"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "imag"}) -> (tensor<2x3xcomplex<f32>> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.create_complex %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xcomplex<f32>>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xcomplex<f32>>
                 // CHECK-NEXT:   }
@@ -2157,7 +2157,7 @@ class TestComplexIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "real"}, %[[ARG1:.*]]: tensor<?x?xf32> {coreai.name = "imag"}) -> (tensor<?x?xcomplex<f32>> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "real"}, %[[ARG1:.*]]: tensor<?x?xf32> {coreai.name = "imag"}) -> (tensor<?x?xcomplex<f32>> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.create_complex %[[ARG0]], %[[ARG1]] : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x?xcomplex<f32>>
                 // CHECK-NEXT:   }
@@ -2183,7 +2183,7 @@ class TestCondIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
@@ -2195,8 +2195,8 @@ class TestCondIR:
                 // CHECK-NEXT:       %[[V8:.*]] = coreai.decomposable.broadcasting_add %[[ARG0]], %[[V2]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:       coreai.yield %[[V8]] : tensor<2x3xf32>
                 // CHECK-NEXT:     } else {
-                // CHECK-NEXT:       %[[V8]] = coreai.decomposable.broadcasting_sub %[[ARG0]], %[[V2]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
-                // CHECK-NEXT:       coreai.yield %[[V8]] : tensor<2x3xf32>
+                // CHECK-NEXT:       %[[V8_R84:.*]] = coreai.decomposable.broadcasting_sub %[[ARG0]], %[[V2]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+                // CHECK-NEXT:       coreai.yield %[[V8_R84]] : tensor<2x3xf32>
                 // CHECK-NEXT:     } : tensor<i1> -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V7]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -2225,7 +2225,7 @@ class TestCondIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
@@ -2237,8 +2237,8 @@ class TestCondIR:
                 // CHECK-NEXT:       %[[V8:.*]] = coreai.decomposable.broadcasting_add %[[ARG0]], %[[V2]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:       coreai.yield %[[V8]] : tensor<?x?xf32>
                 // CHECK-NEXT:     } else {
-                // CHECK-NEXT:       %[[V8]] = coreai.decomposable.broadcasting_sub %[[ARG0]], %[[V2]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-                // CHECK-NEXT:       coreai.yield %[[V8]] : tensor<?x?xf32>
+                // CHECK-NEXT:       %[[V8_R85:.*]] = coreai.decomposable.broadcasting_sub %[[ARG0]], %[[V2]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+                // CHECK-NEXT:       coreai.yield %[[V8_R85]] : tensor<?x?xf32>
                 // CHECK-NEXT:     } : tensor<i1> -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V7]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
@@ -2258,7 +2258,7 @@ class TestConstantPadNdIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x6xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x6xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[0, 0, 1, 2]> : tensor<4xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.pad %[[ARG0]], %[[V0]], %[[V1]] mode = <constant> : (tensor<2x3xf32>, tensor<4xui32>, tensor<f32>) -> tensor<2x6xf32>
@@ -2283,7 +2283,7 @@ class TestConstantPadNdIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[0, 0, 1, 2]> : tensor<4xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.pad %[[ARG0]], %[[V0]], %[[V1]] mode = <constant> : (tensor<?x?xf32>, tensor<4xui32>, tensor<f32>) -> tensor<?x?xf32>
@@ -2305,7 +2305,7 @@ class TestConstantPadNdIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5x5xf32> {coreai.name = "x"}) -> (tensor<2x12x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5x5xf32> {coreai.name = "x"}) -> (tensor<2x12x8xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[0, 0, 3, 4, 1, 2]> : tensor<6xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1.500000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.pad %[[ARG0]], %[[V0]], %[[V1]] mode = <constant> : (tensor<2x5x5xf32>, tensor<6xui32>, tensor<f32>) -> tensor<2x12x8xf32>
@@ -2325,7 +2325,7 @@ class TestConstantPadNdIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x8xf32> {coreai.name = "x"}) -> (tensor<2x5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x8xf32> {coreai.name = "x"}) -> (tensor<2x5xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[2147483647, 6]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<1> : tensor<2xsi32>
@@ -2351,7 +2351,7 @@ class TestConstantPadNdIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<2147483647> : tensor<1xsi32>
@@ -2383,7 +2383,7 @@ class TestConstantPadNdIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x6x8xf32> {coreai.name = "x"}) -> (tensor<2x7x7xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x6x8xf32> {coreai.name = "x"}) -> (tensor<2x7x7xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[0, 0, 0, 2, 1, 0]> : tensor<6xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<[0, 1, 0]> : tensor<3xsi32>
@@ -2413,7 +2413,7 @@ class TestConvolutionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x8x6x6xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x8x6x6xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<8x3x3x3xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<1> : tensor<ui32>
@@ -2438,7 +2438,7 @@ class TestConvolutionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x16x8x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x16x8x8xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<1x16x1x1xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<ui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<1> : tensor<2xui32>
@@ -2468,7 +2468,7 @@ class TestConvolutionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x10xf32> {coreai.name = "x"}) -> (tensor<1x8x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x10xf32> {coreai.name = "x"}) -> (tensor<1x8x8xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[1, 8, 8]> : tensor<3xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<{{.*}}> : tensor<8x3x1x3xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<1> : tensor<ui32>
@@ -2497,7 +2497,7 @@ class TestConvolutionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x10xf32> {coreai.name = "x"}) -> (tensor<1x8x10xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x10xf32> {coreai.name = "x"}) -> (tensor<1x8x10xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<1x8x1xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[1, 8, 10]> : tensor<3xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<{{.*}}> : tensor<8x3x1x3xf32>
@@ -2536,7 +2536,7 @@ class TestConvolutionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3x8x8xf32> {coreai.name = "x"}) -> (tensor<?x8x6x6xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3x8x8xf32> {coreai.name = "x"}) -> (tensor<?x8x6x6xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<8x3x3x3xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<1> : tensor<ui32>
@@ -2563,7 +2563,7 @@ class TestConvolutionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x4x6x6xf32> {coreai.name = "x"}) -> (tensor<1x8x4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x4x6x6xf32> {coreai.name = "x"}) -> (tensor<1x8x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<8x2x3x3xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<2> : tensor<ui32>
@@ -2588,7 +2588,7 @@ class TestConvolutionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x6x6x6xf32> {coreai.name = "x"}) -> (tensor<1x4x4x4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x6x6x6xf32> {coreai.name = "x"}) -> (tensor<1x4x4x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense_resource<{{.*}}> : tensor<4x3x3x3x3xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<3xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<1> : tensor<ui32>
@@ -2613,7 +2613,7 @@ class TestConvolutionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x4x4x4xf32> {coreai.name = "x"}) -> (tensor<1x4x4x4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x4x4x4xf32> {coreai.name = "x"}) -> (tensor<1x4x4x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<1x4x1x1x1xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<ui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<1> : tensor<3xui32>
@@ -2651,7 +2651,7 @@ class TestConvolutionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x8x8x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x8x8x8xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[W:.*]] = coreai.constant dense<{{.*}}> : tensor<3x8x3x3xf32>
                 // CHECK-NEXT:     %[[STRIDE:.*]] = coreai.constant dense<2> : tensor<2xui32>
                 // CHECK-NEXT:     %[[ONE:.*]] = coreai.constant dense<1> : tensor<2xui32>
@@ -2679,7 +2679,7 @@ class TestCopyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "dest"}, %[[ARG1:.*]]: tensor<1x3xf32> {coreai.name = "src"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "dest"}, %[[ARG1:.*]]: tensor<1x3xf32> {coreai.name = "src"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.broadcast_in_dims %[[ARG1]], %[[V0]], %[[V1]] : (tensor<1x3xf32>, tensor<1xui32>, tensor<1xsi32>) -> tensor<2x3xf32>
@@ -2703,7 +2703,7 @@ class TestCopyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf16> {coreai.name = "dest"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "src"}) -> (tensor<2x3xf16> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf16> {coreai.name = "dest"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "src"}) -> (tensor<2x3xf16> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.cast %[[ARG1]] : tensor<2x3xf32> to tensor<2x3xf16>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf16>
                 // CHECK-NEXT:   }
@@ -2729,7 +2729,7 @@ class TestCopyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "dest"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "src"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "dest"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "src"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.get_shape %[[ARG0]] : tensor<?x3xf32> -> tensor<2xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.broadcast_to %[[ARG1]], %[[V0]] : (tensor<?x3xf32>, tensor<2xui32>) -> tensor<?x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x3xf32>
@@ -2750,7 +2750,7 @@ class TestCumsumIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2x5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2x5xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<ui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<false> : tensor<i1>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.scan %[[ARG0]], %[[V0]], %[[V1]] combiner = <sum> : (tensor<2x5xf32>, tensor<ui32>, tensor<i1>) -> tensor<2x5xf32>
@@ -2772,7 +2772,7 @@ class TestCumsumIR:
             ir,
             check_file=f"""
                 // CHECK-LABEL: module {{
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {{coreai.name = "x"}}) -> (tensor<2x5xf32> {{coreai.name = "{{{{.*}}}}"}}) attributes {{__coreai_pure__}} {{
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x5xf32> {{coreai.name = "x"}}) -> (tensor<2x5xf32> {{coreai.name = "{{{{.*}}}}"}}){{{{.*}}}} {{
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{normalized}> : tensor<ui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<false> : tensor<i1>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.scan %[[ARG0]], %[[V0]], %[[V1]] combiner = <sum> : (tensor<2x5xf32>, tensor<ui32>, tensor<i1>) -> tensor<2x5xf32>
@@ -2797,7 +2797,7 @@ class TestCumsumIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<ui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<false> : tensor<i1>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.scan %[[ARG0]], %[[V0]], %[[V1]] combiner = <sum> : (tensor<?x?xf32>, tensor<ui32>, tensor<i1>) -> tensor<?x?xf32>
@@ -2819,7 +2819,7 @@ class TestDivScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_divide %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -2843,7 +2843,7 @@ class TestDivScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_divide %[[ARG0]], %[[V0]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x?xf32>
@@ -2864,7 +2864,7 @@ class TestDivTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_divide %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -2890,7 +2890,7 @@ class TestDivTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_divide %[[ARG0]], %[[ARG1]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x3xf32>
                 // CHECK-NEXT:   }
@@ -2910,7 +2910,7 @@ class TestDivTensorModeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -2936,7 +2936,7 @@ class TestDivTensorModeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[ARG1]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x3xf32>
                 // CHECK-NEXT:   }
@@ -2954,7 +2954,7 @@ class TestDivTensorModeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.decomposable.broadcasting_divide %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
@@ -2986,7 +2986,7 @@ class TestDivTensorModeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_divide %[[ARG0]], %[[ARG1]] : (tensor<2x3xsi32>, tensor<2x3xsi32>) -> tensor<2x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xsi32>
                 // CHECK-NEXT:   }
@@ -3012,7 +3012,7 @@ class TestDivTensorModeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xsi32> {coreai.name = "y"}) -> (tensor<?x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xsi32> {coreai.name = "y"}) -> (tensor<?x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_divide %[[ARG0]], %[[ARG1]] : (tensor<?x3xsi32>, tensor<?x3xsi32>) -> tensor<?x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x3xsi32>
                 // CHECK-NEXT:   }
@@ -3039,7 +3039,7 @@ class TestEmbeddingIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}) -> (tensor<2x3x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}) -> (tensor<2x3x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<10x4xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[2, 3, 1]> : tensor<3xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.reshape %[[ARG0]], %[[V1]] : (tensor<2x3xsi32>, tensor<3xui32>) -> tensor<2x3x1xsi32>
@@ -3069,7 +3069,7 @@ class TestEmbeddingIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}) -> (tensor<?x?x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xsi32> {coreai.name = "x"}) -> (tensor<?x?x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<10x4xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<2> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.expand_dims %[[ARG0]], %[[V1]] : (tensor<?x?xsi32>, tensor<1xsi32>) to tensor<?x?x1xsi32>
@@ -3097,7 +3097,7 @@ class TestEmbeddingIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<4xsi32> {coreai.name = "x"}) -> (tensor<4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<4xsi32> {coreai.name = "x"}) -> (tensor<4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<10x4xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[4, 1]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.reshape %[[ARG0]], %[[V1]] : (tensor<4xsi32>, tensor<2xui32>) -> tensor<4x1xsi32>
@@ -3127,7 +3127,7 @@ class TestEmbeddingIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?xsi32> {coreai.name = "x"}) -> (tensor<?x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?xsi32> {coreai.name = "x"}) -> (tensor<?x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<{{.*}}> : tensor<10x4xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.expand_dims %[[ARG0]], %[[V1]] : (tensor<?xsi32>, tensor<1xsi32>) to tensor<?x1xsi32>
@@ -3153,7 +3153,7 @@ class TestEmptyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<0.000000e+00> : tensor<2x3xf32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_add %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -3180,7 +3180,7 @@ class TestEmptyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK:           coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK:           coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK:             %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<1x1xf32>
                 // CHECK:             %[[BCAST:.*]] = coreai.broadcast_to %[[ZERO]], %{{.*}} : (tensor<1x1xf32>, tensor<2xui32>) -> tensor<?x3xf32>
                 // CHECK:             %[[OUT:.*]] = coreai.decomposable.broadcasting_add %[[ARG0]], %[[BCAST]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
@@ -3202,7 +3202,7 @@ class TestEqScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_equal %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xi1>
@@ -3226,7 +3226,7 @@ class TestEqScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_equal %[[ARG0]], %[[V0]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xi1>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x?xi1>
@@ -3247,7 +3247,7 @@ class TestEqTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_equal %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xi1>
                 // CHECK-NEXT:   }
@@ -3273,7 +3273,7 @@ class TestEqTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_equal %[[ARG0]], %[[ARG1]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xi1>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x3xi1>
                 // CHECK-NEXT:   }
@@ -3293,7 +3293,7 @@ class TestExp2IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_pow %[[V0]], %[[ARG0]] : (tensor<f32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -3317,7 +3317,7 @@ class TestExp2IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_pow %[[V0]], %[[ARG0]] : (tensor<f32>, tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x?xf32>
@@ -3338,7 +3338,7 @@ class TestExpandIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3xf32> {coreai.name = "x"}) -> (tensor<4x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3xf32> {coreai.name = "x"}) -> (tensor<4x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<4> : tensor<1xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.broadcast_in_dims %[[ARG0]], %[[V0]], %[[V1]] : (tensor<1x3xf32>, tensor<1xui32>, tensor<1xsi32>) -> tensor<4x3xf32>
@@ -3358,7 +3358,7 @@ class TestExpandIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3xf32> {coreai.name = "x"}) -> (tensor<2x4x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3xf32> {coreai.name = "x"}) -> (tensor<2x4x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[2, 4]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<[1, 1, 3]> : tensor<3xui32>
@@ -3387,7 +3387,7 @@ class TestExpandIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<1x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<0> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.get_shape %[[ARG1]] : tensor<?xf32> -> tensor<1xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.broadcast_in_dims %[[ARG0]], %[[V1]], %[[V0]] : (tensor<1x3xf32>, tensor<1xui32>, tensor<1xsi32>) -> tensor<?x3xf32>
@@ -3409,7 +3409,7 @@ class TestExpm1IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.exp %[[ARG0]] : tensor<2x3xf32> -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.decomposable.broadcasting_sub %[[V1]], %[[V0]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
@@ -3434,7 +3434,7 @@ class TestExpm1IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.exp %[[ARG0]] : tensor<?x?xf32> -> tensor<?x?xf32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.decomposable.broadcasting_sub %[[V1]], %[[V0]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
@@ -3456,7 +3456,7 @@ class TestFlipIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<0> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.reverse %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -3480,7 +3480,7 @@ class TestFlipIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<0> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.reverse %[[ARG0]], %[[V0]] : (tensor<?x?xf32>, tensor<1xsi32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x?xf32>
@@ -3499,7 +3499,7 @@ class TestFlipIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.reverse %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<2xsi32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -3520,7 +3520,7 @@ class TestFloorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -3544,7 +3544,7 @@ class TestFloorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[V0]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x?xf32>
@@ -3569,7 +3569,7 @@ class TestFloorDivideIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -3587,7 +3587,7 @@ class TestFloorDivideIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -3614,7 +3614,7 @@ class TestFloorDivideIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[ARG1]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x3xf32>
                 // CHECK-NEXT:   }
@@ -3638,7 +3638,7 @@ class TestFloordivIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "y"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[ARG1]] : (tensor<2x3xsi32>, tensor<2x3xsi32>) -> tensor<2x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xsi32>
                 // CHECK-NEXT:   }
@@ -3659,7 +3659,7 @@ class TestFloordivIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xsi32> {coreai.name = "x"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<3> : tensor<si32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[V0]] : (tensor<2x3xsi32>, tensor<si32>) -> tensor<2x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xsi32>
@@ -3686,7 +3686,7 @@ class TestFloordivIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xsi32> {coreai.name = "y"}) -> (tensor<?x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xsi32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xsi32> {coreai.name = "y"}) -> (tensor<?x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_floor_divide %[[ARG0]], %[[ARG1]] : (tensor<?x3xsi32>, tensor<?x3xsi32>) -> tensor<?x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x3xsi32>
                 // CHECK-NEXT:   }
@@ -3710,7 +3710,7 @@ class TestFmodIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_modulo %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -3736,7 +3736,7 @@ class TestFmodIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_modulo %[[ARG0]], %[[ARG1]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x3xf32>
                 // CHECK-NEXT:   }
@@ -3754,7 +3754,7 @@ class TestFmodIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_modulo %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -3778,7 +3778,7 @@ class TestFmodIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_modulo %[[ARG0]], %[[V0]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x?xf32>
@@ -3799,7 +3799,7 @@ class TestFullIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<5.000000e+00> : tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -3822,7 +3822,7 @@ class TestFullIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK:          %[[FILL:.*]] = coreai.constant dense<5.000000e+00> : tensor<1x1xf32>
                 // CHECK:          %[[SHAPE:.*]] = coreai.get_shape %[[ARG0]] : tensor<?x3xf32> -> tensor<2xui32>
                 // CHECK:          coreai.broadcast_to %[[FILL]], %{{.*}} : (tensor<1x1xf32>, tensor<2xui32>) -> tensor<?x3xf32>
@@ -3844,7 +3844,7 @@ class TestFullLikeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<7.000000e+00> : tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -3867,7 +3867,7 @@ class TestFullLikeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<7.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.get_shape %[[ARG0]] : tensor<?x?xf32> -> tensor<2xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.broadcast_to %[[V0]], %[[V1]] : (tensor<f32>, tensor<2xui32>) -> tensor<?x?xf32>
@@ -3893,7 +3893,7 @@ class TestGatherIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "idx"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xsi32> {coreai.name = "idx"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.gather_along_axis %[[ARG0]] at %[[ARG1]] along %[[V0]] : (tensor<2x3xf32>, tensor<2x3xsi32>, tensor<si32>) to tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xf32>
@@ -3920,7 +3920,7 @@ class TestGatherIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xsi32> {coreai.name = "idx"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xsi32> {coreai.name = "idx"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.gather_along_axis %[[ARG0]] at %[[ARG1]] along %[[V0]] : (tensor<?x3xf32>, tensor<?x3xsi32>, tensor<si32>) to tensor<?x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x3xf32>
@@ -3941,7 +3941,7 @@ class TestGeScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_greater %[[V0]], %[[ARG0]] : (tensor<f32>, tensor<2x3xf32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.not %[[V1]] : tensor<2x3xi1> -> tensor<2x3xi1>
@@ -3966,7 +3966,7 @@ class TestGeScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_greater %[[V0]], %[[ARG0]] : (tensor<f32>, tensor<?x?xf32>) -> tensor<?x?xi1>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.not %[[V1]] : tensor<?x?xi1> -> tensor<?x?xi1>
@@ -3988,7 +3988,7 @@ class TestGeTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_greater %[[ARG1]], %[[ARG0]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.not %[[V0]] : tensor<2x3xi1> -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xi1>
@@ -4015,7 +4015,7 @@ class TestGeTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_greater %[[ARG1]], %[[ARG0]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xi1>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.not %[[V0]] : tensor<?x3xi1> -> tensor<?x3xi1>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x3xi1>
@@ -4036,7 +4036,7 @@ class TestGeluIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.gelu %[[ARG0]] : tensor<2x3xf32> -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -4059,7 +4059,7 @@ class TestGeluIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.gelu %[[ARG0]] : tensor<?x?xf32> -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
@@ -4077,7 +4077,7 @@ class TestGeluIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.gelu %[[ARG0]] approximate = <tanh> : tensor<2x3xf32> -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -4100,7 +4100,7 @@ class TestGeluIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.gelu %[[ARG0]] approximate = <tanh> : tensor<?x?xf32> -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
@@ -4121,11 +4121,11 @@ class TestGetitemIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<4x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<4x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0> : tensor<si32>
-                // CHECK-NEXT:     %[[SPLIT:.*]]:2 = coreai.split %[[ARG0]], %[[V0]], %[[V1]] : (tensor<4x3xf32>, tensor<2xui32>, tensor<si32>) -> (tensor<2x3xf32>, tensor<2x3xf32>)
-                // CHECK-NEXT:     %[[ADD:.*]] = coreai.decomposable.broadcasting_add %[[SPLIT]]#0, %[[SPLIT]]#1 : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+                // CHECK-NEXT:     %[[SPLIT:[0-9a-z_]+]]{{(:2|, %[0-9a-z_]+)}} = coreai.split %[[ARG0]], %[[V0]], %[[V1]] : (tensor<4x3xf32>, tensor<2xui32>, tensor<si32>) -> (tensor<2x3xf32>, tensor<2x3xf32>)
+                // CHECK-NEXT:     %[[ADD:.*]] = coreai.decomposable.broadcasting_add %[[SPLIT]]{{(#0)?}}, %[[SPLIT]]{{(#1|_1)}} : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[ADD]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -4148,11 +4148,11 @@ class TestGetitemIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<4x?xf32> {coreai.name = "x"}) -> (tensor<2x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<4x?xf32> {coreai.name = "x"}) -> (tensor<2x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<0> : tensor<si32>
-                // CHECK-NEXT:     %[[SPLIT:.*]]:2 = coreai.split %[[ARG0]], %[[V0]], %[[V1]] : (tensor<4x?xf32>, tensor<2xui32>, tensor<si32>) -> (tensor<2x?xf32>, tensor<2x?xf32>)
-                // CHECK-NEXT:     %[[ADD:.*]] = coreai.decomposable.broadcasting_add %[[SPLIT]]#0, %[[SPLIT]]#1 : (tensor<2x?xf32>, tensor<2x?xf32>) -> tensor<2x?xf32>
+                // CHECK-NEXT:     %[[SPLIT:[0-9a-z_]+]]{{(:2|, %[0-9a-z_]+)}} = coreai.split %[[ARG0]], %[[V0]], %[[V1]] : (tensor<4x?xf32>, tensor<2xui32>, tensor<si32>) -> (tensor<2x?xf32>, tensor<2x?xf32>)
+                // CHECK-NEXT:     %[[ADD:.*]] = coreai.decomposable.broadcasting_add %[[SPLIT]]{{(#0)?}}, %[[SPLIT]]{{(#1|_1)}} : (tensor<2x?xf32>, tensor<2x?xf32>) -> tensor<2x?xf32>
                 // CHECK-NEXT:     coreai.output %[[ADD]] : tensor<2x?xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -4171,7 +4171,7 @@ class TestGtScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_greater %[[ARG0]], %[[V0]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<2x3xi1>
@@ -4195,7 +4195,7 @@ class TestGtScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V1:.*]] = coreai.decomposable.broadcasting_greater %[[ARG0]], %[[V0]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xi1>
                 // CHECK-NEXT:     coreai.output %[[V1]] : tensor<?x?xi1>
@@ -4216,7 +4216,7 @@ class TestGtTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_greater %[[ARG0]], %[[ARG1]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<2x3xi1>
                 // CHECK-NEXT:   }
@@ -4242,7 +4242,7 @@ class TestGtTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[ARG0:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[ARG1:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0:.*]] = coreai.decomposable.broadcasting_greater %[[ARG0]], %[[ARG1]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xi1>
                 // CHECK-NEXT:     coreai.output %[[V0]] : tensor<?x3xi1>
                 // CHECK-NEXT:   }
@@ -4266,7 +4266,7 @@ class TestHardsigmoidIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @hard_sigmoid_{{.*}}(%[[INPUT:.*]]: tensor<2x3xf32> {coreai.name = "input"}) -> tensor<2x3xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"hard_sigmoid" = {input_names = ["input"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "hard_sigmoid"} {
+                // CHECK-NEXT:   coreai.graph private noinline @hard_sigmoid_{{.*}}(%[[INPUT:.*]]: tensor<2x3xf32> {coreai.name = "input"}) -> tensor<2x3xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"hard_sigmoid" = {input_names = ["input"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "hard_sigmoid"} {
                 // CHECK-NEXT:     %[[C3:.*]] = coreai.constant dense<3.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[C0:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[C6:.*]] = coreai.constant dense<6.000000e+00> : tensor<f32>
@@ -4276,7 +4276,7 @@ class TestHardsigmoidIR:
                 // CHECK-NEXT:     %[[DIV:.*]] = coreai.decomposable.broadcasting_divide %[[MIN]], %[[C6]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[DIV]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.invoke @hard_sigmoid_{{.*}}(%[[X]])  : (tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -4300,7 +4300,7 @@ class TestHardsigmoidIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @hard_sigmoid_{{.*}}(%[[INPUT:.*]]: tensor<?x?xf32> {coreai.name = "input"}) -> tensor<?x?xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"hard_sigmoid" = {input_names = ["input"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "hard_sigmoid"} {
+                // CHECK-NEXT:   coreai.graph private noinline @hard_sigmoid_{{.*}}(%[[INPUT:.*]]: tensor<?x?xf32> {coreai.name = "input"}) -> tensor<?x?xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"hard_sigmoid" = {input_names = ["input"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "hard_sigmoid"} {
                 // CHECK-NEXT:     %[[C3:.*]] = coreai.constant dense<3.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[C0:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[C6:.*]] = coreai.constant dense<6.000000e+00> : tensor<f32>
@@ -4310,7 +4310,7 @@ class TestHardsigmoidIR:
                 // CHECK-NEXT:     %[[DIV:.*]] = coreai.decomposable.broadcasting_divide %[[MIN]], %[[C6]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[DIV]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.invoke @hard_sigmoid_{{.*}}(%[[X]])  : (tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
@@ -4334,10 +4334,10 @@ class TestHardswishIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @hard_sigmoid_{{.*}}(%[[INPUT:.*]]: tensor<2x3xf32> {coreai.name = "input"}) -> tensor<2x3xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"hard_sigmoid" = {input_names = ["input"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "hard_sigmoid"} {
+                // CHECK-NEXT:   coreai.graph private noinline @hard_sigmoid_{{.*}}(%[[INPUT:.*]]: tensor<2x3xf32> {coreai.name = "input"}) -> tensor<2x3xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"hard_sigmoid" = {input_names = ["input"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "hard_sigmoid"} {
                 // CHECK:           coreai.output %{{.*}} : tensor<2x3xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[H:.*]] = coreai.invoke @hard_sigmoid_{{.*}}(%[[X]])  : (tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[H]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
@@ -4362,10 +4362,10 @@ class TestHardswishIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @hard_sigmoid_{{.*}}(%[[INPUT:.*]]: tensor<?x?xf32> {coreai.name = "input"}) -> tensor<?x?xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"hard_sigmoid" = {input_names = ["input"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "hard_sigmoid"} {
+                // CHECK-NEXT:   coreai.graph private noinline @hard_sigmoid_{{.*}}(%[[INPUT:.*]]: tensor<?x?xf32> {coreai.name = "input"}) -> tensor<?x?xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"hard_sigmoid" = {input_names = ["input"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "hard_sigmoid"} {
                 // CHECK:           coreai.output %{{.*}} : tensor<?x?xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[H:.*]] = coreai.invoke @hard_sigmoid_{{.*}}(%[[X]])  : (tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[H]] : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?xf32>
@@ -4386,7 +4386,7 @@ class TestHardtanhIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[CMIN:.*]] = coreai.constant dense<-1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[CMAX:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[MAX:.*]] = coreai.decomposable.broadcasting_maximum %[[X]], %[[CMIN]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
@@ -4412,7 +4412,7 @@ class TestHardtanhIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[CMIN:.*]] = coreai.constant dense<-1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[CMAX:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[MAX:.*]] = coreai.decomposable.broadcasting_maximum %[[X]], %[[CMIN]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
@@ -4442,7 +4442,7 @@ class TestIndexPutIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<5x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2xsi32> {coreai.name = "idx"}, %[[VALS:.*]]: tensor<2x3xf32> {coreai.name = "vals"}) -> (tensor<5x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<5x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2xsi32> {coreai.name = "idx"}, %[[VALS:.*]]: tensor<2x3xf32> {coreai.name = "vals"}) -> (tensor<5x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[2, 1]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[RESHAPED:.*]] = coreai.reshape %[[IDX]], %[[SHAPE]] : (tensor<2xsi32>, tensor<2xui32>) -> tensor<2x1xsi32>
                 // CHECK-NEXT:     %[[CAST:.*]] = coreai.cast %[[RESHAPED]] : tensor<2x1xsi32> to tensor<?x1xsi32>
@@ -4477,7 +4477,7 @@ class TestIndexPutIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2xsi32> {coreai.name = "idx"}, %[[VALS:.*]]: tensor<2x3xf32> {coreai.name = "vals"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2xsi32> {coreai.name = "idx"}, %[[VALS:.*]]: tensor<2x3xf32> {coreai.name = "vals"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[2, 1]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[RESHAPED:.*]] = coreai.reshape %[[IDX]], %[[SHAPE]] : (tensor<2xsi32>, tensor<2xui32>) -> tensor<2x1xsi32>
                 // CHECK-NEXT:     %[[CAST:.*]] = coreai.cast %[[RESHAPED]] : tensor<2x1xsi32> to tensor<?x1xsi32>
@@ -4507,7 +4507,7 @@ class TestIndexSelectIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<5x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<3xsi32> {coreai.name = "idx"}) -> (tensor<3x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<5x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<3xsi32> {coreai.name = "idx"}) -> (tensor<3x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[AXES:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[SIZE:.*]] = coreai.constant dense<3> : tensor<1xui32>
@@ -4538,7 +4538,7 @@ class TestIndexSelectIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<5x?xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2xsi32> {coreai.name = "idx"}) -> (tensor<2x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<5x?xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2xsi32> {coreai.name = "idx"}) -> (tensor<2x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[END:.*]] = coreai.constant dense<2> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[START:.*]] = coreai.constant dense<1> : tensor<1xsi32>
@@ -4570,7 +4570,7 @@ class TestIndexTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<5x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<3xsi32> {coreai.name = "idx"}) -> (tensor<3x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<5x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<3xsi32> {coreai.name = "idx"}) -> (tensor<3x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[3, 1]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[RESHAPED:.*]] = coreai.reshape %[[IDX]], %[[SHAPE]] : (tensor<3xsi32>, tensor<2xui32>) -> tensor<3x1xsi32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.gather_nd %[[X]] at %[[RESHAPED]] : (tensor<5x3xf32>, tensor<3x1xsi32>) to tensor<3x3xf32>
@@ -4597,7 +4597,7 @@ class TestIndexTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<3xsi32> {coreai.name = "idx"}) -> (tensor<3x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<3xsi32> {coreai.name = "idx"}) -> (tensor<3x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[3, 1]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[RESHAPED:.*]] = coreai.reshape %[[IDX]], %[[SHAPE]] : (tensor<3xsi32>, tensor<2xui32>) -> tensor<3x1xsi32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.gather_nd %[[X]] at %[[RESHAPED]] : (tensor<?x3xf32>, tensor<3x1xsi32>) to tensor<3x3xf32>
@@ -4627,10 +4627,10 @@ class TestInstanceNormIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @instance_norm_{{.*}}(%[[INPUT:.*]]: tensor<2x3x4x4xf32> {coreai.name = "input"}, %[[GAMMA:.*]]: tensor<3x1x1xf32> {coreai.name = "gamma"}, %[[BETA:.*]]: tensor<3x1x1xf32> {coreai.name = "beta"}) -> tensor<2x3x4x4xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"instance_norm" = {input_names = ["input", "gamma", "beta"], op_attrs = {eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "instance_norm"} {
+                // CHECK-NEXT:   coreai.graph private noinline @instance_norm_{{.*}}(%[[INPUT:.*]]: tensor<2x3x4x4xf32> {coreai.name = "input"}, %[[GAMMA:.*]]: tensor<3x1x1xf32> {coreai.name = "gamma"}, %[[BETA:.*]]: tensor<3x1x1xf32> {coreai.name = "beta"}) -> tensor<2x3x4x4xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"instance_norm" = {input_names = ["input", "gamma", "beta"], op_attrs = {eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "instance_norm"} {
                 // CHECK:           coreai.output %{{.*}} : tensor<2x3x4x4xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x4x4xf32> {coreai.name = "x"}) -> (tensor<2x3x4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x4x4xf32> {coreai.name = "x"}) -> (tensor<2x3x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[W:.*]] = coreai.constant dense<1.000000e+00> : tensor<3x1x1xf32>
                 // CHECK-NEXT:     %[[B:.*]] = coreai.constant dense<0.000000e+00> : tensor<3x1x1xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.invoke @instance_norm_{{.*}}(%[[X]], %[[W]], %[[B]])  : (tensor<2x3x4x4xf32>, tensor<3x1x1xf32>, tensor<3x1x1xf32>) -> tensor<2x3x4x4xf32>
@@ -4660,10 +4660,10 @@ class TestInstanceNormIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @instance_norm_{{.*}}(%[[INPUT:.*]]: tensor<?x3x4x4xf32> {coreai.name = "input"}, %[[GAMMA:.*]]: tensor<3x1x1xf32> {coreai.name = "gamma"}, %[[BETA:.*]]: tensor<3x1x1xf32> {coreai.name = "beta"}) -> tensor<?x3x4x4xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"instance_norm" = {input_names = ["input", "gamma", "beta"], op_attrs = {eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "instance_norm"} {
+                // CHECK-NEXT:   coreai.graph private noinline @instance_norm_{{.*}}(%[[INPUT:.*]]: tensor<?x3x4x4xf32> {coreai.name = "input"}, %[[GAMMA:.*]]: tensor<3x1x1xf32> {coreai.name = "gamma"}, %[[BETA:.*]]: tensor<3x1x1xf32> {coreai.name = "beta"}) -> tensor<?x3x4x4xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"instance_norm" = {input_names = ["input", "gamma", "beta"], op_attrs = {eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "instance_norm"} {
                 // CHECK:           coreai.output %{{.*}} : tensor<?x3x4x4xf32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3x4x4xf32> {coreai.name = "x"}) -> (tensor<?x3x4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3x4x4xf32> {coreai.name = "x"}) -> (tensor<?x3x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[W:.*]] = coreai.constant dense<1.000000e+00> : tensor<3x1x1xf32>
                 // CHECK-NEXT:     %[[B:.*]] = coreai.constant dense<0.000000e+00> : tensor<3x1x1xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.invoke @instance_norm_{{.*}}(%[[X]], %[[W]], %[[B]])  : (tensor<?x3x4x4xf32>, tensor<3x1x1xf32>, tensor<3x1x1xf32>) -> tensor<?x3x4x4xf32>
@@ -4685,7 +4685,7 @@ class TestIsinfIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[NINF:.*]] = coreai.constant dense<0xFF800000> : tensor<f32>
                 // CHECK-NEXT:     %[[PINF:.*]] = coreai.constant dense<0x7F800000> : tensor<f32>
                 // CHECK-NEXT:     %[[EQP:.*]] = coreai.decomposable.broadcasting_equal %[[X]], %[[PINF]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
@@ -4712,7 +4712,7 @@ class TestIsinfIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[NINF:.*]] = coreai.constant dense<0xFF800000> : tensor<f32>
                 // CHECK-NEXT:     %[[PINF:.*]] = coreai.constant dense<0x7F800000> : tensor<f32>
                 // CHECK-NEXT:     %[[EQP:.*]] = coreai.decomposable.broadcasting_equal %[[X]], %[[PINF]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xi1>
@@ -4736,7 +4736,7 @@ class TestLeScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[GT:.*]] = coreai.decomposable.broadcasting_greater %[[X]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.not %[[GT]] : tensor<2x3xi1> -> tensor<2x3xi1>
@@ -4761,7 +4761,7 @@ class TestLeScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[GT:.*]] = coreai.decomposable.broadcasting_greater %[[X]], %[[C]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.not %[[GT]] : tensor<?x?xi1> -> tensor<?x?xi1>
@@ -4783,7 +4783,7 @@ class TestLeTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[GT:.*]] = coreai.decomposable.broadcasting_greater %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.not %[[GT]] : tensor<2x3xi1> -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xi1>
@@ -4810,7 +4810,7 @@ class TestLeTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[GT:.*]] = coreai.decomposable.broadcasting_greater %[[X]], %[[Y]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.not %[[GT]] : tensor<?x3xi1> -> tensor<?x3xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x3xi1>
@@ -4831,7 +4831,7 @@ class TestLeakyReluIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[SLOPE:.*]] = coreai.constant dense<1.000000e-01> : tensor<f32>
                 // CHECK-NEXT:     %[[POS:.*]] = coreai.decomposable.broadcasting_maximum %[[X]], %[[ZERO]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
@@ -4859,7 +4859,7 @@ class TestLeakyReluIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[SLOPE:.*]] = coreai.constant dense<1.000000e-01> : tensor<f32>
                 // CHECK-NEXT:     %[[POS:.*]] = coreai.decomposable.broadcasting_maximum %[[X]], %[[ZERO]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
@@ -4884,7 +4884,7 @@ class TestLiftFreshCopyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     coreai.output %[[X]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -4906,7 +4906,7 @@ class TestLiftFreshCopyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     coreai.output %[[X]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
@@ -4925,10 +4925,10 @@ class TestLinalgVectorNormIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @linalg_vector_norm_{{.*}}(%[[INPUT:.*]]: tensor<2x3xf32> {coreai.name = "input"}) -> tensor<f32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"linalg_vector_norm" = {input_names = ["input"], op_attrs = {axes = [0 : si64, 1 : si64], keep_dim = false, ord = 2.000000e+00 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "linalg_vector_norm"} {
+                // CHECK-NEXT:   coreai.graph private noinline @linalg_vector_norm_{{.*}}(%[[INPUT:.*]]: tensor<2x3xf32> {coreai.name = "input"}) -> tensor<f32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"linalg_vector_norm" = {input_names = ["input"], op_attrs = {axes = [0 : si64, 1 : si64], keep_dim = false, ord = 2.000000e+00 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "linalg_vector_norm"} {
                 // CHECK:           coreai.output %{{.*}} : tensor<f32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.invoke @linalg_vector_norm_{{.*}}(%[[X]])  : (tensor<2x3xf32>) -> tensor<f32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<f32>
                 // CHECK-NEXT:   }
@@ -4951,10 +4951,10 @@ class TestLinalgVectorNormIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @linalg_vector_norm_{{.*}}(%[[INPUT:.*]]: tensor<?x?xf32> {coreai.name = "input"}) -> tensor<f32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"linalg_vector_norm" = {input_names = ["input"], op_attrs = {axes = [0 : si64, 1 : si64], keep_dim = false, ord = 2.000000e+00 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "linalg_vector_norm"} {
+                // CHECK-NEXT:   coreai.graph private noinline @linalg_vector_norm_{{.*}}(%[[INPUT:.*]]: tensor<?x?xf32> {coreai.name = "input"}) -> tensor<f32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"linalg_vector_norm" = {input_names = ["input"], op_attrs = {axes = [0 : si64, 1 : si64], keep_dim = false, ord = 2.000000e+00 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "linalg_vector_norm"} {
                 // CHECK:           coreai.output %{{.*}} : tensor<f32>
                 // CHECK-NEXT:   }
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.invoke @linalg_vector_norm_{{.*}}(%[[X]])  : (tensor<?x?xf32>) -> tensor<f32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<f32>
                 // CHECK-NEXT:   }
@@ -4974,7 +4974,7 @@ class TestLog10IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.30258512> : tensor<f32>
                 // CHECK-NEXT:     %[[L:.*]] = coreai.log %[[X]] : tensor<2x3xf32> -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_divide %[[L]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
@@ -4999,7 +4999,7 @@ class TestLog10IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.30258512> : tensor<f32>
                 // CHECK-NEXT:     %[[L:.*]] = coreai.log %[[X]] : tensor<?x?xf32> -> tensor<?x?xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_divide %[[L]], %[[C]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
@@ -5021,7 +5021,7 @@ class TestLog1pIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[ADD:.*]] = coreai.decomposable.broadcasting_add %[[X]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.log %[[ADD]] : tensor<2x3xf32> -> tensor<2x3xf32>
@@ -5046,7 +5046,7 @@ class TestLog1pIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[ADD:.*]] = coreai.decomposable.broadcasting_add %[[X]], %[[C]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.log %[[ADD]] : tensor<?x?xf32> -> tensor<?x?xf32>
@@ -5068,7 +5068,7 @@ class TestLog2IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<0.693147182> : tensor<f32>
                 // CHECK-NEXT:     %[[L:.*]] = coreai.log %[[X]] : tensor<2x3xf32> -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_divide %[[L]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
@@ -5093,7 +5093,7 @@ class TestLog2IR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<0.693147182> : tensor<f32>
                 // CHECK-NEXT:     %[[L:.*]] = coreai.log %[[X]] : tensor<?x?xf32> -> tensor<?x?xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_divide %[[L]], %[[C]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
@@ -5119,7 +5119,7 @@ class TestLogicalAndIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2xi1> {coreai.name = "x"}, %[[Y:.*]]: tensor<2xi1> {coreai.name = "y"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2xi1> {coreai.name = "x"}, %[[Y:.*]]: tensor<2xi1> {coreai.name = "y"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_and %[[X]], %[[Y]] : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2xi1>
                 // CHECK-NEXT:   }
@@ -5137,7 +5137,7 @@ class TestLogicalAndIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[XB:.*]] = coreai.cast %[[X]] : tensor<2x3xf32> to tensor<2x3xi1>
                 // CHECK-NEXT:     %[[YB:.*]] = coreai.cast %[[Y]] : tensor<2x3xf32> to tensor<2x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_and %[[XB]], %[[YB]] : (tensor<2x3xi1>, tensor<2x3xi1>) -> tensor<2x3xi1>
@@ -5165,7 +5165,7 @@ class TestLogicalAndIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[XB:.*]] = coreai.cast %[[X]] : tensor<?x3xf32> to tensor<?x3xi1>
                 // CHECK-NEXT:     %[[YB:.*]] = coreai.cast %[[Y]] : tensor<?x3xf32> to tensor<?x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_and %[[XB]], %[[YB]] : (tensor<?x3xi1>, tensor<?x3xi1>) -> tensor<?x3xi1>
@@ -5187,7 +5187,7 @@ class TestLogicalNotIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<3xi1> {coreai.name = "x"}) -> (tensor<3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<3xi1> {coreai.name = "x"}) -> (tensor<3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.not %[[X]] : tensor<3xi1> -> tensor<3xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<3xi1>
                 // CHECK-NEXT:   }
@@ -5205,7 +5205,7 @@ class TestLogicalNotIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[NEQ:.*]] = coreai.decomposable.broadcasting_not_equal %[[X]], %[[ZERO]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.not %[[NEQ]] : tensor<2x3xi1> -> tensor<2x3xi1>
@@ -5230,7 +5230,7 @@ class TestLogicalNotIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[NEQ:.*]] = coreai.decomposable.broadcasting_not_equal %[[X]], %[[ZERO]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.not %[[NEQ]] : tensor<?x?xi1> -> tensor<?x?xi1>
@@ -5256,7 +5256,7 @@ class TestLogicalOrIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2xi1> {coreai.name = "x"}, %[[Y:.*]]: tensor<2xi1> {coreai.name = "y"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2xi1> {coreai.name = "x"}, %[[Y:.*]]: tensor<2xi1> {coreai.name = "y"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_or %[[X]], %[[Y]] : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2xi1>
                 // CHECK-NEXT:   }
@@ -5274,7 +5274,7 @@ class TestLogicalOrIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[XB:.*]] = coreai.cast %[[X]] : tensor<2x3xf32> to tensor<2x3xi1>
                 // CHECK-NEXT:     %[[YB:.*]] = coreai.cast %[[Y]] : tensor<2x3xf32> to tensor<2x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_or %[[XB]], %[[YB]] : (tensor<2x3xi1>, tensor<2x3xi1>) -> tensor<2x3xi1>
@@ -5302,7 +5302,7 @@ class TestLogicalOrIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[XB:.*]] = coreai.cast %[[X]] : tensor<?x3xf32> to tensor<?x3xi1>
                 // CHECK-NEXT:     %[[YB:.*]] = coreai.cast %[[Y]] : tensor<?x3xf32> to tensor<?x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_or %[[XB]], %[[YB]] : (tensor<?x3xi1>, tensor<?x3xi1>) -> tensor<?x3xi1>
@@ -5328,7 +5328,7 @@ class TestLogicalXorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2xi1> {coreai.name = "x"}, %[[Y:.*]]: tensor<2xi1> {coreai.name = "y"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2xi1> {coreai.name = "x"}, %[[Y:.*]]: tensor<2xi1> {coreai.name = "y"}) -> (tensor<2xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_xor %[[X]], %[[Y]] : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2xi1>
                 // CHECK-NEXT:   }
@@ -5346,7 +5346,7 @@ class TestLogicalXorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[XB:.*]] = coreai.cast %[[X]] : tensor<2x3xf32> to tensor<2x3xi1>
                 // CHECK-NEXT:     %[[YB:.*]] = coreai.cast %[[Y]] : tensor<2x3xf32> to tensor<2x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_xor %[[XB]], %[[YB]] : (tensor<2x3xi1>, tensor<2x3xi1>) -> tensor<2x3xi1>
@@ -5374,7 +5374,7 @@ class TestLogicalXorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[XB:.*]] = coreai.cast %[[X]] : tensor<?x3xf32> to tensor<?x3xi1>
                 // CHECK-NEXT:     %[[YB:.*]] = coreai.cast %[[Y]] : tensor<?x3xf32> to tensor<?x3xi1>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_xor %[[XB]], %[[YB]] : (tensor<?x3xi1>, tensor<?x3xi1>) -> tensor<?x3xi1>
@@ -5396,7 +5396,7 @@ class TestLtScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_greater %[[C]], %[[X]] : (tensor<f32>, tensor<2x3xf32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xi1>
@@ -5420,7 +5420,7 @@ class TestLtScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_greater %[[C]], %[[X]] : (tensor<f32>, tensor<?x?xf32>) -> tensor<?x?xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?xi1>
@@ -5441,7 +5441,7 @@ class TestLtTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_greater %[[Y]], %[[X]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xi1>
                 // CHECK-NEXT:   }
@@ -5467,7 +5467,7 @@ class TestLtTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_greater %[[Y]], %[[X]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x3xi1>
                 // CHECK-NEXT:   }
@@ -5487,7 +5487,7 @@ class TestMaxDefaultIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[AXES:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_max %[[X]], %[[AXES]] : (tensor<2x3xf32>, tensor<2xsi32>) -> tensor<1x1xf32>
@@ -5513,7 +5513,7 @@ class TestMaxDefaultIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[AXES:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_max %[[X]], %[[AXES]] : (tensor<?x?xf32>, tensor<2xsi32>) -> tensor<1x1xf32>
@@ -5536,7 +5536,7 @@ class TestMaxDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}, tensor<2xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}, tensor<2xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
@@ -5566,7 +5566,7 @@ class TestMaxDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xf32> {coreai.name = "{{.*}}"}, tensor<?xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xf32> {coreai.name = "{{.*}}"}, tensor<?xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_max %[[X]], %[[AXIS]] : (tensor<?x?xf32>, tensor<1xsi32>) -> tensor<?x1xf32>
@@ -5590,7 +5590,7 @@ class TestMaxDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x1xf32> {coreai.name = "{{.*}}"}, tensor<2x1xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x1xf32> {coreai.name = "{{.*}}"}, tensor<2x1xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_max %[[X]], %[[AXIS]] : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<2x1xf32>
@@ -5621,7 +5621,7 @@ class TestMaxPool2dWithIndicesIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x2x2xf32> {coreai.name = "{{.*}}"}, tensor<1x3x2x2xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x2x2xf32> {coreai.name = "{{.*}}"}, tensor<1x3x2x2xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0> : tensor<1x3x2x2xsi32>
                 // CHECK-NEXT:     %[[CEIL:.*]] = coreai.constant dense<false> : tensor<i1>
                 // CHECK-NEXT:     %[[DIL:.*]] = coreai.constant dense<1> : tensor<2xui32>
@@ -5645,7 +5645,7 @@ class TestMaximumIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_maximum %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -5671,7 +5671,7 @@ class TestMaximumIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_maximum %[[X]], %[[Y]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x3xf32>
                 // CHECK-NEXT:   }
@@ -5691,7 +5691,7 @@ class TestMeanDefaultIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[AXES:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_mean %[[X]], %[[AXES]] : (tensor<2x3xf32>, tensor<2xsi32>) -> tensor<1x1xf32>
@@ -5714,7 +5714,7 @@ class TestMeanDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_mean %[[X]], %[[AXIS]] : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<2x1xf32>
@@ -5740,7 +5740,7 @@ class TestMeanDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_mean %[[X]], %[[AXIS]] : (tensor<?x?xf32>, tensor<1xsi32>) -> tensor<?x1xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.shrink_dims %[[REDUCE]], %[[AXIS]] : (tensor<?x1xf32>, tensor<1xsi32>) to tensor<?xf32>
@@ -5760,7 +5760,7 @@ class TestMeanDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x1xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x1xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.reduce_mean %[[X]], %[[AXIS]] : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<2x1xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x1xf32>
@@ -5781,7 +5781,7 @@ class TestMinDefaultIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[AXES:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_min %[[X]], %[[AXES]] : (tensor<2x3xf32>, tensor<2xsi32>) -> tensor<1x1xf32>
@@ -5804,7 +5804,7 @@ class TestMinDimIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}, tensor<2xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}, tensor<2xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<1> : tensor<si32>
                 // CHECK-NEXT:     %[[NEG1:.*]] = coreai.constant dense<-1.000000e+00> : tensor<f32>
@@ -5833,7 +5833,7 @@ class TestMinimumIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_minimum %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -5859,7 +5859,7 @@ class TestMinimumIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x3xf32> {coreai.name = "y"}) -> (tensor<?x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_minimum %[[X]], %[[Y]] : (tensor<?x3xf32>, tensor<?x3xf32>) -> tensor<?x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x3xf32>
                 // CHECK-NEXT:   }
@@ -5879,7 +5879,7 @@ class TestMmIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<3x4xf32> {coreai.name = "y"}) -> (tensor<2x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<3x4xf32> {coreai.name = "y"}) -> (tensor<2x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_batch_matmul %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<3x4xf32>) -> tensor<2x4xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x4xf32>
                 // CHECK-NEXT:   }
@@ -5905,7 +5905,7 @@ class TestMmIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x?xf32> {coreai.name = "y"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x?xf32> {coreai.name = "y"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_batch_matmul %[[X]], %[[Y]] : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
@@ -5925,7 +5925,7 @@ class TestMulIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -5943,7 +5943,7 @@ class TestMulIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
@@ -5969,7 +5969,7 @@ class TestMulIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x?xf32> {coreai.name = "y"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<?x?xf32> {coreai.name = "y"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[Y]] : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
@@ -5993,7 +5993,7 @@ class TestNativeGroupNormIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @group_norm_{{.*}}(%[[INPUT:.*]]: tensor<1x4x8x8xf32> {coreai.name = "input"}, %[[WEIGHT:.*]]: tensor<4xf32> {coreai.name = "weight"}, %[[BIAS:.*]]: tensor<4xf32> {coreai.name = "bias"}) -> tensor<1x4x8x8xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"group_norm" = {input_names = ["input", "weight", "bias"], op_attrs = {eps = 9.99999974E-6 : f32, num_channels = 4 : si64, num_groups = 2 : si64, version = 1 : si64}, output_names = ["output"]}>, template_op = "group_norm"} {
+                // CHECK-NEXT:   coreai.graph private noinline @group_norm_{{.*}}(%[[INPUT:.*]]: tensor<1x4x8x8xf32> {coreai.name = "input"}, %[[WEIGHT:.*]]: tensor<4xf32> {coreai.name = "weight"}, %[[BIAS:.*]]: tensor<4xf32> {coreai.name = "bias"}) -> tensor<1x4x8x8xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"group_norm" = {input_names = ["input", "weight", "bias"], op_attrs = {eps = 9.99999974E-6 : f32, num_channels = 4 : si64, num_groups = 2 : si64, version = 1 : si64}, output_names = ["output"]}>, template_op = "group_norm"} {
                 // CHECK:           coreai.reduce_mean
                 // CHECK:           coreai.decomposable.broadcasting_sub
                 // CHECK:           coreai.decomposable.broadcasting_mul
@@ -6005,7 +6005,7 @@ class TestNativeGroupNormIR:
                 // CHECK:           coreai.decomposable.broadcasting_add
                 // CHECK:           coreai.output
                 // CHECK-NEXT:    }
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<1x4x8x8xf32> {coreai.name = "x"}) -> (tensor<1x4x8x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<1x4x8x8xf32> {coreai.name = "x"}) -> (tensor<1x4x8x8xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:      %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<4xf32>
                 // CHECK-NEXT:      %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<4xf32>
                 // CHECK-NEXT:      %[[R:.*]] = coreai.invoke @group_norm_{{.*}}(%[[X]], %[[ONE]], %[[ZERO]])  : (tensor<1x4x8x8xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<1x4x8x8xf32>
@@ -6031,7 +6031,7 @@ class TestNativeLayerNormIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @layer_norm_{{.*}}(%[[INPUT:.*]]: tensor<2x3xf32> {coreai.name = "input"}, %[[GAMMA:.*]]: tensor<3xf32> {coreai.name = "gamma"}, %[[BETA:.*]]: tensor<3xf32> {coreai.name = "beta"}) -> tensor<2x3xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"layer_norm" = {input_names = ["input", "gamma", "beta"], op_attrs = {axes = [1 : si64], eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "layer_norm"} {
+                // CHECK-NEXT:   coreai.graph private noinline @layer_norm_{{.*}}(%[[INPUT:.*]]: tensor<2x3xf32> {coreai.name = "input"}, %[[GAMMA:.*]]: tensor<3xf32> {coreai.name = "gamma"}, %[[BETA:.*]]: tensor<3xf32> {coreai.name = "beta"}) -> tensor<2x3xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"layer_norm" = {input_names = ["input", "gamma", "beta"], op_attrs = {axes = [1 : si64], eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "layer_norm"} {
                 // CHECK:           coreai.reduce_mean
                 // CHECK:           coreai.decomposable.broadcasting_sub
                 // CHECK:           coreai.decomposable.broadcasting_mul
@@ -6043,7 +6043,7 @@ class TestNativeLayerNormIR:
                 // CHECK:           coreai.decomposable.broadcasting_add
                 // CHECK:           coreai.output
                 // CHECK-NEXT:    }
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:      %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<3xf32>
                 // CHECK-NEXT:      %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<3xf32>
                 // CHECK-NEXT:      %[[R:.*]] = coreai.invoke @layer_norm_{{.*}}(%[[X]], %[[ONE]], %[[ZERO]])  : (tensor<2x3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<2x3xf32>
@@ -6069,14 +6069,14 @@ class TestNativeLayerNormIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph private noinline @layer_norm_{{.*}}(%[[INPUT:.*]]: tensor<2x4x8xf32> {coreai.name = "input"}, %[[GAMMA:.*]]: tensor<4x8xf32> {coreai.name = "gamma"}, %[[BETA:.*]]: tensor<4x8xf32> {coreai.name = "beta"}) -> tensor<2x4x8xf32> attributes {__coreai_pure__, composite_decl = #coreai.composite_declaration<"layer_norm" = {input_names = ["input", "gamma", "beta"], op_attrs = {axes = [1 : si64, 2 : si64], eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "layer_norm"} {
+                // CHECK-NEXT:   coreai.graph private noinline @layer_norm_{{.*}}(%[[INPUT:.*]]: tensor<2x4x8xf32> {coreai.name = "input"}, %[[GAMMA:.*]]: tensor<4x8xf32> {coreai.name = "gamma"}, %[[BETA:.*]]: tensor<4x8xf32> {coreai.name = "beta"}) -> tensor<2x4x8xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"layer_norm" = {input_names = ["input", "gamma", "beta"], op_attrs = {axes = [1 : si64, 2 : si64], eps = 9.99999974E-6 : f32, version = 1 : si64}, output_names = ["output"]}>, template_op = "layer_norm"} {
                 // CHECK-NOT:       coreai.reshape
                 // CHECK:           %[[NORM:.*]] = coreai.decomposable.broadcasting_mul %{{.*}}, %{{.*}} : (tensor<2x4x8xf32>, tensor<2x1x1xf32>) -> tensor<2x4x8xf32>
                 // CHECK-NEXT:      %[[SCALED:.*]] = coreai.decomposable.broadcasting_mul %[[NORM]], %[[GAMMA]] : (tensor<2x4x8xf32>, tensor<4x8xf32>) -> tensor<2x4x8xf32>
                 // CHECK-NEXT:      %[[SHIFTED:.*]] = coreai.decomposable.broadcasting_add %[[SCALED]], %[[BETA]] : (tensor<2x4x8xf32>, tensor<4x8xf32>) -> tensor<2x4x8xf32>
                 // CHECK-NEXT:      coreai.output %[[SHIFTED]] : tensor<2x4x8xf32>
                 // CHECK-NEXT:    }
-                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x4x8xf32> {coreai.name = "x"}) -> (tensor<2x4x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:    coreai.graph @main(%[[X:.*]]: tensor<2x4x8xf32> {coreai.name = "x"}) -> (tensor<2x4x8xf32> {coreai.name = "{{.*}}"})
                 // CHECK-NEXT:      %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<4x8xf32>
                 // CHECK-NEXT:      %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<4x8xf32>
                 // CHECK-NEXT:      %[[R:.*]] = coreai.invoke @layer_norm_{{.*}}(%[[X]], %[[ONE]], %[[ZERO]])  : (tensor<2x4x8xf32>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<2x4x8xf32>
@@ -6098,7 +6098,7 @@ class TestNeScalarIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_not_equal %[[X]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xi1>
@@ -6119,7 +6119,7 @@ class TestNeTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xi1> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_not_equal %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xi1>
                 // CHECK-NEXT:   }
@@ -6139,7 +6139,7 @@ class TestNegIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[NEG1:.*]] = coreai.constant dense<-1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[NEG1]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
@@ -6163,7 +6163,7 @@ class TestNegIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[NEG1:.*]] = coreai.constant dense<-1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[NEG1]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?xf32>
@@ -6184,7 +6184,7 @@ class TestNonzeroIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<?x2xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<?x2xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.non_zero %[[X]] : tensor<2x3xf32> -> tensor<?x2xsi32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x2xsi32>
                 // CHECK-NEXT:   }
@@ -6204,7 +6204,7 @@ class TestNonzeroNumpyIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<?xsi32> {coreai.name = "{{.*}}"}, tensor<?xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<?xsi32> {coreai.name = "{{.*}}"}, tensor<?xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ONES:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[END1:.*]] = coreai.constant dense<[2147483647, 2]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[START1:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
@@ -6234,7 +6234,7 @@ class TestPermuteIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x4xf32> {coreai.name = "x"}) -> (tensor<3x2x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x4xf32> {coreai.name = "x"}) -> (tensor<3x2x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[PERM:.*]] = coreai.constant dense<[1, 0, 2]> : tensor<3xui32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.transpose %[[X]], %[[PERM]] : (tensor<2x3x4xf32>, tensor<3xui32>) -> tensor<3x2x4xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<3x2x4xf32>
@@ -6258,7 +6258,7 @@ class TestPermuteIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?x?xf32> {coreai.name = "x"}) -> (tensor<?x?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?x?xf32> {coreai.name = "x"}) -> (tensor<?x?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[PERM:.*]] = coreai.constant dense<[1, 0, 2]> : tensor<3xui32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.transpose %[[X]], %[[PERM]] : (tensor<?x?x?xf32>, tensor<3xui32>) -> tensor<?x?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?x?xf32>
@@ -6283,7 +6283,7 @@ class TestPixelShuffleIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x4x2x2xf32> {coreai.name = "x"}) -> (tensor<1x1x4x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x4x2x2xf32> {coreai.name = "x"}) -> (tensor<1x1x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[OUT:.*]] = coreai.constant dense<[1, 1, 4, 4]> : tensor<4xui32>
                 // CHECK-NEXT:     %[[PERM:.*]] = coreai.constant dense<[2, 0, 3, 1]> : tensor<4xui32>
                 // CHECK-NEXT:     %[[INNER:.*]] = coreai.constant dense<2> : tensor<4xui32>
@@ -6308,7 +6308,7 @@ class TestPowIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_pow %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -6326,7 +6326,7 @@ class TestPowIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_pow %[[X]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
@@ -6345,7 +6345,7 @@ class TestPowIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_pow %[[C]], %[[X]] : (tensor<f32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
@@ -6366,7 +6366,7 @@ class TestProdDefaultIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<f32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<> : tensor<0xui32>
                 // CHECK-NEXT:     %[[AXES:.*]] = coreai.constant dense<[0, 1]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_product %[[X]], %[[AXES]] : (tensor<2x3xf32>, tensor<2xsi32>) -> tensor<1x1xf32>
@@ -6389,7 +6389,7 @@ class TestProdDimIntIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_product %[[X]], %[[AXIS]] : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<2x1xf32>
@@ -6412,7 +6412,7 @@ class TestReciprocalIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_divide %[[ONE]], %[[X]] : (tensor<f32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
@@ -6436,7 +6436,7 @@ class TestReciprocalIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_divide %[[ONE]], %[[X]] : (tensor<f32>, tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?xf32>
@@ -6457,7 +6457,7 @@ class TestReluIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.relu %[[X]] : (tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -6480,7 +6480,7 @@ class TestReluIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.relu %[[X]] : (tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
@@ -6504,7 +6504,7 @@ class TestRemainderIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[FD:.*]] = coreai.decomposable.broadcasting_floor_divide %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[MUL:.*]] = coreai.decomposable.broadcasting_mul %[[FD]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_sub %[[X]], %[[MUL]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
@@ -6526,7 +6526,7 @@ class TestRepeatIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<4x9xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<4x9xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[REPS:.*]] = coreai.constant dense<[2, 3]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.tile %[[X]], %[[REPS]] : (tensor<2x3xf32>, tensor<2xui32>) -> tensor<4x9xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<4x9xf32>
@@ -6547,7 +6547,7 @@ class TestRoundDecimalsIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SCALE:.*]] = coreai.constant dense<1.000000e+02> : tensor<f32>
                 // CHECK-NEXT:     %[[MUL:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[SCALE]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[ROUND:.*]] = coreai.round %[[MUL]] : tensor<2x3xf32> -> tensor<2x3xf32>
@@ -6568,7 +6568,7 @@ class TestRoundDecimalsIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SCALE:.*]] = coreai.constant dense<1.000000e-01> : tensor<f32>
                 // CHECK-NEXT:     %[[MUL:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[SCALE]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[ROUND:.*]] = coreai.round %[[MUL]] : tensor<2x3xf32> -> tensor<2x3xf32>
@@ -6591,7 +6591,7 @@ class TestScalarTensorIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_add %[[X]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
@@ -6617,7 +6617,7 @@ class TestScaledDotProductAttentionIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[Q:.*]]: tensor<1x2x3x4xf32> {coreai.name = "q"}, %[[K:.*]]: tensor<1x2x3x4xf32> {coreai.name = "k"}, %[[V:.*]]: tensor<1x2x3x4xf32> {coreai.name = "v"}) -> (tensor<1x2x3x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[Q:.*]]: tensor<1x2x3x4xf32> {coreai.name = "q"}, %[[K:.*]]: tensor<1x2x3x4xf32> {coreai.name = "k"}, %[[V:.*]]: tensor<1x2x3x4xf32> {coreai.name = "v"}) -> (tensor<1x2x3x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK:           coreai.decomposable.broadcasting_mul
                 // CHECK:           coreai.transpose
                 // CHECK:           coreai.decomposable.broadcasting_mul
@@ -6652,7 +6652,7 @@ class TestScatterIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<3x5xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2x5xsi32> {coreai.name = "idx"}, %[[SRC:.*]]: tensor<2x5xf32> {coreai.name = "src"}) -> (tensor<3x5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<3x5xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2x5xsi32> {coreai.name = "idx"}, %[[SRC:.*]]: tensor<2x5xf32> {coreai.name = "src"}) -> (tensor<3x5xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.scatter_along_axis %[[X]], %[[IDX]], %[[SRC]], %[[DIM]] : (tensor<3x5xf32>, tensor<2x5xsi32>, tensor<2x5xf32>, tensor<si32>) -> tensor<3x5xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<3x5xf32>
@@ -6675,7 +6675,7 @@ class TestScatterIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<3x5xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2x5xsi32> {coreai.name = "idx"}) -> (tensor<3x5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<3x5xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2x5xsi32> {coreai.name = "idx"}) -> (tensor<3x5xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[VAL:.*]] = coreai.constant dense<5.000000e+00> : tensor<2x5xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.scatter_along_axis %[[X]], %[[IDX]], %[[VAL]], %[[DIM]] : (tensor<3x5xf32>, tensor<2x5xsi32>, tensor<2x5xf32>, tensor<si32>) -> tensor<3x5xf32>
@@ -6700,7 +6700,7 @@ class TestScatterIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<3x5xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2x5xsi32> {coreai.name = "idx"}, %[[SRC:.*]]: tensor<2x5xf32> {coreai.name = "src"}) -> (tensor<3x5xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<3x5xf32> {coreai.name = "x"}, %[[IDX:.*]]: tensor<2x5xsi32> {coreai.name = "idx"}, %[[SRC:.*]]: tensor<2x5xf32> {coreai.name = "src"}) -> (tensor<3x5xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.scatter_along_axis %[[X]], %[[IDX]], %[[SRC]], %[[DIM]] scatter_mode = <add> : (tensor<3x5xf32>, tensor<2x5xsi32>, tensor<2x5xf32>, tensor<si32>) -> tensor<3x5xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<3x5xf32>
@@ -6721,7 +6721,7 @@ class TestSelectIntIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x4xf32> {coreai.name = "x"}) -> (tensor<3x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x4xf32> {coreai.name = "x"}) -> (tensor<3x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[3, 4]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[START:.*]] = coreai.constant dense<[1, 0, 0]> : tensor<3xsi32>
                 // CHECK-NEXT:     %[[END:.*]] = coreai.constant dense<[2, 2147483647, 2147483647]> : tensor<3xsi32>
@@ -6744,7 +6744,7 @@ class TestSelectIntIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x4xf32> {coreai.name = "x"}) -> (tensor<2x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x4xf32> {coreai.name = "x"}) -> (tensor<2x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[2, 4]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[START:.*]] = coreai.constant dense<[0, 2, 0]> : tensor<3xsi32>
                 // CHECK-NEXT:     %[[END:.*]] = coreai.constant dense<[2147483647, 3, 2147483647]> : tensor<3xsi32>
@@ -6769,7 +6769,7 @@ class TestSigmoidIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.sigmoid %[[X]] : (tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -6792,7 +6792,7 @@ class TestSigmoidIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.sigmoid %[[X]] : (tensor<?x?xf32>) -> tensor<?x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
@@ -6812,7 +6812,7 @@ class TestSignIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[POS:.*]] = coreai.decomposable.broadcasting_greater %[[X]], %[[ZERO]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
                 // CHECK-NEXT:     %[[POSF:.*]] = coreai.cast %[[POS]] : tensor<2x3xi1> to tensor<2x3xf32>
@@ -6841,7 +6841,7 @@ class TestSiluIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SIG:.*]] = coreai.sigmoid %[[X]] : (tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_mul %[[X]], %[[SIG]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
@@ -6862,7 +6862,7 @@ class TestSliceIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x4x3xf32> {coreai.name = "x"}) -> (tensor<2x2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x4x3xf32> {coreai.name = "x"}) -> (tensor<2x2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[START:.*]] = coreai.constant dense<[0, 1, 0]> : tensor<3xsi32>
                 // CHECK-NEXT:     %[[END:.*]] = coreai.constant dense<[2147483647, 3, 2147483647]> : tensor<3xsi32>
                 // CHECK-NEXT:     %[[STRIDE:.*]] = coreai.constant dense<1> : tensor<3xsi32>
@@ -6891,7 +6891,7 @@ class TestSliceScatterIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x4x3xf32> {coreai.name = "x"}, %[[SRC:.*]]: tensor<2x2x3xf32> {coreai.name = "src"}) -> (tensor<2x4x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x4x3xf32> {coreai.name = "x"}, %[[SRC:.*]]: tensor<2x2x3xf32> {coreai.name = "src"}) -> (tensor<2x4x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[START:.*]] = coreai.constant dense<[0, 1, 0]> : tensor<3xsi32>
                 // CHECK-NEXT:     %[[END:.*]] = coreai.constant dense<[2147483647, 3, 2147483647]> : tensor<3xsi32>
                 // CHECK-NEXT:     %[[STRIDE:.*]] = coreai.constant dense<1> : tensor<3xsi32>
@@ -6914,11 +6914,11 @@ class TestSplitWithSizesIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x1xf32> {coreai.name = "{{.*}}"}, tensor<2x2xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x1xf32> {coreai.name = "{{.*}}"}, tensor<2x2xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SIZES:.*]] = coreai.constant dense<[1, 2]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<1> : tensor<si32>
-                // CHECK-NEXT:     %[[R:.*]]:2 = coreai.split %[[X]], %[[SIZES]], %[[DIM]] : (tensor<2x3xf32>, tensor<2xui32>, tensor<si32>) -> (tensor<2x1xf32>, tensor<2x2xf32>)
-                // CHECK-NEXT:     coreai.output %[[R]]#0, %[[R]]#1 : tensor<2x1xf32>, tensor<2x2xf32>
+                // CHECK-NEXT:     %[[R:[0-9a-z_]+]]{{(:2|, %[0-9a-z_]+)}} = coreai.split %[[X]], %[[SIZES]], %[[DIM]] : (tensor<2x3xf32>, tensor<2xui32>, tensor<si32>) -> (tensor<2x1xf32>, tensor<2x2xf32>)
+                // CHECK-NEXT:     coreai.output %[[R]]{{(#0)?}}, %[[R]]{{(#1|_1)}} : tensor<2x1xf32>, tensor<2x2xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
             """,
@@ -6936,7 +6936,7 @@ class TestSqueezeDimsIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x3x1x4xf32> {coreai.name = "x"}) -> (tensor<3x4xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x3x1x4xf32> {coreai.name = "x"}) -> (tensor<3x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[3, 4]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.reshape %[[X]], %[[SHAPE]] : (tensor<1x3x1x4xf32>, tensor<2xui32>) -> tensor<3x4xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<3x4xf32>
@@ -6957,7 +6957,7 @@ class TestSubIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_sub %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -6975,7 +6975,7 @@ class TestSubIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[C:.*]] = coreai.constant dense<2.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_sub %[[X]], %[[C]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
@@ -6996,7 +6996,7 @@ class TestSumDimIntListIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<2> : tensor<1xui32>
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_sum %[[X]], %[[AXIS]] : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<2x1xf32>
@@ -7022,7 +7022,7 @@ class TestSumDimIntListIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[REDUCE:.*]] = coreai.reduce_sum %[[X]], %[[AXIS]] : (tensor<?x?xf32>, tensor<1xsi32>) -> tensor<?x1xf32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.shrink_dims %[[REDUCE]], %[[AXIS]] : (tensor<?x1xf32>, tensor<1xsi32>) to tensor<?xf32>
@@ -7049,7 +7049,7 @@ class TestSymSizeIntIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[TWO:.*]] = coreai.constant dense<2> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[ONE:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0> : tensor<1xsi32>
@@ -7077,7 +7077,7 @@ class TestTileIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<4x9xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<4x9xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[REPS:.*]] = coreai.constant dense<[2, 3]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.tile %[[X]], %[[REPS]] : (tensor<2x3xf32>, tensor<2xui32>) -> tensor<4x9xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<4x9xf32>
@@ -7098,7 +7098,7 @@ class TestToDtypeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.cast %[[X]] : tensor<2x3xf32> to tensor<2x3xsi32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xsi32>
                 // CHECK-NEXT:   }
@@ -7118,7 +7118,7 @@ class TestTopkIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2x2xf32> {coreai.name = "{{.*}}"}, tensor<2x2xsi32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x5xf32> {coreai.name = "x"}) -> (tensor<2x2xf32> {coreai.name = "{{.*}}"}, tensor<2x2xsi32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[STRIDE:.*]] = coreai.constant dense<1> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[END:.*]] = coreai.constant dense<[2147483647, 2]> : tensor<2xsi32>
                 // CHECK-NEXT:     %[[START:.*]] = coreai.constant dense<0> : tensor<2xsi32>
@@ -7150,7 +7150,7 @@ class TestTrueDivideIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_divide %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -7175,7 +7175,7 @@ class TestTruedivIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<1xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<1xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK:           coreai.get_shape
                 // CHECK:           coreai.slice
                 // CHECK:           coreai.cast
@@ -7198,7 +7198,7 @@ class TestTruncIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[ONE:.*]] = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[POS:.*]] = coreai.decomposable.broadcasting_greater %[[X]], %[[ZERO]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
@@ -7227,7 +7227,7 @@ class TestUnsqueezeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x1x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x1x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[2, 1, 3]> : tensor<3xui32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.reshape %[[X]], %[[SHAPE]] : (tensor<2x3xf32>, tensor<3xui32>) -> tensor<2x1x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x1x3xf32>
@@ -7251,7 +7251,7 @@ class TestUnsqueezeIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x1x?xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<?x?xf32> {coreai.name = "x"}) -> (tensor<?x1x?xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[AXIS:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.expand_dims %[[X]], %[[AXIS]] : (tensor<?x?xf32>, tensor<1xsi32>) to tensor<?x1x?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?x1x?xf32>
@@ -7274,7 +7274,7 @@ class TestUpsampleBilinear2dIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x8x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x8x8xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[OUT:.*]] = coreai.constant dense<[1, 3, 8, 8]> : tensor<4xsi32>
                 // CHECK-NEXT:     %[[SCALE:.*]] = coreai.constant dense<[1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00]> : tensor<4xf32>
                 // CHECK-NEXT:     %[[OFFSET:.*]] = coreai.constant dense<0.000000e+00> : tensor<4xf32>
@@ -7299,7 +7299,7 @@ class TestUpsampleNearest2dIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x8x8xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<1x3x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x8x8xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[OUT:.*]] = coreai.constant dense<[1, 3, 8, 8]> : tensor<4xsi32>
                 // CHECK-NEXT:     %[[SCALE:.*]] = coreai.constant dense<[1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00]> : tensor<4xf32>
                 // CHECK-NEXT:     %[[OFFSET:.*]] = coreai.constant dense<0.000000e+00> : tensor<4xf32>
@@ -7322,7 +7322,7 @@ class TestViewIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<6xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<6xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<6> : tensor<1xui32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.reshape %[[X]], %[[SHAPE]] : (tensor<2x3xf32>, tensor<1xui32>) -> tensor<6xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<6xf32>
@@ -7343,7 +7343,7 @@ class TestViewAsComplexIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x2xf32> {coreai.name = "x"}) -> (tensor<2x3xcomplex<f32>> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3x2xf32> {coreai.name = "x"}) -> (tensor<2x3xcomplex<f32>> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[2, 3]> : tensor<2xui32>
                 // CHECK-NEXT:     %[[INF:.*]] = coreai.constant dense<2147483647> : tensor<3xsi32>
                 // CHECK-NEXT:     %[[STARTIM:.*]] = coreai.constant dense<[0, 0, 1]> : tensor<3xsi32>
@@ -7376,7 +7376,7 @@ class TestViewAsRealIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xcomplex<f32>> {coreai.name = "x"}) -> (tensor<2x3x2xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xcomplex<f32>> {coreai.name = "x"}) -> (tensor<2x3x2xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.constant dense<[2, 3, 1]> : tensor<3xui32>
                 // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<2> : tensor<si32>
                 // CHECK-NEXT:     %[[RE:.*]] = coreai.real_part %[[X]] : (tensor<2x3xcomplex<f32>>) -> tensor<2x3xf32>
@@ -7407,7 +7407,7 @@ class TestWhereIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[C:.*]]: tensor<2x3xi1> {coreai.name = "c"}, %[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[C:.*]]: tensor<2x3xi1> {coreai.name = "c"}, %[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_where %[[C]], %[[X]], %[[Y]] : (tensor<2x3xi1>, tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
@@ -7435,7 +7435,7 @@ class TestWhileLoopIR:
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK:           coreai.while
                 // CHECK:             coreai.reduce_sum
                 // CHECK:             coreai.decomposable.broadcasting_greater
