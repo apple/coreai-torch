@@ -32,6 +32,7 @@ from ._utils import (
     build_slice_index_array,
     convert_branch_subgraph,
     expand_boolean_indices,
+    get_dim_size_int32,
     get_output_element_type_from_node,
     get_promoted_type,
     get_target,
@@ -1360,9 +1361,7 @@ def replace_sym_size_int(
     """aten.sym_size.int(tensor, dim) -> size of tensor along dim as a shape-[1] tensor."""
     tensor = values_map[node.args[0].name]
     dim = node.args[1]
-    return coreai.cast(
-        coreai.slice_(coreai.get_shape(tensor), [dim], [dim + 1], [1]), dtype=np.int32
-    )
+    return get_dim_size_int32(tensor, dim)
 
 
 def replace_sym_min(
@@ -1694,9 +1693,7 @@ def replace_group_norm(
     @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
     def group_norm(input: Value, weight: Value, bias: Value) -> Value:
         # Reshape to [B, G, C//G, -1] for per-group normalization.
-        batch_dim = coreai.cast(
-            coreai.slice_(coreai.get_shape(input), [0], [1], [1]), dtype=np.int32
-        )
+        batch_dim = get_dim_size_int32(input, 0)
         reshape_target = coreai.concat(0, [batch_dim, [group, C // group, -1]])
         reshaped_input = coreai.reshape(input, reshape_target)
         reshaped_input_compute, compute_type, use_fp32_stats = (
@@ -2594,9 +2591,7 @@ def replace_select_int(
 
     if index < 0 and x.type.shape[dim] < 0:
         # Negative index with unknown dim size: resolve the actual index at runtime.
-        dim_size = coreai.cast(
-            coreai.slice_(coreai.get_shape(x), [dim], [dim + 1], [1]), dtype=np.int32
-        )
+        dim_size = get_dim_size_int32(x, dim)
         actual = coreai.broadcasting_add(dim_size, coreai.constant([index]))
         actual_p1 = coreai.broadcasting_add(actual, coreai.constant([1]))
         start_parts = [actual if i == dim else [0] for i in range(rank)]

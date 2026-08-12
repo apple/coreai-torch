@@ -1051,9 +1051,10 @@ class TestArangeIR:
                 // CHECK-DAG:     %[[STEP:.+]] = coreai.constant dense<{{.*}}> : tensor<si32>
                 // CHECK-DAG:     %[[START:.+]] = coreai.constant dense<{{.*}}> : tensor<si32>
                 //
-                // end: get_shape -> slice -> cast(ui32->si32) -> reshape(rank-1 to rank-0);
+                // end: get_shape -> cast(ui32->si32) -> slice -> reshape(rank-1 to rank-0);
                 // stays si32, no cast to f32 before range_:
-                // CHECK:         %[[END_RANK1:.+]] = coreai.cast {{.*}} : tensor<1xui32> to tensor<1xsi32>
+                // CHECK:         %[[SHAPE:.+]] = coreai.cast {{.*}} : tensor<2xui32> to tensor<2xsi32>
+                // CHECK:         %[[END_RANK1:.+]] = coreai.slice %[[SHAPE]], {{.*}} -> tensor<1xsi32>
                 // CHECK:         %[[END_RANK0:.+]] = coreai.reshape %[[END_RANK1]], {{.*}} : (tensor<1xsi32>, tensor<0xui32>) -> tensor<si32>
                 //
                 // range_ called with all-si32 scalars; result is si32 with dynamic shape:
@@ -7053,11 +7054,10 @@ class TestSymSizeIntIR:
                 // CHECK-NEXT:     %[[ONE:.*]] = coreai.constant dense<1> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0> : tensor<1xsi32>
                 // CHECK-NEXT:     %[[GS:.*]] = coreai.get_shape %[[X]] : tensor<?x?xf32> -> tensor<2xui32>
-                // CHECK-NEXT:     %[[S0:.*]] = coreai.slice %[[GS]], %[[ZERO]], %[[ONE]], %[[ONE]] : (tensor<2xui32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xui32>
-                // CHECK-NEXT:     %[[C0:.*]] = coreai.cast %[[S0]] : tensor<1xui32> to tensor<1xsi32>
-                // CHECK-NEXT:     %[[S1:.*]] = coreai.slice %[[GS]], %[[ONE]], %[[TWO]], %[[ONE]] : (tensor<2xui32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xui32>
-                // CHECK-NEXT:     %[[C1:.*]] = coreai.cast %[[S1]] : tensor<1xui32> to tensor<1xsi32>
-                // CHECK-NEXT:     %[[MUL:.*]] = coreai.decomposable.broadcasting_mul %[[C0]], %[[C1]] : (tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xsi32>
+                // CHECK-NEXT:     %[[SHAPE:.*]] = coreai.cast %[[GS]] : tensor<2xui32> to tensor<2xsi32>
+                // CHECK-NEXT:     %[[S0:.*]] = coreai.slice %[[SHAPE]], %[[ZERO]], %[[ONE]], %[[ONE]] : (tensor<2xsi32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xsi32>
+                // CHECK-NEXT:     %[[S1:.*]] = coreai.slice %[[SHAPE]], %[[ONE]], %[[TWO]], %[[ONE]] : (tensor<2xsi32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xsi32>
+                // CHECK-NEXT:     %[[MUL:.*]] = coreai.decomposable.broadcasting_mul %[[S0]], %[[S1]] : (tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xsi32>
                 // CHECK-NEXT:     %[[R:.*]] = coreai.reshape %[[X]], %[[MUL]] : (tensor<?x?xf32>, tensor<1xsi32>) -> tensor<?xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<?xf32>
                 // CHECK-NEXT:   }

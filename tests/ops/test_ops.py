@@ -3598,8 +3598,9 @@ class TestRepeat:
                 // CHECK-SAME:    %arg0: tensor<2x3xf32>
                 // CHECK-SAME:    %arg1: tensor<?x8xf32>
                 // CHECK:         %[[SHAPE:.+]] = coreai.get_shape %arg1 : tensor<?x8xf32> -> tensor<2xui32>
-                // CHECK:         %[[SLICE:.+]] = coreai.slice %[[SHAPE]]
-                // CHECK-SAME:      -> tensor<1xui32>
+                // CHECK:         %[[SHAPE_SI32:.+]] = coreai.cast %[[SHAPE]] : tensor<2xui32> to tensor<2xsi32>
+                // CHECK:         %[[SLICE:.+]] = coreai.slice %[[SHAPE_SI32]]
+                // CHECK-SAME:      -> tensor<1xsi32>
                 // CHECK:         %[[ONE:.+]] = coreai.constant dense<1> : tensor<1xui32>
                 // CHECK:         %[[DIMS:.+]] = coreai.concat {{.*}}, %{{.+}}, %[[ONE]]
                 // CHECK-SAME:      -> tensor<2xui32>
