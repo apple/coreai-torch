@@ -32,6 +32,7 @@ from ._utils import (
     build_slice_index_array,
     convert_branch_subgraph,
     expand_boolean_indices,
+    get_dim_size_int32,
     get_output_element_type_from_node,
     get_promoted_type,
     get_target,
@@ -706,16 +707,27 @@ def replace_batch_norm(
     def batch_norm(
         input: Value, gamma: Value, beta: Value, mean: Value, variance: Value
     ) -> Value:
+        # Match ATen: compute in fp32 and narrow only the result. Downcasting
+        # the fp32 params to fp16 loses precision and overflows to inf.
+        input_compute, compute_type, needs_downcast = prepare_compute_type_for_norm(
+            input, ele_type, loc
+        )
+
         eps_casted = coreai.constant(node.args[6])
 
-        eps_casted = coreai.cast(eps_casted, ele_type)
+        def to_compute_type(v: Value) -> Value:
+            if v.type.element_type == compute_type:
+                return v
+            return coreai.cast(v, compute_type)
+
+        eps_casted = to_compute_type(eps_casted)
 
         expand_dims = [0] + list(
             range(2, x_type.rank)
         )  # expand [C] to [1, C, 1, ...] for broadcasting
 
         def expand_and_cast(v: Value) -> Value:
-            return coreai.cast(coreai.expand_dims(v, expand_dims), ele_type)
+            return to_compute_type(coreai.expand_dims(v, expand_dims))
 
         weight, bias, running_mean, running_var = (
             expand_and_cast(v) for v in [gamma, beta, mean, variance]
@@ -724,12 +736,15 @@ def replace_batch_norm(
         # ((x - mean) / sqrt(var + eps)) * weight + bias
         std = coreai.sqrt(coreai.broadcasting_add(running_var, eps_casted))
         normalized = coreai.broadcasting_divide(
-            coreai.broadcasting_sub(input, running_mean), std
+            coreai.broadcasting_sub(input_compute, running_mean), std
         )
 
-        return coreai.broadcasting_add(
+        result = coreai.broadcasting_add(
             coreai.broadcasting_mul(normalized, weight), bias
         )
+        if needs_downcast:
+            result = coreai.cast(result, ele_type)
+        return result
 
     # In inference mode, outputs[1] and [2] are empty placeholder tensors (shape [0]).
     np_dtype = _get_coreai_to_numpy_dtype()[ele_type]
@@ -1346,9 +1361,7 @@ def replace_sym_size_int(
     """aten.sym_size.int(tensor, dim) -> size of tensor along dim as a shape-[1] tensor."""
     tensor = values_map[node.args[0].name]
     dim = node.args[1]
-    return coreai.cast(
-        coreai.slice_(coreai.get_shape(tensor), [dim], [dim + 1], [1]), dtype=np.int32
-    )
+    return get_dim_size_int32(tensor, dim)
 
 
 def replace_sym_min(
@@ -1680,9 +1693,7 @@ def replace_group_norm(
     @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
     def group_norm(input: Value, weight: Value, bias: Value) -> Value:
         # Reshape to [B, G, C//G, -1] for per-group normalization.
-        batch_dim = coreai.cast(
-            coreai.slice_(coreai.get_shape(input), [0], [1], [1]), dtype=np.int32
-        )
+        batch_dim = get_dim_size_int32(input, 0)
         reshape_target = coreai.concat(0, [batch_dim, [group, C // group, -1]])
         reshaped_input = coreai.reshape(input, reshape_target)
         reshaped_input_compute, compute_type, use_fp32_stats = (
@@ -1956,11 +1967,11 @@ def replace_layer_norm(
     bias = None if node.args[3] is None else _get_operand(values_map, node, 3)
     eps = node.args[4]
 
-    numel = int(np.prod(normalized_shape))
+    # Identity gamma/beta keep normalized_shape to match the declared `axes`.
     if weight is None:
-        weight = coreai.constant([1.0] * numel, dtype=np.float32)
+        weight = coreai.constant(np.ones(normalized_shape, dtype=np.float32))
     if bias is None:
-        bias = coreai.constant([0.0] * numel, dtype=np.float32)
+        bias = coreai.constant(np.zeros(normalized_shape, dtype=np.float32))
 
     input_rank = x.type.rank
     input_ele_type = x.type.element_type
@@ -2008,11 +2019,7 @@ def replace_layer_norm(
         weight = coreai.cast(gamma, input_ele_type)
         bias = coreai.cast(beta, input_ele_type)
 
-        # Reshape for multi-dim normalized_shape (e.g. [32] → [4, 8]).
-        if len(normalized_shape) > 1:
-            weight = coreai.reshape(weight, list(normalized_shape))
-            bias = coreai.reshape(bias, list(normalized_shape))
-
+        # gamma/beta always arrive shaped like normalized_shape.
         # Broadcast gamma/beta to match the norm output shape.
         norm_shape = coreai.get_shape(norm)
         w_shape = coreai.constant(list(normalized_shape), dtype=np.uint32)
@@ -2584,9 +2591,7 @@ def replace_select_int(
 
     if index < 0 and x.type.shape[dim] < 0:
         # Negative index with unknown dim size: resolve the actual index at runtime.
-        dim_size = coreai.cast(
-            coreai.slice_(coreai.get_shape(x), [dim], [dim + 1], [1]), dtype=np.int32
-        )
+        dim_size = get_dim_size_int32(x, dim)
         actual = coreai.broadcasting_add(dim_size, coreai.constant([index]))
         actual_p1 = coreai.broadcasting_add(actual, coreai.constant([1]))
         start_parts = [actual if i == dim else [0] for i in range(rank)]

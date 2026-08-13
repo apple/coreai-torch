@@ -88,12 +88,13 @@ class TestMutableBufferAnnotation:
             .add_exported_program(self._mutable_buffer_program())
             .to_coreai()
         )
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<1x4xf32> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<1x4xf32> {coreai.name = "x"}) -> (tensor<1x4xf32> {coreai.name = "b_state"}) {
-                // CHECK:     coreai.output %{{.*}} : tensor<1x4xf32>
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<1x4xf32>> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<1x4xf32> {coreai.name = "x"}) -> (!coreai.token {coreai.name = "b_state"}){{.*}} {
+                // CHECK:     coreai.output %{{.*}} : !coreai.token
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -116,12 +117,13 @@ class TestMutableBufferAnnotation:
             )
             .to_coreai()
         )
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<1x4xf32> {MutableBuffers.buffer_mutation = "custom_buf", coreai.name = "custom_buf"}, %{{.*}}: tensor<1x4xf32> {coreai.name = "custom_x"}) -> (tensor<1x4xf32> {coreai.name = "custom_buf"}) {
-                // CHECK:     coreai.output %{{.*}} : tensor<1x4xf32>
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<1x4xf32>> {MutableBuffers.buffer_mutation = "custom_buf", coreai.name = "custom_buf"}, %{{.*}}: tensor<1x4xf32> {coreai.name = "custom_x"}) -> (!coreai.token {coreai.name = "custom_buf"}){{.*}} {
+                // CHECK:     coreai.output %{{.*}} : !coreai.token
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -168,14 +170,15 @@ class TestMutableBufferAnnotation:
             _BufAdd().eval(), args=(torch.rand(2, 4),)
         ).run_decompositions()
         result = TorchConverter().add_exported_program(ep).to_coreai()
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "x"}) -> (tensor<2x4xf32> {coreai.name = "b_state"}, tensor<2x4xf32> {coreai.name = "add_1"}) {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "x"}) -> (!coreai.token {coreai.name = "b_state"}, tensor<2x4xf32> {coreai.name = "add_1"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<2x4xf32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
-                // CHECK:     coreai.output %{{.*}}, %{{.*}} : tensor<2x4xf32>, tensor<2x4xf32>
+                // CHECK:     coreai.output %{{.*}}, %{{.*}} : !coreai.token, tensor<2x4xf32>
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -207,14 +210,15 @@ class TestMutableBufferAnnotation:
             )
             .to_coreai()
         )
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "my_buf", coreai.name = "my_buf"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "my_x"}) -> (tensor<2x4xf32> {coreai.name = "my_buf"}, tensor<2x4xf32> {coreai.name = "result"}) {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "my_buf", coreai.name = "my_buf"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "my_x"}) -> (!coreai.token {coreai.name = "my_buf"}, tensor<2x4xf32> {coreai.name = "result"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<2x4xf32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
-                // CHECK:     coreai.output %{{.*}}, %{{.*}} : tensor<2x4xf32>, tensor<2x4xf32>
+                // CHECK:     coreai.output %{{.*}}, %{{.*}} : !coreai.token, tensor<2x4xf32>
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -233,7 +237,7 @@ class TestMutableBufferAnnotation:
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<1x4xf32>> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<1x4xf32> {coreai.name = "x"}) -> (!coreai.token {coreai.name = "b_state"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<1x4xf32>> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<1x4xf32> {coreai.name = "x"}) -> (!coreai.token {coreai.name = "b_state"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.create_token : !coreai.token
                 // CHECK:     %{{.*}}, %{{.*}} = coreai.read_handle %{{.*}}, %{{.*}} : (<tensor<1x4xf32>>, !coreai.token) -> (tensor<1x4xf32>, !coreai.token)
                 // CHECK:     %{{.*}} = coreai.write_handle %{{.*}}, %{{.*}}, %{{.*}} : (<tensor<1x4xf32>>, tensor<1x4xf32>, !coreai.token) -> !coreai.token
@@ -277,14 +281,15 @@ class TestMutableUserInputAnnotation:
         result = (
             TorchConverter().add_exported_program(self._mutating_program()).to_coreai()
         )
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "x", coreai.name = "x"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "y"}) -> (tensor<2x4xf32> {coreai.name = "x"}, tensor<2x4xf32> {coreai.name = "add"}) {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "x", coreai.name = "x"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "y"}) -> (!coreai.token {coreai.name = "x"}, tensor<2x4xf32> {coreai.name = "add"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_mul %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
-                // CHECK:     coreai.output %{{.*}}, %{{.*}} : tensor<2x4xf32>, tensor<2x4xf32>
+                // CHECK:     coreai.output %{{.*}}, %{{.*}} : !coreai.token, tensor<2x4xf32>
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -301,14 +306,15 @@ class TestMutableUserInputAnnotation:
             )
             .to_coreai()
         )
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "x_state", coreai.name = "x_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "my_y"}) -> (tensor<2x4xf32> {coreai.name = "x_state"}, tensor<2x4xf32> {coreai.name = "add"}) {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "x_state", coreai.name = "x_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "my_y"}) -> (!coreai.token {coreai.name = "x_state"}, tensor<2x4xf32> {coreai.name = "add"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_mul %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
-                // CHECK:     coreai.output %{{.*}}, %{{.*}} : tensor<2x4xf32>, tensor<2x4xf32>
+                // CHECK:     coreai.output %{{.*}}, %{{.*}} : !coreai.token, tensor<2x4xf32>
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -344,18 +350,17 @@ class TestMutableUserInputAnnotation:
         result = (
             TorchConverter().add_exported_program(self._mutating_program()).to_coreai()
         )
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "x", coreai.name = "x"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "y"}) -> (tensor<2x4xf32> {coreai.name = "x"}, tensor<2x4xf32> {coreai.name = "add"}) {
-                // CHECK:     %{{.*}} = coreai.constant dense<5> : tensor<si32>
-                // CHECK:     %{{.*}} = coreai.cast %{{.*}} : tensor<si32> to tensor<f32>
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "x", coreai.name = "x"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "y"}) -> (!coreai.token {coreai.name = "x"}, tensor<2x4xf32> {coreai.name = "add"}){{.*}} {
+                // CHECK:     %{{.*}} = coreai.constant dense<5.000000e+00> : tensor<f32>
+                // CHECK:     %{{.*}} = coreai.constant dense<1.000000e+00> : tensor<f32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_mul %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
-                // CHECK:     %{{.*}} = coreai.constant dense<1> : tensor<si32>
-                // CHECK:     %{{.*}} = coreai.cast %{{.*}} : tensor<si32> to tensor<f32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
-                // CHECK:     coreai.output %{{.*}}, %{{.*}} : tensor<2x4xf32>, tensor<2x4xf32>
+                // CHECK:     coreai.output %{{.*}}, %{{.*}} : !coreai.token, tensor<2x4xf32>
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -375,14 +380,15 @@ class TestMutableUserInputAnnotation:
             )
             .to_coreai()
         )
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "x_state", coreai.name = "x_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "my_y"}) -> (tensor<2x4xf32> {coreai.name = "x_state"}, tensor<2x4xf32> {coreai.name = "result"}) {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "x_state", coreai.name = "x_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "my_y"}) -> (!coreai.token {coreai.name = "x_state"}, tensor<2x4xf32> {coreai.name = "result"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_mul %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
-                // CHECK:     coreai.output %{{.*}}, %{{.*}} : tensor<2x4xf32>, tensor<2x4xf32>
+                // CHECK:     coreai.output %{{.*}}, %{{.*}} : !coreai.token, tensor<2x4xf32>
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -399,7 +405,7 @@ class TestMutableUserInputAnnotation:
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "x", coreai.name = "x"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "y"}) -> (!coreai.token {coreai.name = "x"}, tensor<2x4xf32> {coreai.name = "add"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "x", coreai.name = "x"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "y"}) -> (!coreai.token {coreai.name = "x"}, tensor<2x4xf32> {coreai.name = "add"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.create_token : !coreai.token
                 // CHECK:     %{{.*}}, %{{.*}} = coreai.read_handle %{{.*}}, %{{.*}} : (<tensor<2x4xf32>>, !coreai.token) -> (tensor<2x4xf32>, !coreai.token)
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_mul %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
@@ -455,15 +461,16 @@ class TestMutableBufferAndUserInputAnnotation:
             .add_exported_program(self._both_mutations_program())
             .to_coreai()
         )
+        result.optimize()
         filecheck_pattern(
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "x"}, %{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "y", coreai.name = "y"}) -> (tensor<2x4xf32> {coreai.name = "b_state"}, tensor<2x4xf32> {coreai.name = "y"}, tensor<2x4xf32> {coreai.name = "add_1"}) {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "x"}, %{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "y", coreai.name = "y"}) -> (!coreai.token {coreai.name = "b_state"}, !coreai.token {coreai.name = "y"}, tensor<2x4xf32> {coreai.name = "add_1"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<2x4xf32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_mul %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<2x4xf32>
-                // CHECK:     coreai.output %{{.*}}, %{{.*}}, %{{.*}} : tensor<2x4xf32>, tensor<2x4xf32>, tensor<2x4xf32>
+                // CHECK:     coreai.output %{{.*}}, %{{.*}}, %{{.*}} : !coreai.token, !coreai.token, tensor<2x4xf32>
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -482,17 +489,18 @@ class TestMutableBufferAndUserInputAnnotation:
             )
             .to_coreai()
         )
+        result.optimize()
         ir = str(result)
         assert ir.count("MutableBuffers.buffer_mutation") == 2
         filecheck_pattern(
             ir,
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "my_buf", coreai.name = "my_buf"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "my_x"}, %{{.*}}: tensor<2x4xf32> {MutableBuffers.buffer_mutation = "my_y", coreai.name = "my_y"}) -> (tensor<2x4xf32> {coreai.name = "my_buf"}, tensor<2x4xf32> {coreai.name = "my_y"}, tensor<2x4xf32> {coreai.name = "result"}) {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "my_buf", coreai.name = "my_buf"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "my_x"}, %{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "my_y", coreai.name = "my_y"}) -> (!coreai.token {coreai.name = "my_buf"}, !coreai.token {coreai.name = "my_y"}, tensor<2x4xf32> {coreai.name = "result"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<2x4xf32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_mul %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<f32>) -> tensor<2x4xf32>
                 // CHECK:     %{{.*}} = coreai.decomposable.broadcasting_add %{{.*}}, %{{.*}} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<2x4xf32>
-                // CHECK:     coreai.output %{{.*}}, %{{.*}}, %{{.*}} : tensor<2x4xf32>, tensor<2x4xf32>, tensor<2x4xf32>
+                // CHECK:     coreai.output %{{.*}}, %{{.*}}, %{{.*}} : !coreai.token, !coreai.token, tensor<2x4xf32>
                 // CHECK:   }
                 // CHECK: }
             """,
@@ -511,7 +519,7 @@ class TestMutableBufferAndUserInputAnnotation:
             str(result),
             check_file="""
                 // CHECK-LABEL: module {
-                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "x"}, %{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "y", coreai.name = "y"}) -> (!coreai.token {coreai.name = "b_state"}, !coreai.token {coreai.name = "y"}, tensor<2x4xf32> {coreai.name = "add_1"}) attributes {__coreai_pure__} {
+                // CHECK-NEXT:   coreai.graph @main(%{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "b_state", coreai.name = "b_state"}, %{{.*}}: tensor<2x4xf32> {coreai.name = "x"}, %{{.*}}: !coreai.handle<tensor<2x4xf32>> {MutableBuffers.buffer_mutation = "y", coreai.name = "y"}) -> (!coreai.token {coreai.name = "b_state"}, !coreai.token {coreai.name = "y"}, tensor<2x4xf32> {coreai.name = "add_1"}){{.*}} {
                 // CHECK:     %{{.*}} = coreai.create_token : !coreai.token
                 // CHECK:     %{{.*}}, %{{.*}} = coreai.read_handle %{{.*}}, %{{.*}} : (<tensor<2x4xf32>>, !coreai.token) -> (tensor<2x4xf32>, !coreai.token)
                 // CHECK:     %{{.*}}, %{{.*}} = coreai.read_handle %{{.*}}, %{{.*}} : (<tensor<2x4xf32>>, !coreai.token) -> (tensor<2x4xf32>, !coreai.token)

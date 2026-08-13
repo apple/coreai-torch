@@ -3979,13 +3979,13 @@ def test_externalize_unused_submodule_ir() -> None:
         // CHECK: coreai.graph @main(
         // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: tensor<2x4xf32> {coreai.name = "x"}
         // CHECK-SAME: ) -> (tensor<2x4xf32>
-        // CHECK: %[[MM0:[0-9a-z_]+]] = coreai.decomposable.broadcasting_batch_matmul %[[ARG0]],
+        // CHECK: %[[MM0:[0-9a-z_.]+]] = coreai.decomposable.broadcasting_batch_matmul %[[ARG0]],
         // CHECK-SAME: : (tensor<2x4xf32>, tensor<4x4xf32>) -> tensor<2x4xf32>
-        // CHECK: %[[ADD0:[0-9a-z_]+]] = coreai.decomposable.broadcasting_add %[[MM0]],
+        // CHECK: %[[ADD0:[0-9a-z_.]+]] = coreai.decomposable.broadcasting_add %[[MM0]],
         // CHECK-SAME: : (tensor<2x4xf32>, tensor<4xf32>) -> tensor<2x4xf32>
-        // CHECK: %[[MM1:[0-9a-z_]+]] = coreai.decomposable.broadcasting_batch_matmul %[[ADD0]],
+        // CHECK: %[[MM1:[0-9a-z_.]+]] = coreai.decomposable.broadcasting_batch_matmul %[[ADD0]],
         // CHECK-SAME: : (tensor<2x4xf32>, tensor<4x4xf32>) -> tensor<2x4xf32>
-        // CHECK: %[[ADD1:[0-9a-z_]+]] = coreai.decomposable.broadcasting_add %[[MM1]],
+        // CHECK: %[[ADD1:[0-9a-z_.]+]] = coreai.decomposable.broadcasting_add %[[MM1]],
         // CHECK-SAME: : (tensor<2x4xf32>, tensor<4xf32>) -> tensor<2x4xf32>
         // CHECK-NOT: coreai.invoke
         // CHECK-NOT: coreai.relu
