@@ -918,6 +918,13 @@ def get_invoke_from_graph(
     return list(result)
 
 
+def get_dim_size_int32(tensor: Value, dim: int) -> Value:
+    """Return tensor.shape[dim] as a shape-[1] si32 Value."""
+    return coreai.slice_(
+        coreai.cast(coreai.get_shape(tensor), dtype=np.int32), [dim], [dim + 1], [1]
+    )
+
+
 def resolve_slice_arg(
     raw: Any, default_val: int, values_map: dict[str, Value]
 ) -> int | Value:

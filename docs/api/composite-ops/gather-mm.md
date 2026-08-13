@@ -82,10 +82,10 @@ class MoELayer(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,          # [B, T, 1, 1, D]
-        experts: torch.Tensor,    # [E, D, H]
-        indices: torch.Tensor,    # [B, T, K]
-    ) -> torch.Tensor:            # [B, T, K, 1, H]
+        x: torch.Tensor,  # [B, T, 1, 1, D]
+        experts: torch.Tensor,  # [E, D, H]
+        indices: torch.Tensor,  # [B, T, K]
+    ) -> torch.Tensor:  # [B, T, K, 1, H]
         return self.gather_mm(x, experts, rhs_indices=indices)
 
 
@@ -129,10 +129,10 @@ class FusedMoELayer(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,            # [B, T, 1, 1, D]
-        fused_experts: torch.Tensor, # [2, E, D, H]  (gate + up stacked)
-        indices: torch.Tensor,      # [B, T, K]
-    ) -> torch.Tensor:              # [2, B, T, K, 1, H]
+        x: torch.Tensor,  # [B, T, 1, 1, D]
+        fused_experts: torch.Tensor,  # [2, E, D, H]  (gate + up stacked)
+        indices: torch.Tensor,  # [B, T, K]
+    ) -> torch.Tensor:  # [2, B, T, K, 1, H]
         return self.gather_mm(x, fused_experts, rhs_indices=indices)
 ```
 
@@ -169,9 +169,10 @@ def _gather(x, indices, num_batch_axes=0):
     flat_indices = indices.to(torch.int32).flatten()
     flat_gather = torch.index_select(x, dim=num_batch_axes, index=flat_indices)
     result_shape = (
-        x.shape[:num_batch_axes] + indices.shape + x.shape[num_batch_axes + 1:]
+        x.shape[:num_batch_axes] + indices.shape + x.shape[num_batch_axes + 1 :]
     )
     return flat_gather.view(result_shape)
+
 
 def gather_mm(lhs, rhs, lhs_indices=None, rhs_indices=None, num_batch_axes=0):
     if lhs_indices is not None:

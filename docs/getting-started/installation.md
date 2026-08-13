@@ -46,6 +46,7 @@ Run the following to confirm coreai-torch is installed correctly — a version s
 
 ```python
 import coreai_torch
+
 print(coreai_torch.__version__)
 ```
 
