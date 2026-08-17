@@ -6,7 +6,7 @@ This page lists every PyTorch ATen operator that `TorchConverter` lowers to Core
 
 - Op names use the FX qualified-name form `op_name.overload` (e.g. `add.Tensor`, `mean.dim`). When PyTorch's decomposition pipeline produces a different overload than the one listed, that overload is not supported.
 - A few names appear without an overload suffix (e.g. `add`, `mul`, `getitem`) — these match plain Python-operator FX nodes that have no `.default` overload.
-- Three ops — `instance_norm.default`, `pixel_shuffle.default`, and `scaled_dot_product_attention.default` — are deliberately preserved by `get_decomp_table()` and emitted as composite ops in the lowered IR.
+- A few ops — `gru.input`, `instance_norm.default`, `lstm.input`, `pixel_shuffle.default`, `rnn_relu.input`, `rnn_tanh.input`, and `scaled_dot_product_attention.default` — are deliberately preserved by `get_decomp_table()` and emitted as composite ops in the lowered IR.
 - All ops below are resolved through the registry in `coreai_torch._aten_to_core`. To override a built-in lowering with your own, pass `allow_override=True` to `register_torch_lowering()`.
 
 ## ATen ops
@@ -75,6 +75,7 @@ This page lists every PyTorch ATen operator that `TorchConverter` lowers to Core
 | `gelu.default` | |
 | `getitem` | |
 | `gt.Scalar`, `gt.Tensor` | |
+| `gru.input` | Preserved as composite by `get_decomp_table()` |
 | `hardsigmoid.default` | Lowered as a composite |
 | `hardswish.default` | |
 | `hardtanh.default` | |
@@ -95,6 +96,7 @@ This page lists every PyTorch ATen operator that `TorchConverter` lowers to Core
 | `logical_not.default` | |
 | `logical_or.default` | |
 | `logical_xor.default` | |
+| `lstm.input` | Preserved as composite by `get_decomp_table()` |
 | `lt.Scalar`, `lt.Tensor` | |
 | `max.default`, `max.dim` | |
 | `max_pool2d_with_indices.default` | |
@@ -122,6 +124,7 @@ This page lists every PyTorch ATen operator that `TorchConverter` lowers to Core
 | `remainder.Tensor` | |
 | `repeat.default` | |
 | `replication_pad1d.default`, `replication_pad2d.default`, `replication_pad3d.default` | Lowered to `coreai.pad` with `replicate` mode |
+| `rnn_relu.input`, `rnn_tanh.input` | Preserved as composite by `get_decomp_table()` |
 | `round.default`, `round.decimals` | |
 | `rsqrt.default` | |
 | `scalar_tensor.default` | |
