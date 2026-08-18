@@ -409,6 +409,13 @@ class TorchConverter:
 
         self.exported_program = whole_program
 
+        # Each submodule above was converted as its own hierarchy, rooted at the
+        # submodule, so it consumed instance numbers from a different namespace
+        # than the whole model's -- and those numbers reach nothing in the emitted
+        # asset. Left in, a model with three blocks reported Block$2, Block$3 and
+        # Block$4, with no Block$1 anywhere.
+        self._debug_info_recorder.reset_module_registry()
+
     def _clean(self) -> None:
         """Reset all internal state dictionaries to empty.
 
