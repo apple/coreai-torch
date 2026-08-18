@@ -20,8 +20,9 @@ one job, so no long-lived API token is stored in the repo or in an org secret.
    ```
 
 3. Pushing the tag starts the `Release` workflow. `build` verifies the tag
-   matches `__version__` and builds the wheel and sdist; `smoke-test` installs
-   that wheel into a clean venv on each supported Python version and imports the
+   matches `__version__`, builds the wheel and sdist, and rebuilds a wheel from
+   the sdist to confirm the sdist is complete; `smoke-test` installs the built
+   wheel into a clean venv on each supported Python version and imports the
    public API.
 4. `publish` then waits on the `pypi` GitHub environment. A release manager other
    than the tag pusher approves it, and the vetted artifact is uploaded to PyPI.
@@ -77,9 +78,8 @@ No secret is added to the environment. The `id-token: write` permission in the
 `publish` job is what lets it mint the OIDC token, and it is scoped to that job
 alone.
 
-## Internal publishing
+## Other indexes
 
-Trusted Publishing covers PyPI only. Publishing to Apple's internal Artifactory
-index still uses `scripts/release.sh` with `UV_PUBLISH_USERNAME` /
-`UV_PUBLISH_PASSWORD`; pass `--skip-publish` when the PyPI upload is handled by
-the workflow.
+Trusted Publishing covers PyPI only. Publishing to another index still goes
+through `scripts/release.sh` with `UV_PUBLISH_USERNAME` / `UV_PUBLISH_PASSWORD`;
+pass `--skip-publish` when the PyPI upload is handled by the workflow.

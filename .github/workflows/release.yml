@@ -39,6 +39,10 @@ jobs:
   # ── Build the exact wheel + sdist that will be smoke-tested and published. ──
   build:
     name: Build distributions
+    # PyPI Trusted Publishing only accepts OIDC tokens minted by github.com, so a
+    # run hosted anywhere else can never publish. Dry runs still work on any
+    # github.com clone, forks included.
+    if: github.server_url == 'https://github.com'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -71,6 +75,12 @@ jobs:
           fi
       - name: Build wheel and sdist
         run: uv build
+      - name: Rebuild the wheel from the sdist
+        # The sdist is published too, and only the wheel is installed and imported
+        # by smoke-test. Rebuilding from the sdist fails if MANIFEST.in omits a
+        # file the build needs. Built into a scratch dir so dist/ stays exactly
+        # what `uv build` produced.
+        run: uv build --wheel dist/coreai_torch-*.tar.gz --out-dir "${RUNNER_TEMP}/sdist-wheel"
       - name: Upload distributions
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -79,10 +89,10 @@ jobs:
           if-no-files-found: error
 
   # ── Smoke test the exact built wheel via `scripts/smoke_test_wheel.sh`. ──
-  # Reuses the repo's smoke script but with `--no-build`, so it installs the
-  # downloaded artifact instead of rebuilding — we test the bytes we are about
-  # to publish. One matrix leg per supported Python version, since the script
-  # installs runtime deps only and thus catches missing dependency declarations.
+  # `--no-build` installs the downloaded wheel instead of rebuilding, so the
+  # bytes we import are the ones we publish. The script installs runtime deps
+  # only, which is what catches missing dependency declarations. The sdist is
+  # covered by the rebuild step in `build`.
   smoke-test:
     name: Smoke test wheel (Python ${{ matrix.python }})
     needs: build
