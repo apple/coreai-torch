@@ -38,45 +38,17 @@ holds a credential that can upload it.
 
 ## Trusted Publishing setup
 
-One-time configuration, already in place for `apple/coreai-torch`. Recorded here
-so it can be audited or rebuilt.
+One-time configuration, per PyPI's
+[Trusted Publishing docs](https://docs.pypi.org/trusted-publishers/). The
+publisher must be bound to workflow `release.yml` **and** environment `pypi` —
+without the environment, any workflow named `release.yml` in the repo can
+publish.
 
-### On PyPI
-
-As an owner of the `coreai-torch` project, under **Manage project → Publishing →
-Add a new publisher → GitHub**:
-
-| Field             | Value                |
-| ----------------- | -------------------- |
-| Owner             | `apple`              |
-| Repository name   | `coreai-torch`       |
-| Workflow name     | `release.yml`        |
-| Environment name  | `pypi`               |
-
-The environment name is not optional here. Without it, *any* workflow in the
-repo named `release.yml` can publish; with it, PyPI additionally requires the
-OIDC token to assert the `pypi` environment, which is where the approval gate
-lives.
-
-For a project that does not exist on PyPI yet, the same form is available as a
-**pending publisher** from your account's Publishing page; the project is
-created on first successful upload.
-
-### On GitHub
-
-Under **Settings → Environments → New environment → `pypi`**:
-
-- **Required reviewers**: the release managers team, with **prevent
-  self-review** enabled — so the person who pushed the tag cannot approve their
-  own release.
-- **Wait timer**: 15 minutes, leaving time to cancel a run started by mistake.
-- **Deployment branches and tags**: restrict to the tag pattern `v*.*.*`, so a
-  run from a branch cannot reach the environment even if the workflow gate is
-  ever loosened.
-
-No secret is added to the environment. The `id-token: write` permission in the
-`publish` job is what lets it mint the OIDC token, and it is scoped to that job
-alone.
+The `pypi` GitHub environment carries the release policy: required reviewers with
+**prevent self-review** (so the tag pusher cannot approve their own release), a
+15-minute wait timer, and deployments restricted to the tag pattern `v*.*.*`. It
+holds no secrets — `id-token: write` on the `publish` job is what mints the OIDC
+token, scoped to that job alone.
 
 ## Other indexes
 
