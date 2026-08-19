@@ -318,7 +318,7 @@ data-aria-dark="Switch to auto color mode">
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
 </span><span data-line="2">
 </span><span data-line="3"><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">256</span><span class="p">,</span> <span class="mi">1024</span><span class="p">)</span>
-</span><span data-line="4"><span class="c1"># Note: the PyTorch arg is `dim`; Core AI&#39;s IR attribute is `axes`</span>
+</span><span data-line="4"><span class="c1"># Note: the PyTorch arg is `dim`; Core AI's IR attribute is `axes`</span>
 </span><span data-line="5"><span class="n">output</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">vector_norm</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="nb">ord</span><span class="o">=-</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 </span><span data-line="6"><span class="c1"># Output shape: (8, 256)</span>
 </span></pre></div>

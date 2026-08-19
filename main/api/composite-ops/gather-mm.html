@@ -364,8 +364,8 @@ data-aria-dark="Switch to auto color mode">
 <h2>ExternalizeSpec<a class="headerlink" href="#externalizespec" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">ExternalizeSpec</span><span class="p">(</span>
 </span><span data-line="2">    <span class="n">target_class</span><span class="o">=</span><span class="n">GatherMM</span><span class="p">,</span>
-</span><span data-line="3">    <span class="n">composite_op_name</span><span class="o">=</span><span class="s2">&quot;gather_mm&quot;</span><span class="p">,</span>
-</span><span data-line="4">    <span class="n">composite_attrs</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;num_batch_axes&quot;</span><span class="p">],</span>
+</span><span data-line="3">    <span class="n">composite_op_name</span><span class="o">=</span><span class="s2">"gather_mm"</span><span class="p">,</span>
+</span><span data-line="4">    <span class="n">composite_attrs</span><span class="o">=</span><span class="p">[</span><span class="s2">"num_batch_axes"</span><span class="p">],</span>
 </span><span data-line="5"><span class="p">)</span>
 </span></pre></div>
 </div>
@@ -387,10 +387,10 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="12">
 </span><span data-line="13">    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span>
 </span><span data-line="14">        <span class="bp">self</span><span class="p">,</span>
-</span><span data-line="15">        <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>          <span class="c1"># [B, T, 1, 1, D]</span>
-</span><span data-line="16">        <span class="n">experts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>    <span class="c1"># [E, D, H]</span>
-</span><span data-line="17">        <span class="n">indices</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>    <span class="c1"># [B, T, K]</span>
-</span><span data-line="18">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>            <span class="c1"># [B, T, K, 1, H]</span>
+</span><span data-line="15">        <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># [B, T, 1, 1, D]</span>
+</span><span data-line="16">        <span class="n">experts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># [E, D, H]</span>
+</span><span data-line="17">        <span class="n">indices</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># [B, T, K]</span>
+</span><span data-line="18">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>  <span class="c1"># [B, T, K, 1, H]</span>
 </span><span data-line="19">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">gather_mm</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">experts</span><span class="p">,</span> <span class="n">rhs_indices</span><span class="o">=</span><span class="n">indices</span><span class="p">)</span>
 </span><span data-line="20">
 </span><span data-line="21">
@@ -412,8 +412,8 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="37">        <span class="n">externalize_modules</span><span class="o">=</span><span class="p">[</span>
 </span><span data-line="38">            <span class="n">ExternalizeSpec</span><span class="p">(</span>
 </span><span data-line="39">                <span class="n">target_class</span><span class="o">=</span><span class="n">GatherMM</span><span class="p">,</span>
-</span><span data-line="40">                <span class="n">composite_op_name</span><span class="o">=</span><span class="s2">&quot;gather_mm&quot;</span><span class="p">,</span>
-</span><span data-line="41">                <span class="n">composite_attrs</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;num_batch_axes&quot;</span><span class="p">],</span>
+</span><span data-line="40">                <span class="n">composite_op_name</span><span class="o">=</span><span class="s2">"gather_mm"</span><span class="p">,</span>
+</span><span data-line="41">                <span class="n">composite_attrs</span><span class="o">=</span><span class="p">[</span><span class="s2">"num_batch_axes"</span><span class="p">],</span>
 </span><span data-line="42">            <span class="p">)</span>
 </span><span data-line="43">        <span class="p">],</span>
 </span><span data-line="44">    <span class="p">)</span>
@@ -431,10 +431,10 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="5">
 </span><span data-line="6">    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span>
 </span><span data-line="7">        <span class="bp">self</span><span class="p">,</span>
-</span><span data-line="8">        <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>            <span class="c1"># [B, T, 1, 1, D]</span>
-</span><span data-line="9">        <span class="n">fused_experts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="c1"># [2, E, D, H]  (gate + up stacked)</span>
-</span><span data-line="10">        <span class="n">indices</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>      <span class="c1"># [B, T, K]</span>
-</span><span data-line="11">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>              <span class="c1"># [2, B, T, K, 1, H]</span>
+</span><span data-line="8">        <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># [B, T, 1, 1, D]</span>
+</span><span data-line="9">        <span class="n">fused_experts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># [2, E, D, H]  (gate + up stacked)</span>
+</span><span data-line="10">        <span class="n">indices</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>  <span class="c1"># [B, T, K]</span>
+</span><span data-line="11">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>  <span class="c1"># [2, B, T, K, 1, H]</span>
 </span><span data-line="12">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">gather_mm</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">fused_experts</span><span class="p">,</span> <span class="n">rhs_indices</span><span class="o">=</span><span class="n">indices</span><span class="p">)</span>
 </span></pre></div>
 </div>
@@ -466,16 +466,17 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="2">    <span class="n">flat_indices</span> <span class="o">=</span> <span class="n">indices</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
 </span><span data-line="3">    <span class="n">flat_gather</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">index_select</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">num_batch_axes</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">flat_indices</span><span class="p">)</span>
 </span><span data-line="4">    <span class="n">result_shape</span> <span class="o">=</span> <span class="p">(</span>
-</span><span data-line="5">        <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="n">num_batch_axes</span><span class="p">]</span> <span class="o">+</span> <span class="n">indices</span><span class="o">.</span><span class="n">shape</span> <span class="o">+</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">num_batch_axes</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:]</span>
+</span><span data-line="5">        <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="n">num_batch_axes</span><span class="p">]</span> <span class="o">+</span> <span class="n">indices</span><span class="o">.</span><span class="n">shape</span> <span class="o">+</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">num_batch_axes</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:]</span>
 </span><span data-line="6">    <span class="p">)</span>
 </span><span data-line="7">    <span class="k">return</span> <span class="n">flat_gather</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">result_shape</span><span class="p">)</span>
 </span><span data-line="8">
-</span><span data-line="9"><span class="k">def</span><span class="w"> </span><span class="nf">gather_mm</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">,</span> <span class="n">lhs_indices</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rhs_indices</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">num_batch_axes</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
-</span><span data-line="10">    <span class="k">if</span> <span class="n">lhs_indices</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-</span><span data-line="11">        <span class="n">lhs</span> <span class="o">=</span> <span class="n">_gather</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">lhs_indices</span><span class="p">,</span> <span class="n">num_batch_axes</span><span class="o">=</span><span class="n">num_batch_axes</span><span class="p">)</span>
-</span><span data-line="12">    <span class="k">if</span> <span class="n">rhs_indices</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-</span><span data-line="13">        <span class="n">rhs</span> <span class="o">=</span> <span class="n">_gather</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="n">rhs_indices</span><span class="p">,</span> <span class="n">num_batch_axes</span><span class="o">=</span><span class="n">num_batch_axes</span><span class="p">)</span>
-</span><span data-line="14">    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span>
+</span><span data-line="9">
+</span><span data-line="10"><span class="k">def</span><span class="w"> </span><span class="nf">gather_mm</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">,</span> <span class="n">lhs_indices</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rhs_indices</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">num_batch_axes</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+</span><span data-line="11">    <span class="k">if</span> <span class="n">lhs_indices</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span data-line="12">        <span class="n">lhs</span> <span class="o">=</span> <span class="n">_gather</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">lhs_indices</span><span class="p">,</span> <span class="n">num_batch_axes</span><span class="o">=</span><span class="n">num_batch_axes</span><span class="p">)</span>
+</span><span data-line="13">    <span class="k">if</span> <span class="n">rhs_indices</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span data-line="14">        <span class="n">rhs</span> <span class="o">=</span> <span class="n">_gather</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="n">rhs_indices</span><span class="p">,</span> <span class="n">num_batch_axes</span><span class="o">=</span><span class="n">num_batch_axes</span><span class="p">)</span>
+</span><span data-line="15">    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>

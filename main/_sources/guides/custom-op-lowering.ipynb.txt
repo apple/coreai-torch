@@ -92,6 +92,7 @@
    "outputs": [],
    "source": [
     "import torch\n",
+    "\n",
     "from coreai_torch import get_decomp_table\n",
     "\n",
     "model = ScaledAddModel().eval()\n",
@@ -198,9 +199,9 @@
    "metadata": {},
    "outputs": [],
    "source": [
+    "import numpy as np\n",
     "import torch\n",
     "import torch.nn as nn\n",
-    "import numpy as np\n",
     "\n",
     "from coreai_torch._utils import get_operand\n",
     "\n",

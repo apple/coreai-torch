@@ -117,9 +117,11 @@ This page lists every PyTorch ATen operator that `TorchConverter` lowers to Core
 | `pow.Scalar`, `pow.Tensor_Scalar`, `pow.Tensor_Tensor` | |
 | `prod.default`, `prod.dim_int` | |
 | `reciprocal.default` | |
+| `reflection_pad1d.default`, `reflection_pad2d.default`, `reflection_pad3d.default` | Lowered to `coreai.pad` with `reflect` mode |
 | `relu.default` | |
 | `remainder.Tensor` | |
 | `repeat.default` | |
+| `replication_pad1d.default`, `replication_pad2d.default`, `replication_pad3d.default` | Lowered to `coreai.pad` with `replicate` mode |
 | `round.default`, `round.decimals` | |
 | `rsqrt.default` | |
 | `scalar_tensor.default` | |

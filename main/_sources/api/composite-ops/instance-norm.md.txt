@@ -40,12 +40,15 @@ gamma = torch.randn(C)
 beta = torch.randn(C)
 
 output = torch.ops.aten.instance_norm.default(
-    input, gamma, beta,
-    None, None,        # running_mean / running_var unused in inference
-    True,              # use_input_stats
-    0.1,               # momentum (ignored in inference)
-    1e-5,              # eps
-    True,              # cudnn_enabled (ignored)
+    input,
+    gamma,
+    beta,
+    None,
+    None,  # running_mean / running_var unused in inference
+    True,  # use_input_stats
+    0.1,  # momentum (ignored in inference)
+    1e-5,  # eps
+    True,  # cudnn_enabled (ignored)
 )
 ```
 

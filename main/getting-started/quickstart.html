@@ -274,10 +274,8 @@ data-aria-dark="Switch to auto color mode">
 <p>Use <code class="docutils literal notranslate"><span class="pre">torch.export.export</span></code> to capture the computation graph as an <code class="docutils literal notranslate"><span class="pre">ExportedProgram</span></code>. The result is shape- and dtype-specialized to the provided example input.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-</span><span data-line="2">
-</span><span data-line="3"><span class="n">example_input</span> <span class="o">=</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">),)</span>
-</span><span data-line="4"><span class="n">exported</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_input</span><span class="p">)</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">example_input</span> <span class="o">=</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">),)</span>
+</span><span data-line="2"><span class="n">exported</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_input</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </div>
@@ -310,8 +308,8 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="3"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span>
 </span><span data-line="4"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span>
 </span><span data-line="5">    <span class="n">exported</span><span class="p">,</span>
-</span><span data-line="6">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">],</span>
-</span><span data-line="7">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;out&quot;</span><span class="p">],</span>
+</span><span data-line="6">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">],</span>
+</span><span data-line="7">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"out"</span><span class="p">],</span>
 </span><span data-line="8"><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
 </span><span data-line="9"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
@@ -325,36 +323,36 @@ data-aria-dark="Switch to auto color mode">
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
-</span><span data-line="2"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-</span><span data-line="3"><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-</span><span data-line="4">
-</span><span data-line="5"><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+</span><span data-line="3">
+</span><span data-line="4"><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="5"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
 </span><span data-line="6"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">NDArray</span>
 </span><span data-line="7">
 </span><span data-line="8">
 </span><span data-line="9"><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">compile_and_run</span><span class="p">(</span><span class="n">coreai_program</span><span class="p">,</span> <span class="n">example_input</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
 </span><span data-line="10">    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
 </span><span data-line="11">        <span class="c1"># Compile: save the AIProgram to an .aimodel directory on disk.</span>
-</span><span data-line="12">        <span class="n">asset</span> <span class="o">=</span> <span class="n">coreai_program</span><span class="o">.</span><span class="n">save_asset</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;quick_start_example.aimodel&quot;</span><span class="p">)</span>
+</span><span data-line="12">        <span class="n">asset</span> <span class="o">=</span> <span class="n">coreai_program</span><span class="o">.</span><span class="n">save_asset</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"quick_start_example.aimodel"</span><span class="p">)</span>
 </span><span data-line="13">
 </span><span data-line="14">        <span class="c1"># Load: open the executable and bind the `main` function.</span>
 </span><span data-line="15">        <span class="k">async</span> <span class="k">with</span> <span class="n">asset</span><span class="o">.</span><span class="n">executable</span><span class="p">()</span> <span class="k">as</span> <span class="n">ai_model</span><span class="p">:</span>
-</span><span data-line="16">            <span class="n">function</span> <span class="o">=</span> <span class="n">ai_model</span><span class="o">.</span><span class="n">load_function</span><span class="p">(</span><span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</span><span data-line="16">            <span class="n">function</span> <span class="o">=</span> <span class="n">ai_model</span><span class="o">.</span><span class="n">load_function</span><span class="p">(</span><span class="s2">"main"</span><span class="p">)</span>
 </span><span data-line="17">
 </span><span data-line="18">            <span class="c1"># Run: invoke the function on the example input.</span>
-</span><span data-line="19">            <span class="n">coreai_outputs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">function</span><span class="p">({</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">(</span><span class="n">example_input</span><span class="p">[</span><span class="mi">0</span><span class="p">])})</span>
+</span><span data-line="19">            <span class="n">coreai_outputs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">function</span><span class="p">({</span><span class="s2">"x"</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">(</span><span class="n">example_input</span><span class="p">[</span><span class="mi">0</span><span class="p">])})</span>
 </span><span data-line="20">
 </span><span data-line="21">            <span class="c1"># Compare with PyTorch: run the same input through the original model.</span>
 </span><span data-line="22">            <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
 </span><span data-line="23">                <span class="n">pytorch_output</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">example_input</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 </span><span data-line="24">
-</span><span data-line="25">            <span class="n">coreai_output</span> <span class="o">=</span> <span class="n">coreai_outputs</span><span class="p">[</span><span class="s2">&quot;out&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+</span><span data-line="25">            <span class="n">coreai_output</span> <span class="o">=</span> <span class="n">coreai_outputs</span><span class="p">[</span><span class="s2">"out"</span><span class="p">]</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
 </span><span data-line="26">            <span class="n">pytorch_numpy</span> <span class="o">=</span> <span class="n">pytorch_output</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
 </span><span data-line="27">
-</span><span data-line="28">            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;PyTorch output shape: </span><span class="si">{</span><span class="n">pytorch_numpy</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span data-line="29">            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Core AI output shape: </span><span class="si">{</span><span class="n">coreai_output</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="28">            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"PyTorch output shape: </span><span class="si">{</span><span class="n">pytorch_numpy</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</span><span data-line="29">            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Core AI output shape: </span><span class="si">{</span><span class="n">coreai_output</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span><span data-line="30">            <span class="nb">print</span><span class="p">(</span>
-</span><span data-line="31">                <span class="sa">f</span><span class="s2">&quot;Outputs match: </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">pytorch_numpy</span><span class="p">,</span><span class="w"> </span><span class="n">coreai_output</span><span class="p">,</span><span class="w"> </span><span class="n">atol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span data-line="31">                <span class="sa">f</span><span class="s2">"Outputs match: </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">pytorch_numpy</span><span class="p">,</span><span class="w"> </span><span class="n">coreai_output</span><span class="p">,</span><span class="w"> </span><span class="n">atol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
 </span><span data-line="32">            <span class="p">)</span>
 </span><span data-line="33">
 </span><span data-line="34">
@@ -390,8 +388,8 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="11">    <span class="n">TorchConverter</span><span class="p">()</span>
 </span><span data-line="12">    <span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span>
 </span><span data-line="13">        <span class="n">exported</span><span class="p">,</span>
-</span><span data-line="14">        <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;image&quot;</span><span class="p">],</span>
-</span><span data-line="15">        <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;logits&quot;</span><span class="p">],</span>
+</span><span data-line="14">        <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"image"</span><span class="p">],</span>
+</span><span data-line="15">        <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"logits"</span><span class="p">],</span>
 </span><span data-line="16">    <span class="p">)</span>
 </span><span data-line="17">    <span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
 </span><span data-line="18"><span class="p">)</span>
@@ -403,20 +401,17 @@ data-aria-dark="Switch to auto color mode">
 <p>Compile and run the same way as above:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
-</span><span data-line="2">
-</span><span data-line="3">
-</span><span data-line="4"><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">():</span>
-</span><span data-line="5">    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
-</span><span data-line="6">        <span class="n">asset</span> <span class="o">=</span> <span class="n">coreai_program</span><span class="o">.</span><span class="n">save_asset</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;mobilenet_v2_example.aimodel&quot;</span><span class="p">)</span>
-</span><span data-line="7">        <span class="k">async</span> <span class="k">with</span> <span class="n">asset</span><span class="o">.</span><span class="n">executable</span><span class="p">()</span> <span class="k">as</span> <span class="n">ai_model</span><span class="p">:</span>
-</span><span data-line="8">            <span class="n">function</span> <span class="o">=</span> <span class="n">ai_model</span><span class="o">.</span><span class="n">load_function</span><span class="p">(</span><span class="s2">&quot;main&quot;</span><span class="p">)</span>
-</span><span data-line="9">            <span class="n">outputs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">function</span><span class="p">({</span><span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">(</span><span class="n">example_input</span><span class="p">[</span><span class="mi">0</span><span class="p">])})</span>
-</span><span data-line="10">            <span class="n">logits</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="s2">&quot;logits&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-</span><span data-line="11">            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;logits shape:&quot;</span><span class="p">,</span> <span class="n">logits</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># (1, 1000)</span>
-</span><span data-line="12">
-</span><span data-line="13">
-</span><span data-line="14"><span class="k">await</span> <span class="n">run</span><span class="p">()</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">():</span>
+</span><span data-line="2">    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
+</span><span data-line="3">        <span class="n">asset</span> <span class="o">=</span> <span class="n">coreai_program</span><span class="o">.</span><span class="n">save_asset</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"mobilenet_v2_example.aimodel"</span><span class="p">)</span>
+</span><span data-line="4">        <span class="k">async</span> <span class="k">with</span> <span class="n">asset</span><span class="o">.</span><span class="n">executable</span><span class="p">()</span> <span class="k">as</span> <span class="n">ai_model</span><span class="p">:</span>
+</span><span data-line="5">            <span class="n">function</span> <span class="o">=</span> <span class="n">ai_model</span><span class="o">.</span><span class="n">load_function</span><span class="p">(</span><span class="s2">"main"</span><span class="p">)</span>
+</span><span data-line="6">            <span class="n">outputs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">function</span><span class="p">({</span><span class="s2">"image"</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">(</span><span class="n">example_input</span><span class="p">[</span><span class="mi">0</span><span class="p">])})</span>
+</span><span data-line="7">            <span class="n">logits</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="s2">"logits"</span><span class="p">]</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+</span><span data-line="8">            <span class="nb">print</span><span class="p">(</span><span class="s2">"logits shape:"</span><span class="p">,</span> <span class="n">logits</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># (1, 1000)</span>
+</span><span data-line="9">
+</span><span data-line="10">
+</span><span data-line="11"><span class="k">await</span> <span class="n">run</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </div>
@@ -429,22 +424,23 @@ data-aria-dark="Switch to auto color mode">
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-</span><span data-line="2"><span class="kn">import</span><span class="w"> </span><span class="nn">coreai_torch</span>
-</span><span data-line="3">
-</span><span data-line="4"><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleModel</span><span class="p">()</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
-</span><span data-line="5"><span class="n">sample</span> <span class="o">=</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">),)</span>
-</span><span data-line="6">
-</span><span data-line="7"><span class="n">coreai_program</span> <span class="o">=</span> <span class="p">(</span>
-</span><span data-line="8">    <span class="n">TorchConverter</span><span class="p">()</span>
-</span><span data-line="9">    <span class="o">.</span><span class="n">add_pytorch_module</span><span class="p">(</span>
-</span><span data-line="10">        <span class="n">model</span><span class="p">,</span>
-</span><span data-line="11">        <span class="n">export_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">sample</span><span class="p">)</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span>
-</span><span data-line="12">            <span class="n">coreai_torch</span><span class="o">.</span><span class="n">get_decomp_table</span><span class="p">()</span>
-</span><span data-line="13">        <span class="p">),</span>
-</span><span data-line="14">    <span class="p">)</span>
-</span><span data-line="15">    <span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="16"><span class="p">)</span>
-</span><span data-line="17"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="kn">import</span><span class="w"> </span><span class="nn">coreai_torch</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="n">model</span> <span class="o">=</span> <span class="n">SimpleModel</span><span class="p">()</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+</span><span data-line="6"><span class="n">sample</span> <span class="o">=</span> <span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">),)</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="n">coreai_program</span> <span class="o">=</span> <span class="p">(</span>
+</span><span data-line="9">    <span class="n">TorchConverter</span><span class="p">()</span>
+</span><span data-line="10">    <span class="o">.</span><span class="n">add_pytorch_module</span><span class="p">(</span>
+</span><span data-line="11">        <span class="n">model</span><span class="p">,</span>
+</span><span data-line="12">        <span class="n">export_fn</span><span class="o">=</span><span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">sample</span><span class="p">)</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span>
+</span><span data-line="13">            <span class="n">coreai_torch</span><span class="o">.</span><span class="n">get_decomp_table</span><span class="p">()</span>
+</span><span data-line="14">        <span class="p">),</span>
+</span><span data-line="15">    <span class="p">)</span>
+</span><span data-line="16">    <span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
+</span><span data-line="17"><span class="p">)</span>
+</span><span data-line="18"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </div>

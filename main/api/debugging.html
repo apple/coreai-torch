@@ -279,7 +279,7 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span><span data-line="8"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check_for_nans</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">),))</span>
 </span><span data-line="9">
 </span><span data-line="10"><span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
-</span><span data-line="11">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;NaN detected at: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="11">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"NaN detected at: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>
@@ -302,7 +302,7 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span><span data-line="12">
 </span><span data-line="13"><span class="c1"># Get first failing operation</span>
 </span><span data-line="14"><span class="k">if</span> <span class="n">nan_result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
-</span><span data-line="15">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;First NaN at: </span><span class="si">{</span><span class="n">nan_result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="15">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"First NaN at: </span><span class="si">{</span><span class="n">nan_result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>
@@ -316,10 +316,10 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span><span data-line="6"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span><span data-line="7">
 </span><span data-line="8"><span class="c1"># Create validator</span>
-</span><span data-line="9"><span class="n">validator</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_validator_for_coreai_program</span><span class="p">(</span><span class="n">coreai_program</span><span class="p">,</span> <span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</span><span data-line="9"><span class="n">validator</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_validator_for_coreai_program</span><span class="p">(</span><span class="n">coreai_program</span><span class="p">,</span> <span class="s2">"main"</span><span class="p">)</span>
 </span><span data-line="10">
 </span><span data-line="11"><span class="c1"># Check for issues</span>
-</span><span data-line="12"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check_for_nans</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)})</span>
+</span><span data-line="12"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check_for_nans</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)})</span>
 </span></pre></div>
 </div>
 </section>
@@ -336,20 +336,18 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span><span data-line="4"><span class="n">comparator</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_comparator_for_programs</span><span class="p">(</span>
 </span><span data-line="5">    <span class="n">source_program</span><span class="o">=</span><span class="n">exported_program</span><span class="p">,</span>
 </span><span data-line="6">    <span class="n">target_program</span><span class="o">=</span><span class="n">coreai_program</span><span class="p">,</span>
-</span><span data-line="7">    <span class="n">target_entry_point</span><span class="o">=</span><span class="s2">&quot;main&quot;</span>
+</span><span data-line="7">    <span class="n">target_entry_point</span><span class="o">=</span><span class="s2">"main"</span><span class="p">,</span>
 </span><span data-line="8"><span class="p">)</span>
 </span><span data-line="9">
 </span><span data-line="10"><span class="c1"># Compare outputs with tolerance</span>
 </span><span data-line="11"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">comparator</span><span class="o">.</span><span class="n">compare_with_tolerance</span><span class="p">(</span>
-</span><span data-line="12">    <span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">example_input</span><span class="p">},</span>
-</span><span data-line="13">    <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
-</span><span data-line="14">    <span class="n">atol</span><span class="o">=</span><span class="mf">1e-8</span>
-</span><span data-line="15"><span class="p">)</span>
-</span><span data-line="16">
-</span><span data-line="17"><span class="c1"># Check for differences</span>
-</span><span data-line="18"><span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
-</span><span data-line="19">    <span class="k">for</span> <span class="n">source_op</span><span class="p">,</span> <span class="n">target_op</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
-</span><span data-line="20">        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Mismatch: </span><span class="si">{</span><span class="n">source_op</span><span class="si">}</span><span class="s2"> vs </span><span class="si">{</span><span class="n">target_op</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="12">    <span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="n">example_input</span><span class="p">},</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-8</span>
+</span><span data-line="13"><span class="p">)</span>
+</span><span data-line="14">
+</span><span data-line="15"><span class="c1"># Check for differences</span>
+</span><span data-line="16"><span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
+</span><span data-line="17">    <span class="k">for</span> <span class="n">source_op</span><span class="p">,</span> <span class="n">target_op</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">failed_nodes</span><span class="p">:</span>
+</span><span data-line="18">        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Mismatch: </span><span class="si">{</span><span class="n">source_op</span><span class="si">}</span><span class="s2"> vs </span><span class="si">{</span><span class="n">target_op</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>
@@ -362,24 +360,23 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIModel</span>
 </span><span data-line="3">
 </span><span data-line="4"><span class="c1"># Load deployed Core AI model</span>
-</span><span data-line="5"><span class="n">asset_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;my_model.aimodel&quot;</span><span class="p">)</span>
+</span><span data-line="5"><span class="n">asset_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">"my_model.aimodel"</span><span class="p">)</span>
 </span><span data-line="6"><span class="n">ai_model</span> <span class="o">=</span> <span class="k">await</span> <span class="n">AIModel</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">asset_path</span><span class="p">)</span>
 </span><span data-line="7">
 </span><span data-line="8"><span class="c1"># Create inspector</span>
-</span><span data-line="9"><span class="n">inspector</span> <span class="o">=</span> <span class="n">CoreAIInspector</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">ai_model</span><span class="p">,</span> <span class="n">function_name</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</span><span data-line="9"><span class="n">inspector</span> <span class="o">=</span> <span class="n">CoreAIInspector</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">ai_model</span><span class="p">,</span> <span class="n">function_name</span><span class="o">=</span><span class="s2">"main"</span><span class="p">)</span>
 </span><span data-line="10">
 </span><span data-line="11"><span class="c1"># Get operation IDs to inspect (from debug info)</span>
 </span><span data-line="12"><span class="n">coreai_op_ids</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">]</span>
 </span><span data-line="13">
 </span><span data-line="14"><span class="c1"># Capture intermediate values</span>
 </span><span data-line="15"><span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">inspector</span><span class="o">.</span><span class="n">get_intermediates_for_ops</span><span class="p">(</span>
-</span><span data-line="16">    <span class="n">coreai_op_ids</span><span class="p">,</span>
-</span><span data-line="17">    <span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)}</span>
-</span><span data-line="18"><span class="p">)</span>
-</span><span data-line="19">
-</span><span data-line="20"><span class="c1"># Check results</span>
-</span><span data-line="21"><span class="k">for</span> <span class="n">op_id</span><span class="p">,</span> <span class="n">outputs</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-</span><span data-line="22">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Op </span><span class="si">{</span><span class="n">op_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">outputs</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">outputs</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="mi">0</span><span class="si">}</span><span class="s2"> outputs&quot;</span><span class="p">)</span>
+</span><span data-line="16">    <span class="n">coreai_op_ids</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)}</span>
+</span><span data-line="17"><span class="p">)</span>
+</span><span data-line="18">
+</span><span data-line="19"><span class="c1"># Check results</span>
+</span><span data-line="20"><span class="k">for</span> <span class="n">op_id</span><span class="p">,</span> <span class="n">outputs</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span data-line="21">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Op </span><span class="si">{</span><span class="n">op_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">outputs</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">outputs</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="mi">0</span><span class="si">}</span><span class="s2"> outputs"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>
@@ -392,7 +389,7 @@ operation-level debug metadata is preserved and available to these tools:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.graph_diff</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
 </span><span data-line="2">    <span class="n">compute_exported_program_diff</span><span class="p">,</span>
 </span><span data-line="3">    <span class="n">compute_coreai_program_diff</span><span class="p">,</span>
-</span><span data-line="4">    <span class="n">write_diff</span>
+</span><span data-line="4">    <span class="n">write_diff</span><span class="p">,</span>
 </span><span data-line="5"><span class="p">)</span>
 </span><span data-line="6">
 </span><span data-line="7"><span class="c1"># Compare two PyTorch programs</span>
@@ -403,17 +400,12 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span><span data-line="12">
 </span><span data-line="13"><span class="c1"># Check structural compatibility</span>
 </span><span data-line="14"><span class="k">if</span> <span class="n">diff</span><span class="o">.</span><span class="n">is_isomorphic</span><span class="p">:</span>
-</span><span data-line="15">    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;✓ Graphs have identical structure&quot;</span><span class="p">)</span>
+</span><span data-line="15">    <span class="nb">print</span><span class="p">(</span><span class="s2">"✓ Graphs have identical structure"</span><span class="p">)</span>
 </span><span data-line="16"><span class="k">else</span><span class="p">:</span>
-</span><span data-line="17">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;✗ Found </span><span class="si">{</span><span class="n">diff</span><span class="o">.</span><span class="n">summary</span><span class="o">.</span><span class="n">unmapped_source_node_count</span><span class="si">}</span><span class="s2"> structural differences&quot;</span><span class="p">)</span>
+</span><span data-line="17">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"✗ Found </span><span class="si">{</span><span class="n">diff</span><span class="o">.</span><span class="n">summary</span><span class="o">.</span><span class="n">unmapped_source_node_count</span><span class="si">}</span><span class="s2"> structural differences"</span><span class="p">)</span>
 </span><span data-line="18">
 </span><span data-line="19">    <span class="c1"># Write detailed diff report to stdout</span>
-</span><span data-line="20">    <span class="n">write_diff</span><span class="p">(</span>
-</span><span data-line="21">        <span class="n">diff</span><span class="p">,</span>
-</span><span data-line="22">        <span class="n">diff</span><span class="o">.</span><span class="n">source_graph</span><span class="p">,</span>
-</span><span data-line="23">        <span class="n">diff</span><span class="o">.</span><span class="n">target_graph</span><span class="p">,</span>
-</span><span data-line="24">        <span class="n">max_items</span><span class="o">=</span><span class="mi">20</span>
-</span><span data-line="25">    <span class="p">)</span>
+</span><span data-line="20">    <span class="n">write_diff</span><span class="p">(</span><span class="n">diff</span><span class="p">,</span> <span class="n">diff</span><span class="o">.</span><span class="n">source_graph</span><span class="p">,</span> <span class="n">diff</span><span class="o">.</span><span class="n">target_graph</span><span class="p">,</span> <span class="n">max_items</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>
@@ -426,18 +418,16 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span><span data-line="2">
 </span><span data-line="3"><span class="c1"># Run benchmark</span>
 </span><span data-line="4"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">benchmark_coreai_program</span><span class="p">(</span>
-</span><span data-line="5">    <span class="n">coreai_program</span><span class="o">=</span><span class="n">coreai_program</span><span class="p">,</span>
-</span><span data-line="6">    <span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)},</span>
-</span><span data-line="7">    <span class="n">num_runs</span><span class="o">=</span><span class="mi">50</span>
-</span><span data-line="8"><span class="p">)</span>
-</span><span data-line="9">
-</span><span data-line="10"><span class="c1"># Show timing summary</span>
-</span><span data-line="11"><span class="n">result</span><span class="o">.</span><span class="n">write_summary</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
-</span><span data-line="12">
-</span><span data-line="13"><span class="c1"># Get module-level timing</span>
-</span><span data-line="14"><span class="n">module_timings</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">get_module_timings</span><span class="p">()</span>
-</span><span data-line="15"><span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">module</span> <span class="ow">in</span> <span class="n">module_timings</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-</span><span data-line="16">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">module</span><span class="o">.</span><span class="n">aggregated_op_stats</span><span class="o">.</span><span class="n">average</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">ms avg&quot;</span><span class="p">)</span>
+</span><span data-line="5">    <span class="n">coreai_program</span><span class="o">=</span><span class="n">coreai_program</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)},</span> <span class="n">num_runs</span><span class="o">=</span><span class="mi">50</span>
+</span><span data-line="6"><span class="p">)</span>
+</span><span data-line="7">
+</span><span data-line="8"><span class="c1"># Show timing summary</span>
+</span><span data-line="9"><span class="n">result</span><span class="o">.</span><span class="n">write_summary</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+</span><span data-line="10">
+</span><span data-line="11"><span class="c1"># Get module-level timing</span>
+</span><span data-line="12"><span class="n">module_timings</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">get_module_timings</span><span class="p">()</span>
+</span><span data-line="13"><span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">module</span> <span class="ow">in</span> <span class="n">module_timings</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span data-line="14">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">module</span><span class="o">.</span><span class="n">aggregated_op_stats</span><span class="o">.</span><span class="n">average</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">ms avg"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>
@@ -446,14 +436,12 @@ operation-level debug metadata is preserved and available to these tools:</p>
 <p><strong>Use when:</strong> You need to check for specific conditions beyond NaN/infinity (e.g., value ranges, specific patterns).</p>
 <p>Create custom checks beyond NaN/infinity:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">check_large_values</span><span class="p">(</span><span class="n">outputs</span><span class="p">):</span>
-</span><span data-line="2"><span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if any output has values &gt; threshold&quot;&quot;&quot;</span>
-</span><span data-line="3">    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span>
-</span><span data-line="4">        <span class="nb">abs</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mf">1000.0</span> <span class="k">if</span> <span class="n">arr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">False</span>
-</span><span data-line="5">        <span class="k">for</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">outputs</span>
-</span><span data-line="6">    <span class="p">)</span>
-</span><span data-line="7">
-</span><span data-line="8"><span class="c1"># Use custom check</span>
-</span><span data-line="9"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">check_large_values</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">)</span>
+</span><span data-line="2"><span class="w">    </span><span class="sd">"""Check if any output has values &gt; threshold"""</span>
+</span><span data-line="3">    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mf">1000.0</span> <span class="k">if</span> <span class="n">arr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">False</span> <span class="k">for</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">outputs</span><span class="p">)</span>
+</span><span data-line="4">
+</span><span data-line="5">
+</span><span data-line="6"><span class="c1"># Use custom check</span>
+</span><span data-line="7"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">check_large_values</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>
@@ -499,12 +487,10 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span><span data-line="6">
 </span><span data-line="7"><span class="c1"># Save intermediate values to disk</span>
 </span><span data-line="8"><span class="n">metadata_path</span> <span class="o">=</span> <span class="n">save_intermediates</span><span class="p">(</span>
-</span><span data-line="9">    <span class="n">program</span><span class="o">=</span><span class="n">exported_program</span><span class="p">,</span>
-</span><span data-line="10">    <span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">,</span>
-</span><span data-line="11">    <span class="n">output_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./debug_output&quot;</span><span class="p">)</span>
-</span><span data-line="12"><span class="p">)</span>
-</span><span data-line="13">
-</span><span data-line="14"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Intermediates saved to: </span><span class="si">{</span><span class="n">metadata_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="9">    <span class="n">program</span><span class="o">=</span><span class="n">exported_program</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">"./debug_output"</span><span class="p">)</span>
+</span><span data-line="10"><span class="p">)</span>
+</span><span data-line="11">
+</span><span data-line="12"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Intermediates saved to: </span><span class="si">{</span><span class="n">metadata_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>
@@ -512,16 +498,16 @@ operation-level debug metadata is preserved and available to these tools:</p>
 <h3>Loading intermediate values<a class="headerlink" href="#loading-intermediate-values" title="Link to this heading">¶</a></h3>
 <p>Load saved intermediate values for analysis:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Load intermediate values from disk</span>
-</span><span data-line="2"><span class="n">debug_trace</span> <span class="o">=</span> <span class="n">load_intermediates</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./debug_output/main.aimodelintermediates&quot;</span><span class="p">))</span>
+</span><span data-line="2"><span class="n">debug_trace</span> <span class="o">=</span> <span class="n">load_intermediates</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">"./debug_output/main.aimodelintermediates"</span><span class="p">))</span>
 </span><span data-line="3">
 </span><span data-line="4"><span class="c1"># Access saved values</span>
-</span><span data-line="5"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Inputs: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">debug_trace</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span data-line="6"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Outputs: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">debug_trace</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span data-line="7"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Intermediates: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">debug_trace</span><span class="o">.</span><span class="n">intermediates</span><span class="p">)</span><span class="si">}</span><span class="s2"> operations&quot;</span><span class="p">)</span>
+</span><span data-line="5"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Inputs: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">debug_trace</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</span><span data-line="6"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Outputs: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">debug_trace</span><span class="o">.</span><span class="n">outputs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</span><span data-line="7"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Intermediates: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">debug_trace</span><span class="o">.</span><span class="n">intermediates</span><span class="p">)</span><span class="si">}</span><span class="s2"> operations"</span><span class="p">)</span>
 </span><span data-line="8">
 </span><span data-line="9"><span class="c1"># Analyze specific intermediate values</span>
 </span><span data-line="10"><span class="k">for</span> <span class="n">node_name</span><span class="p">,</span> <span class="n">tensor</span> <span class="ow">in</span> <span class="n">debug_trace</span><span class="o">.</span><span class="n">intermediates</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-</span><span data-line="11">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">node_name</span><span class="si">}</span><span class="s2">: shape </span><span class="si">{</span><span class="n">tensor</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">, mean </span><span class="si">{</span><span class="n">tensor</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="11">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">node_name</span><span class="si">}</span><span class="s2">: shape </span><span class="si">{</span><span class="n">tensor</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">, mean </span><span class="si">{</span><span class="n">tensor</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </section>
@@ -529,16 +515,17 @@ operation-level debug metadata is preserved and available to these tools:</p>
 <h3>Custom value filtering<a class="headerlink" href="#custom-value-filtering" title="Link to this heading">¶</a></h3>
 <p>Filter which intermediate values to save:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">def</span><span class="w"> </span><span class="nf">custom_filter</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span>
-</span><span data-line="2"><span class="w">    </span><span class="sd">&quot;&quot;&quot;Only save convolution and linear layer outputs&quot;&quot;&quot;</span>
-</span><span data-line="3">    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">op</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">target</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;conv&quot;</span><span class="p">,</span> <span class="s2">&quot;linear&quot;</span><span class="p">,</span> <span class="s2">&quot;matmul&quot;</span><span class="p">])</span>
+</span><span data-line="2"><span class="w">    </span><span class="sd">"""Only save convolution and linear layer outputs"""</span>
+</span><span data-line="3">    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">op</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">target</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"conv"</span><span class="p">,</span> <span class="s2">"linear"</span><span class="p">,</span> <span class="s2">"matmul"</span><span class="p">])</span>
 </span><span data-line="4">
-</span><span data-line="5"><span class="c1"># Save only filtered operations</span>
-</span><span data-line="6"><span class="n">metadata_path</span> <span class="o">=</span> <span class="n">save_intermediates</span><span class="p">(</span>
-</span><span data-line="7">    <span class="n">program</span><span class="o">=</span><span class="n">exported_program</span><span class="p">,</span>
-</span><span data-line="8">    <span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">,</span>
-</span><span data-line="9">    <span class="n">output_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./debug_output&quot;</span><span class="p">),</span>
-</span><span data-line="10">    <span class="n">node_filter</span><span class="o">=</span><span class="n">custom_filter</span>
-</span><span data-line="11"><span class="p">)</span>
+</span><span data-line="5">
+</span><span data-line="6"><span class="c1"># Save only filtered operations</span>
+</span><span data-line="7"><span class="n">metadata_path</span> <span class="o">=</span> <span class="n">save_intermediates</span><span class="p">(</span>
+</span><span data-line="8">    <span class="n">program</span><span class="o">=</span><span class="n">exported_program</span><span class="p">,</span>
+</span><span data-line="9">    <span class="n">inputs</span><span class="o">=</span><span class="n">example_input</span><span class="p">,</span>
+</span><span data-line="10">    <span class="n">output_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">"./debug_output"</span><span class="p">),</span>
+</span><span data-line="11">    <span class="n">node_filter</span><span class="o">=</span><span class="n">custom_filter</span><span class="p">,</span>
+</span><span data-line="12"><span class="p">)</span>
 </span></pre></div>
 </div>
 <p>The debugging module provides tools for validating model correctness, analyzing structural changes, and identifying performance issues.</p>

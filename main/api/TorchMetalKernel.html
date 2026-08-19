@@ -389,13 +389,13 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="7">
 </span><span data-line="8">
 </span><span data-line="9"><span class="n">custom_add</span> <span class="o">=</span> <span class="n">TorchMetalKernel</span><span class="p">(</span>
-</span><span data-line="10">    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;vector_add&quot;</span><span class="p">,</span>
-</span><span data-line="11">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">],</span>
-</span><span data-line="12">    <span class="n">result_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">],</span>
-</span><span data-line="13">    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;output[id] = x[id] + y[id];&quot;</span><span class="p">,</span>
+</span><span data-line="10">    <span class="n">name</span><span class="o">=</span><span class="s2">"vector_add"</span><span class="p">,</span>
+</span><span data-line="11">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">],</span>
+</span><span data-line="12">    <span class="n">result_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"output"</span><span class="p">],</span>
+</span><span data-line="13">    <span class="n">src</span><span class="o">=</span><span class="s2">"output[id] = x[id] + y[id];"</span><span class="p">,</span>
 </span><span data-line="14">    <span class="n">torch_defn</span><span class="o">=</span><span class="n">torch_add</span><span class="p">,</span>
 </span><span data-line="15">    <span class="n">metal_params</span><span class="o">=</span><span class="p">[</span>
-</span><span data-line="16">        <span class="n">MetalParameter</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">,</span> <span class="s2">&quot;uint&quot;</span><span class="p">,</span> <span class="s2">&quot;thread_position_in_grid&quot;</span><span class="p">),</span>
+</span><span data-line="16">        <span class="n">MetalParameter</span><span class="p">(</span><span class="s2">"id"</span><span class="p">,</span> <span class="s2">"uint"</span><span class="p">,</span> <span class="s2">"thread_position_in_grid"</span><span class="p">),</span>
 </span><span data-line="17">    <span class="p">],</span>
 </span><span data-line="18"><span class="p">)</span>
 </span></pre></div>
@@ -420,17 +420,17 @@ data-aria-dark="Switch to auto color mode">
 <h2>Dtype templating<a class="headerlink" href="#dtype-templating" title="Link to this heading">¶</a></h2>
 <p>Use <code class="docutils literal notranslate"><span class="pre">template_dtypes</span></code> to write one kernel that compiles for multiple dtypes:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">custom_matmul</span> <span class="o">=</span> <span class="n">TorchMetalKernel</span><span class="p">(</span>
-</span><span data-line="2">    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;matmul&quot;</span><span class="p">,</span>
-</span><span data-line="3">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;A&quot;</span><span class="p">,</span> <span class="s2">&quot;B&quot;</span><span class="p">],</span>
-</span><span data-line="4">    <span class="n">result_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;C&quot;</span><span class="p">],</span>
-</span><span data-line="5">    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;&quot;&quot;</span>
+</span><span data-line="2">    <span class="n">name</span><span class="o">=</span><span class="s2">"matmul"</span><span class="p">,</span>
+</span><span data-line="3">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">],</span>
+</span><span data-line="4">    <span class="n">result_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"C"</span><span class="p">],</span>
+</span><span data-line="5">    <span class="n">src</span><span class="o">=</span><span class="s2">"""</span>
 </span><span data-line="6"><span class="s2">        TYPE sum = 0.0f;</span>
 </span><span data-line="7"><span class="s2">        ...</span>
-</span><span data-line="8"><span class="s2">    &quot;&quot;&quot;</span><span class="p">,</span>
+</span><span data-line="8"><span class="s2">    """</span><span class="p">,</span>
 </span><span data-line="9">    <span class="n">torch_defn</span><span class="o">=</span><span class="n">torch_matmul</span><span class="p">,</span>
-</span><span data-line="10">    <span class="n">metal_params</span><span class="o">=</span><span class="p">[</span><span class="n">MetalParameter</span><span class="p">(</span><span class="s2">&quot;gid&quot;</span><span class="p">,</span> <span class="s2">&quot;uint2&quot;</span><span class="p">,</span> <span class="s2">&quot;thread_position_in_grid&quot;</span><span class="p">)],</span>
-</span><span data-line="11">    <span class="c1"># The dtype of input &quot;A&quot; determines what &quot;TYPE&quot; is replaced with at compile time.</span>
-</span><span data-line="12">    <span class="n">template_dtypes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;A&quot;</span><span class="p">:</span> <span class="s2">&quot;TYPE&quot;</span><span class="p">},</span>
+</span><span data-line="10">    <span class="n">metal_params</span><span class="o">=</span><span class="p">[</span><span class="n">MetalParameter</span><span class="p">(</span><span class="s2">"gid"</span><span class="p">,</span> <span class="s2">"uint2"</span><span class="p">,</span> <span class="s2">"thread_position_in_grid"</span><span class="p">)],</span>
+</span><span data-line="11">    <span class="c1"># The dtype of input "A" determines what "TYPE" is replaced with at compile time.</span>
+</span><span data-line="12">    <span class="n">template_dtypes</span><span class="o">=</span><span class="p">{</span><span class="s2">"A"</span><span class="p">:</span> <span class="s2">"TYPE"</span><span class="p">},</span>
 </span><span data-line="13"><span class="p">)</span>
 </span></pre></div>
 </div>
@@ -444,12 +444,12 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="3">
 </span><span data-line="4">
 </span><span data-line="5"><span class="n">sincos</span> <span class="o">=</span> <span class="n">TorchMetalKernel</span><span class="p">(</span>
-</span><span data-line="6">    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;sincos&quot;</span><span class="p">,</span>
-</span><span data-line="7">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">],</span>
-</span><span data-line="8">    <span class="n">result_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;out_sin&quot;</span><span class="p">,</span> <span class="s2">&quot;out_cos&quot;</span><span class="p">],</span>
-</span><span data-line="9">    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;out_sin[id] = sin(x[id]); out_cos[id] = cos(x[id]);&quot;</span><span class="p">,</span>
+</span><span data-line="6">    <span class="n">name</span><span class="o">=</span><span class="s2">"sincos"</span><span class="p">,</span>
+</span><span data-line="7">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">],</span>
+</span><span data-line="8">    <span class="n">result_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"out_sin"</span><span class="p">,</span> <span class="s2">"out_cos"</span><span class="p">],</span>
+</span><span data-line="9">    <span class="n">src</span><span class="o">=</span><span class="s2">"out_sin[id] = sin(x[id]); out_cos[id] = cos(x[id]);"</span><span class="p">,</span>
 </span><span data-line="10">    <span class="n">torch_defn</span><span class="o">=</span><span class="n">torch_sincos</span><span class="p">,</span>
-</span><span data-line="11">    <span class="n">metal_params</span><span class="o">=</span><span class="p">[</span><span class="n">MetalParameter</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">,</span> <span class="s2">&quot;uint&quot;</span><span class="p">,</span> <span class="s2">&quot;thread_position_in_grid&quot;</span><span class="p">)],</span>
+</span><span data-line="11">    <span class="n">metal_params</span><span class="o">=</span><span class="p">[</span><span class="n">MetalParameter</span><span class="p">(</span><span class="s2">"id"</span><span class="p">,</span> <span class="s2">"uint"</span><span class="p">,</span> <span class="s2">"thread_position_in_grid"</span><span class="p">)],</span>
 </span><span data-line="12"><span class="p">)</span>
 </span><span data-line="13">
 </span><span data-line="14"><span class="c1"># call site</span>

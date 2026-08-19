@@ -84,14 +84,12 @@ from coreai_torch.debugging.comparator import create_comparator_for_programs
 comparator = await create_comparator_for_programs(
     source_program=exported_program,
     target_program=coreai_program,
-    target_entry_point="main"
+    target_entry_point="main",
 )
 
 # Compare outputs with tolerance
 result = await comparator.compare_with_tolerance(
-    inputs={"x": example_input},
-    rtol=1e-5,
-    atol=1e-8
+    inputs={"x": example_input}, rtol=1e-5, atol=1e-8
 )
 
 # Check for differences
@@ -123,8 +121,7 @@ coreai_op_ids = [1, 5, 10, 15]
 
 # Capture intermediate values
 results = await inspector.get_intermediates_for_ops(
-    coreai_op_ids,
-    inputs={"x": np.random.randn(2, 4).astype(np.float32)}
+    coreai_op_ids, inputs={"x": np.random.randn(2, 4).astype(np.float32)}
 )
 
 # Check results
@@ -144,7 +141,7 @@ Analyze structural differences between model implementations using graph isomorp
 from coreai_torch.debugging.graph_diff import (
     compute_exported_program_diff,
     compute_coreai_program_diff,
-    write_diff
+    write_diff,
 )
 
 # Compare two PyTorch programs
@@ -160,12 +157,7 @@ else:
     print(f"✗ Found {diff.summary.unmapped_source_node_count} structural differences")
 
     # Write detailed diff report to stdout
-    write_diff(
-        diff,
-        diff.source_graph,
-        diff.target_graph,
-        max_items=20
-    )
+    write_diff(diff, diff.source_graph, diff.target_graph, max_items=20)
 ```
 
 
@@ -180,9 +172,7 @@ from coreai_torch.debugging.benchmarker import benchmark_coreai_program
 
 # Run benchmark
 result = await benchmark_coreai_program(
-    coreai_program=coreai_program,
-    inputs={"x": torch.randn(2, 4)},
-    num_runs=50
+    coreai_program=coreai_program, inputs={"x": torch.randn(2, 4)}, num_runs=50
 )
 
 # Show timing summary
@@ -203,10 +193,8 @@ Create custom checks beyond NaN/infinity:
 ```python
 def check_large_values(outputs):
     """Check if any output has values > threshold"""
-    return any(
-        abs(arr).max() > 1000.0 if arr is not None else False
-        for arr in outputs
-    )
+    return any(abs(arr).max() > 1000.0 if arr is not None else False for arr in outputs)
+
 
 # Use custom check
 result = await validator.check(check_large_values, inputs=example_input)
@@ -256,9 +244,7 @@ exported_program = torch.export.export(model, args=example_input)
 
 # Save intermediate values to disk
 metadata_path = save_intermediates(
-    program=exported_program,
-    inputs=example_input,
-    output_dir=Path("./debug_output")
+    program=exported_program, inputs=example_input, output_dir=Path("./debug_output")
 )
 
 print(f"Intermediates saved to: {metadata_path}")
@@ -291,12 +277,13 @@ def custom_filter(node, result):
     """Only save convolution and linear layer outputs"""
     return any(op in str(node.target).lower() for op in ["conv", "linear", "matmul"])
 
+
 # Save only filtered operations
 metadata_path = save_intermediates(
     program=exported_program,
     inputs=example_input,
     output_dir=Path("./debug_output"),
-    node_filter=custom_filter
+    node_filter=custom_filter,
 )
 ```
 

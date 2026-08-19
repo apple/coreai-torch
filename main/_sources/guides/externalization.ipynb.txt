@@ -86,8 +86,6 @@
     "import torch\n",
     "import torch.nn as nn\n",
     "\n",
-    "from coreai_torch import ExternalizeSpec\n",
-    "\n",
     "\n",
     "class RMSNormComposite(nn.Module):\n",
     "    def __init__(self, axes=-1, eps=1e-5, version=1):\n",
@@ -100,6 +98,7 @@
     "        x_f32 = input.to(torch.float32)\n",
     "        inv_rms = torch.rsqrt((x_f32 * x_f32).mean(self.axes, keepdim=True) + self.eps)\n",
     "        return (input * inv_rms).to(input.dtype) * scale\n",
+    "\n",
     "\n",
     "model = RMSNormComposite().eval()\n",
     "sample = (torch.randn(10), torch.randn(10))"

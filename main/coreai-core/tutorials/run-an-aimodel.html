@@ -267,11 +267,10 @@ in an event loop).</p>
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 </span><span data-line="2">
 </span><span data-line="3"><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-</span><span data-line="4">
-</span><span data-line="5"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.authoring</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIModelAsset</span>
-</span><span data-line="6"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">InferenceFunction</span><span class="p">,</span> <span class="n">NDArray</span>
-</span><span data-line="7">
-</span><span data-line="8"><span class="n">asset_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./hello-run.aimodel&quot;</span><span class="p">)</span>
+</span><span data-line="4"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.authoring</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIModelAsset</span>
+</span><span data-line="5"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">InferenceFunction</span><span class="p">,</span> <span class="n">NDArray</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="n">asset_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">"./hello-run.aimodel"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </div>
@@ -286,10 +285,10 @@ Graph</em>. We’re going to go ahead and recreate the asset path.</p>
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">shutil</span><span class="w"> </span><span class="kn">import</span> <span class="n">rmtree</span>
 </span><span data-line="2"><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span>
 </span><span data-line="3">
-</span><span data-line="4"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.authoring</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIProgram</span><span class="p">,</span> <span class="n">Module</span><span class="p">,</span> <span class="n">TensorSpec</span>
-</span><span data-line="5"><span class="c1"># Pending re-export from coreai.authoring; see the previous tutorial.</span>
-</span><span data-line="6"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai._compiler.dialects</span><span class="w"> </span><span class="kn">import</span> <span class="n">coreai</span> <span class="k">as</span> <span class="n">ops</span>
-</span><span data-line="7"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai._compiler.ir</span><span class="w"> </span><span class="kn">import</span> <span class="n">Value</span>
+</span><span data-line="4"><span class="c1"># Pending re-export from coreai.authoring; see the previous tutorial.</span>
+</span><span data-line="5"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai._compiler.dialects</span><span class="w"> </span><span class="kn">import</span> <span class="n">coreai</span> <span class="k">as</span> <span class="n">ops</span>
+</span><span data-line="6"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai._compiler.ir</span><span class="w"> </span><span class="kn">import</span> <span class="n">Value</span>
+</span><span data-line="7"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai.authoring</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIProgram</span><span class="p">,</span> <span class="n">Module</span><span class="p">,</span> <span class="n">TensorSpec</span>
 </span><span data-line="8">
 </span><span data-line="9"><span class="c1"># Reconstruct asset.</span>
 </span><span data-line="10"><span class="k">if</span> <span class="n">asset_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
@@ -301,11 +300,12 @@ Graph</em>. We’re going to go ahead and recreate the asset path.</p>
 </span><span data-line="16">    <span class="nd">@ops</span><span class="o">.</span><span class="n">graph</span>
 </span><span data-line="17">    <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span>
 </span><span data-line="18">        <span class="n">x</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">Value</span><span class="p">,</span> <span class="n">TensorSpec</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)],</span>
-</span><span data-line="19">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">Value</span><span class="p">,</span> <span class="n">TensorSpec</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;y&quot;</span><span class="p">)]:</span>
+</span><span data-line="19">    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">Value</span><span class="p">,</span> <span class="n">TensorSpec</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"y"</span><span class="p">)]:</span>
 </span><span data-line="20">        <span class="k">return</span> <span class="n">ops</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
 </span><span data-line="21">
-</span><span data-line="22"><span class="n">AIProgram</span><span class="p">(</span><span class="n">module</span><span class="p">)</span><span class="o">.</span><span class="n">save_asset</span><span class="p">(</span><span class="n">asset_path</span><span class="p">)</span>
-</span><span data-line="23"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;created </span><span class="si">{</span><span class="n">asset_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="22">
+</span><span data-line="23"><span class="n">AIProgram</span><span class="p">(</span><span class="n">module</span><span class="p">)</span><span class="o">.</span><span class="n">save_asset</span><span class="p">(</span><span class="n">asset_path</span><span class="p">)</span>
+</span><span data-line="24"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"created </span><span class="si">{</span><span class="n">asset_path</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </div>
@@ -355,24 +355,24 @@ context.</p></li>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">async</span> <span class="k">with</span> <span class="n">asset</span><span class="o">.</span><span class="n">executable</span><span class="p">()</span> <span class="k">as</span> <span class="n">model</span><span class="p">:</span>
-</span><span data-line="2">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;functions: </span><span class="si">{</span><span class="n">model</span><span class="o">.</span><span class="n">function_names</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="2">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"functions: </span><span class="si">{</span><span class="n">model</span><span class="o">.</span><span class="n">function_names</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span><span data-line="3">
-</span><span data-line="4">    <span class="n">function</span><span class="p">:</span> <span class="n">InferenceFunction</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">load_function</span><span class="p">(</span><span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</span><span data-line="4">    <span class="n">function</span><span class="p">:</span> <span class="n">InferenceFunction</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">load_function</span><span class="p">(</span><span class="s2">"main"</span><span class="p">)</span>
 </span><span data-line="5">    <span class="n">desc</span> <span class="o">=</span> <span class="n">function</span><span class="o">.</span><span class="n">desc</span>
-</span><span data-line="6">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;name:    </span><span class="si">{</span><span class="n">desc</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span data-line="7">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;inputs:  </span><span class="si">{</span><span class="n">desc</span><span class="o">.</span><span class="n">input_names</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span data-line="8">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;outputs: </span><span class="si">{</span><span class="n">desc</span><span class="o">.</span><span class="n">output_names</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="6">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"name:    </span><span class="si">{</span><span class="n">desc</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</span><span data-line="7">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"inputs:  </span><span class="si">{</span><span class="n">desc</span><span class="o">.</span><span class="n">input_names</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</span><span data-line="8">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"outputs: </span><span class="si">{</span><span class="n">desc</span><span class="o">.</span><span class="n">output_names</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span><span data-line="9">
 </span><span data-line="10">    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="mf">1.5</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
-</span><span data-line="11">    <span class="n">inputs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">(</span><span class="n">x</span><span class="p">)}</span>
-</span><span data-line="12">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;input x:</span><span class="se">\n</span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="11">    <span class="n">inputs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="n">NDArray</span><span class="p">(</span><span class="n">x</span><span class="p">)}</span>
+</span><span data-line="12">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"input x:</span><span class="se">\n</span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span><span data-line="13">
 </span><span data-line="14">    <span class="n">outputs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">function</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
-</span><span data-line="15">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;output keys: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">outputs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="15">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"output keys: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">outputs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span><span data-line="16">
-</span><span data-line="17">    <span class="c1"># Materialize the result inside the block — the model&#39;s backing buffers</span>
+</span><span data-line="17">    <span class="c1"># Materialize the result inside the block — the model's backing buffers</span>
 </span><span data-line="18">    <span class="c1"># are only guaranteed valid until the context exits.</span>
-</span><span data-line="19">    <span class="n">result</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="s2">&quot;y&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+</span><span data-line="19">    <span class="n">result</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="s2">"y"</span><span class="p">]</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </div>
@@ -386,13 +386,13 @@ the array freely. Our <code class="docutils literal notranslate"><span class="pr
 all <code class="docutils literal notranslate"><span class="pre">1.5</span></code>s we expect all <code class="docutils literal notranslate"><span class="pre">3.0</span></code>s back.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;shape: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span data-line="2"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;dtype: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">dtype</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span data-line="3"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;value:</span><span class="se">\n</span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"shape: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</span><span data-line="2"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"dtype: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">dtype</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</span><span data-line="3"><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"value:</span><span class="se">\n</span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </span><span data-line="4">
 </span><span data-line="5"><span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
 </span><span data-line="6"><span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span>
-</span><span data-line="7"><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;OK — inference produced expected output shape and dtype&quot;</span><span class="p">)</span>
+</span><span data-line="7"><span class="nb">print</span><span class="p">(</span><span class="s2">"OK — inference produced expected output shape and dtype"</span><span class="p">)</span>
 </span></pre></div>
 </div>
 </div>

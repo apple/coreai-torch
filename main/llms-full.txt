@@ -1,0 +1,4357 @@
+# index.html.md
+
+# Core AI PyTorch Extensions (coreai-torch)
+
+Bring PyTorch models to Core AI for on-device execution.
+
+## Overview
+
+Core AI PyTorch Extensions (`coreai-torch`) is a Python package that bridges PyTorch and Core AI. You can use it to bring up an existing PyTorch model — exported as a `torch.export.ExportedProgram` — into a Core AI `AIProgram` ready to run on Apple hardware, traversing the FX graph node-by-node and mapping ATen operators to Core AI operations. You can equally use it to author Core AI models directly from PyTorch by composing the library of composite ops in `coreai_torch.composite_ops`, authoring new ops via `register_torch_lowering`, and authoring inline Metal GPU kernels through `TorchMetalKernel` and `register_custom_kernels` — all expressed as PyTorch `nn.Module`s and lowered to Core AI IR that the compiler recognizes and optimizes natively.
+
+The bring-up pipeline has three steps. First, export your PyTorch model with `torch.export.export` to capture the computation graph. Second, decompose the exported program with `get_decomp_table()`, which lowers composite ATen ops to the primitive set that `TorchConverter` can map while preserving the operations that `TorchConverter` lowers as composite ops. Third, call `TorchConverter().add_exported_program(ep).to_coreai()` to produce the `AIProgram`.
+
+For authoring, `coreai_torch.composite_ops` exposes well-known building blocks — such as attention, RoPE embeddings, RMSNorm, and gather-matmul (the MoE primitive) — as PyTorch modules. Passing these modules to `externalize_modules` preserves each one’s operation boundary as a named composite op that the compiler can recognize and optimize. When a PyTorch op has no built-in lowering rule, register a custom lowering function with `register_torch_lowering`. For compute-intensive custom operations, `register_custom_kernels` lets you author Metal kernel source and wire it into the conversion pipeline.
+
+## Quick example
+
+```python
+import torch
+from coreai_torch import TorchConverter, get_decomp_table
+
+model = MyModel().eval()
+ep = torch.export.export(model, args=(torch.randn(1, 10),))
+ep = ep.run_decompositions(get_decomp_table())
+coreai_program = TorchConverter().add_exported_program(ep).to_coreai()
+coreai_program.optimize()
+```
+
+## Choosing your workflow
+
+| Starting point                              | Recommended approach                                        |
+|---------------------------------------------|-------------------------------------------------------------|
+| Already have a decomposed `ExportedProgram` | `TorchConverter().add_exported_program(ep).to_coreai()`     |
+| Have an `nn.Module`, no externalization     | Either `add_exported_program` or `add_pytorch_module`       |
+| Have an `nn.Module`, need externalization   | `add_pytorch_module(model, ..., externalize_modules=[...])` |
+
+[Externalization](guides/externalization.md) lets the Core AI compiler optimize submodules independently or hand them off to specialized backends. See [Conversion Workflows](guides/conversion-workflows.md) for detailed code and a decision guide.
+
+## Next steps
+
+- **New users:** [Installing coreai-torch](getting-started/installation.md) and [Quickstart](getting-started/quickstart.md) walk you through setup and your first end-to-end bring-up.
+- **Authoring Core AI models from PyTorch:** [Composite Ops Guide](guides/composite-ops.md) covers the built-in composite op library, [Custom Op Lowering](guides/custom-op-lowering.md) shows how to author Core AI IR for new torch ops, and [Custom Metal Kernels](guides/custom-metal-kernels.md) walks through authoring inline Metal GPU kernels.
+- **Customizing bring-up:** [Conversion Workflows](guides/conversion-workflows.md) covers each bring-up workflow. [Externalization](guides/externalization.md) covers preserving submodule boundaries as composite ops.
+- **API reference:** [TorchConverter API reference](api/TorchConverter.md) documents every method and parameter. [Composite ops API reference](api/composite-ops.md) lists all built-in composite ops. [TorchMetalKernel](api/TorchMetalKernel.md) covers the Metal-kernel authoring API.
+
+## Links
+
+- [Repository](https://github.com/apple/coreai-torch)
+- [Issue tracker](https://github.com/apple/coreai-torch/issues)
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc.
+
+
+# index.html.md
+
+# Core AI (coreai-core)
+
+`coreai-core` is the Python package for building and running AI Models on Apple hardware. Use it to:
+
+- Author an AI Model from Python (`coreai.authoring`)
+- Run an existing `.aimodel` file (`coreai.runtime`)
+
+## Get started
+
+Install:
+
+```bash
+pip install coreai-core
+```
+
+Then work through the two tutorials in order:
+
+| Tutorial                                            | What you’ll learn                                             |
+|-----------------------------------------------------|---------------------------------------------------------------|
+| [Construct a graph](tutorials/construct-a-graph.md) | Build an AI Model in Python and save it as a `.aimodel` file. |
+| [Run an `.aimodel`](tutorials/run-an-aimodel.md)    | Load an `.aimodel` and run inference with NumPy inputs.       |
+
+## API reference
+
+| Module                              | Use it for                              |
+|-------------------------------------|-----------------------------------------|
+| [`coreai.runtime`](api/coreai.md)   | Loading and executing `.aimodel` files. |
+| [`coreai.authoring`](api/coreai.md) | Building AI Models programmatically.    |
+
+
+# ExternalizeSpec.html.md
+
+# ExternalizeSpec
+
+Specifies which submodule class to externalize during conversion as a named composite op the compiler can recognize and optimize.
+
+## Overview
+
+**Public import:**
+
+```python
+from coreai_torch import ExternalizeSpec
+```
+
+`ExternalizeSpec` is passed to the `externalize_modules` parameter of `TorchConverter.add_pytorch_module()`. Every `nn.Module` instance whose class matches `target_class` (via `isinstance`) is preserved as a named composite op.
+
+For an end-to-end walkthrough, see [Externalization](../guides/externalization.md).
+
+#### NOTE
+Passing a bare class (or an `ExternalizeSpec` with only `target_class`) performs *simple externalization* — the submodule is extracted into its own standalone graph with no composite-op metadata. This is **experimental**; prefer setting `composite_op_name`.
+
+## Declaration
+
+```python
+@dataclass
+class ExternalizeSpec:
+    target_class: type
+    composite_op_name: str | None = None
+    composite_attrs: list[str] | None = None
+```
+
+## Fields
+
+| Field               | Type               | Default   | Description                                                                                                                                                    |
+|---------------------|--------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `target_class`      | `type`             | —         | The `nn.Module` subclass to match. Every instance found in the model is externalized as a composite op.                                                        |
+| `composite_op_name` | `str | None`       | `None`    | The name of the composite op the submodule is preserved as, so the compiler can recognize and optimize it.                                                     |
+| `composite_attrs`   | `list[str] | None` | `None`    | Names of instance attributes (e.g. `["eps", "axes"]`) whose values are recorded as attributes of the composite op. Only valid when `composite_op_name` is set. |
+
+## Validation
+
+- `composite_attrs` may only be set when `composite_op_name` is also set. Setting `composite_attrs` without `composite_op_name` raises `ValueError`.
+- If a `target_class` does not match any submodule in the model, the converter emits a `UserWarning` (not an error) — this allows passing a superset of specs across model variants.
+
+## Usage
+
+Set `composite_op_name` and (optionally) `composite_attrs`. The submodule is preserved as a named composite op carrying its attributes, so the compiler can recognize and optimize it.
+
+```python
+ExternalizeSpec(
+    target_class=RMSNormImpl,
+    composite_op_name="rms_norm",
+    composite_attrs=["axes", "eps", "version"],
+)
+```
+
+## Examples
+
+**Composite-op externalization** — preserve the op as a named composite op:
+
+```python
+from coreai_torch import TorchConverter, ExternalizeSpec
+from coreai_torch.composite_ops import SDPA
+
+converter = TorchConverter().add_pytorch_module(
+    model,
+    export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+        coreai_torch.get_decomp_table()
+    ),
+    externalize_modules=[
+        ExternalizeSpec(
+            target_class=SDPA,
+            composite_op_name="scaled_dot_product_attention",
+            composite_attrs=["scale", "is_causal", "window_size"],
+        )
+    ],
+)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+```
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc.
+
+
+# TorchConverter.html.md
+
+# TorchConverter API reference
+
+A converter that produces a Core AI `AIProgram` from a PyTorch exported program.
+
+## Overview
+
+```python
+from coreai_torch import TorchConverter, get_decomp_table
+```
+
+`TorchConverter` traverses the exported FX graph of a PyTorch model, maps ATen operators to Core AI operations, and emits an `AIProgram` ready for on-device execution.
+
+Load a model using `add_exported_program()` or `add_pytorch_module()`, then call `to_coreai()` to produce the artifact. Register custom lowerings with `register_torch_lowering()` for ops that have no built-in mapping, and supply Metal kernel source for compute-intensive operations with `register_custom_kernels()`.
+
+---
+
+## Constructor
+
+```python
+TorchConverter()
+```
+
+Creates a `TorchConverter` instance with no loaded programs and no custom lowerings.
+
+**Example:**
+
+```python
+import torch
+from coreai_torch import TorchConverter
+
+converter = TorchConverter()
+```
+
+---
+
+## Methods
+
+### `add_exported_program`
+
+```python
+def add_exported_program(
+    self,
+    exported_program: ExportedProgram,
+    input_names: Sequence[str] | None = None,
+    output_names: Sequence[str] | None = None,
+    state_names: Sequence[str] | None = None,
+    entrypoint_name: str = "main",
+) -> TorchConverter
+```
+
+Loads an exported PyTorch program into the converter. Returns `self` for method chaining.
+
+#### WARNING
+The caller **must** call `run_decompositions()` on the program before passing it here — use `get_decomp_table()` to preserve known composite ops in the lowered IR.
+
+| Parameter          | Type                           | Default   | Description                                                                                                                                                                                   |
+|--------------------|--------------------------------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `exported_program` | `torch.export.ExportedProgram` | —         | The exported PyTorch program to convert.                                                                                                                                                      |
+| `input_names`      | `Sequence[str] | None`         | `None`    | Names for non-stateful user inputs only. Mutated inputs (buffers and user-input mutations) are renamed via `state_names`. **Breaking change**: previously this covered all graph inputs.      |
+| `output_names`     | `Sequence[str] | None`         | `None`    | Names for non-state outputs (return values) only. Mutation outputs are renamed via `state_names`. **Breaking change**: previously this covered all graph outputs.                             |
+| `state_names`      | `Sequence[str] | None`         | `None`    | Names for stateful IO. Each name applies to both the state input and its corresponding mutation output — matching the Core AI runtime’s single-name-per-state model. See [IO Naming]() below. |
+| `entrypoint_name`  | `str`                          | `"main"`  | Name of the entry-point graph in the generated Core AI module. Must be unique across all staged programs.                                                                                     |
+
+**Returns:** `self` — the same `TorchConverter` instance, for chaining.
+
+**Example:**
+
+```python
+import torch
+from coreai_torch import TorchConverter, get_decomp_table
+
+model = MyModel()
+exported = torch.export.export(model, example_inputs)
+exported = exported.run_decompositions(get_decomp_table())
+
+converter = TorchConverter().add_exported_program(
+    exported,
+    input_names=["image"],
+    output_names=["logits"],
+)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+```
+
+---
+
+### `add_pytorch_module`
+
+```python
+def add_pytorch_module(
+    self,
+    module: nn.Module,
+    export_fn: Callable[[nn.Module], ExportedProgram],
+    externalize_modules: list | None = None,
+    input_names: Sequence[str] | None = None,
+    output_names: Sequence[str] | None = None,
+    state_names: Sequence[str] | None = None,
+    entrypoint_name: str = "main",
+) -> TorchConverter
+```
+
+Stages an `nn.Module` for conversion. `export_fn` must return a **decomposed** `ExportedProgram` (i.e., with `run_decompositions()` already called). Returns `self` for method chaining.
+
+| Parameter             | Type                                     | Default   | Description                                                                                                                                                                                                    |
+|-----------------------|------------------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `module`              | `nn.Module`                              | —         | The PyTorch module to convert.                                                                                                                                                                                 |
+| `export_fn`           | `Callable[[nn.Module], ExportedProgram]` | —         | A callable that exports and decomposes the module. Must call `run_decompositions()` on the result (e.g., `lambda m: torch.export.export(m, args=sample).run_decompositions(coreai_torch.get_decomp_table())`). |
+| `externalize_modules` | `list | None`                            | `None`    | Optional list of `ExternalizeSpec` objects describing submodule classes to preserve as composite ops. Bare class types are also accepted for *experimental* simple externalization.                            |
+| `input_names`         | `Sequence[str] | None`                   | `None`    | Names for non-stateful user inputs only. Mutated inputs (buffers and user-input mutations) are renamed via `state_names`. **Breaking change**: previously this covered all graph inputs.                       |
+| `output_names`        | `Sequence[str] | None`                   | `None`    | Names for non-state outputs (return values) only. Mutation outputs are renamed via `state_names`. **Breaking change**: previously this covered all graph outputs.                                              |
+| `state_names`         | `Sequence[str] | None`                   | `None`    | Names for stateful IO. See [IO Naming]() below.                                                                                                                                                                |
+| `entrypoint_name`     | `str`                                    | `"main"`  | Name of the entry-point graph in the generated Core AI module. Must be unique across all staged programs.                                                                                                      |
+
+**Returns:** `self` — the same `TorchConverter` instance, for chaining.
+
+**Example:**
+
+```python
+model = MyModel().eval()
+sample = (torch.randn(1, 3, 224, 224),)
+
+converter = TorchConverter().add_pytorch_module(
+    model,
+    export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+        coreai_torch.get_decomp_table()
+    ),
+)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+```
+
+---
+
+### `to_coreai`
+
+```python
+def to_coreai(
+    self, *, entrypoints: Sequence[str] | None = None
+) -> AIProgram
+```
+
+Converts the loaded program into a Core AI `AIProgram`. This is the main entry point for conversion. The model must have been loaded via `add_exported_program()` or `add_pytorch_module()` before calling this method.
+
+| Parameter     | Type                   | Default   | Description                                                                                             |
+|---------------|------------------------|-----------|---------------------------------------------------------------------------------------------------------|
+| `entrypoints` | `Sequence[str] | None` | `None`    | If provided, only convert programs with these entrypoint names. If `None`, convert all staged programs. |
+
+**Returns:** `AIProgram` — a compiled Core AI model ready for deployment and execution.
+
+**Example:**
+
+```python
+converter = TorchConverter().add_exported_program(
+    exported,
+    input_names=["image"],
+    output_names=["logits"],
+)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+```
+
+---
+
+### `clear`
+
+```python
+def clear(self, *, entrypoints: Sequence[str] | None = None) -> None
+```
+
+Remove staged programs. Custom lowerings registered via `register_torch_lowering()` are always preserved.
+
+| Parameter     | Type                   | Default   | Description                                                                                           |
+|---------------|------------------------|-----------|-------------------------------------------------------------------------------------------------------|
+| `entrypoints` | `Sequence[str] | None` | `None`    | If provided, remove only programs with these entrypoint names. If `None`, remove all staged programs. |
+
+**Example:**
+
+```python
+converter = TorchConverter()
+converter.add_exported_program(ep_a, entrypoint_name="encoder")
+converter.add_exported_program(ep_b, entrypoint_name="decoder")
+
+# Remove just the encoder
+converter.clear(entrypoints=["encoder"])
+
+# Remove everything
+converter.clear()
+```
+
+---
+
+### `register_torch_lowering`
+
+```python
+def register_torch_lowering(
+    self,
+    qualified_name: str,
+    allow_override: bool = False,
+) -> Callable
+```
+
+Decorator that registers a custom lowering function for an FX node. Use this to provide a Core AI implementation for a custom or unsupported torch operator.
+
+#### WARNING
+Lowering functions are written against authoring APIs from `coreai-core` (such as `coreai._compiler.dialects`). The leading underscore on `_compiler` marks this as private upstream API — it may move or change without notice across `coreai-core` releases.
+
+| Parameter        | Type   | Default   | Description                                                                                              |
+|------------------|--------|-----------|----------------------------------------------------------------------------------------------------------|
+| `qualified_name` | `str`  | —         | Op name in `"namespace::op_name"` form, matching the torch op’s qualified name (e.g. `"my_lib::my_op"`). |
+| `allow_override` | `bool` | `False`   | If `True`, silently replaces an existing lowering for the same op. If `False`, raises on conflict.       |
+
+**Returns:** A decorator function. The decorated function must have the signature:
+
+```python
+def lowering_func(
+    values_map: dict[str, Value],
+    node: torch.fx.Node,
+    loc: Location,
+) -> Value | list[Value]
+```
+
+| Callback Parameter   | Type               | Description                                                                                 |
+|----------------------|--------------------|---------------------------------------------------------------------------------------------|
+| `values_map`         | `dict[str, Value]` | Map of FX node names to their corresponding Core AI `Value`s. Use this to look up operands. |
+| `node`               | `torch.fx.Node`    | The FX node being lowered. Access `node.args` for operands and `node.meta` for metadata.    |
+| `loc`                | `Location`         | The Core AI Location for the current operation. Pass this to Core AI op constructors.       |
+
+**Raises:**
+
+- `ValueError` if `qualified_name` is not in `"namespace::op_name"` form.
+- `ValueError` if the namespace is reserved (`aten`, `higher_order`, `coreai`, `coreaix`).
+- `ValueError` if a lowering already exists for the op and `allow_override` is `False`.
+
+**Example — register a lowering for a custom torch op:**
+
+```python
+import torch
+from coreai._compiler.dialects import coreai
+from coreai_torch._utils import get_operands
+
+
+@torch.library.custom_op("my_lib::scaled_add", mutates_args=())
+def scaled_add(x: torch.Tensor, y: torch.Tensor, scale: float) -> torch.Tensor:
+    return x + scale * y
+
+
+@scaled_add.register_fake
+def _(x, y, scale):
+    return torch.empty_like(x)
+
+
+converter = TorchConverter()
+
+
+@converter.register_torch_lowering("my_lib::scaled_add.default")
+def lower_scaled_add(values_map, node, loc):
+    x, y = get_operands(values_map, node, [0, 1], loc)
+    scale = node.args[2]  # plain Python float
+    scale_val = coreai.constant(scale, dtype=x.type.element_type)
+    scaled_y = coreai.broadcasting_mul(y, scale_val, loc=loc)
+    return coreai.broadcasting_add(x, scaled_y, loc=loc)
+
+
+coreai_program = converter.add_exported_program(exported).to_coreai()
+coreai_program.optimize()
+```
+
+**Example — override a built-in ATen op lowering:**
+
+```python
+import numpy as np
+from coreai._compiler.dialects import coreai
+from coreai_torch._utils import get_operand
+
+converter = TorchConverter()
+
+
+@converter.register_torch_lowering(
+    "aten::_adaptive_avg_pool2d.default", allow_override=True
+)
+def lower_adaptive_avg_pool2d_static(values_map, node, loc):
+    x = get_operand(values_map, node, 0, loc)
+    output_h, output_w = node.args[1]
+    input_h, input_w = x.type.shape[2], x.type.shape[3]
+    stride_h, stride_w = input_h // output_h, input_w // output_w
+    kernel_h = input_h - (output_h - 1) * stride_h
+    kernel_w = input_w - (output_w - 1) * stride_w
+    return coreai.broadcasting_divide(
+        coreai.sumpool2d(
+            x,
+            kernel_size=np.array([kernel_h, kernel_w], dtype=np.uint32),
+            strides=np.array([stride_h, stride_w], dtype=np.uint32),
+            dilation=coreai.constant([1, 1], dtype=np.uint32),
+        ),
+        coreai.cast(float(kernel_h * kernel_w), x.type.element_type),
+    )
+
+
+coreai_program = converter.add_exported_program(exported).to_coreai()
+coreai_program.optimize()
+```
+
+---
+
+### `register_custom_kernels`
+
+```python
+def register_custom_kernels(
+    self,
+    kernels: Sequence[TorchMetalKernel],
+) -> TorchConverter
+```
+
+Registers one or more `TorchMetalKernel` objects so the converter can convert them into Core AI operations during conversion. Call this **before** `add_exported_program()`.
+
+| Parameter   | Type                         | Default   | Description                                 |
+|-------------|------------------------------|-----------|---------------------------------------------|
+| `kernels`   | `Sequence[TorchMetalKernel]` | —         | The custom Metal kernels used in the model. |
+
+**Returns:** `self` — the same `TorchConverter` instance, for chaining.
+
+**Example:**
+
+```python
+import torch
+from coreai_torch import (
+    TorchConverter,
+    TorchMetalKernel,
+    MetalParameter,
+    get_decomp_table,
+)
+
+
+def torch_add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    return x + y
+
+
+kernel = TorchMetalKernel(
+    "vector_add",
+    input_names=["x", "y"],
+    result_names=["output"],
+    src="output[id] = x[id] + y[id];",
+    torch_defn=torch_add,
+    metal_params=[MetalParameter("id", "uint", "thread_position_in_grid")],
+)
+
+converter = TorchConverter()
+converter.register_custom_kernels([kernel])
+
+exported = torch.export.export(model, args=example_inputs)
+exported = exported.run_decompositions(get_decomp_table())
+coreai_program = converter.add_exported_program(exported).to_coreai()
+coreai_program.optimize()
+```
+
+See the [Custom Metal Kernels](../guides/custom-metal-kernels.md) guide for a full walkthrough.
+
+---
+
+## Standalone functions
+
+### `get_decomp_table`
+
+```python
+from coreai_torch import get_decomp_table
+
+def get_decomp_table() -> dict
+```
+
+Returns the default PyTorch ATen decomposition table minus the operations that `TorchConverter` lowers as composite ops, so those operations are preserved in the exported graph rather than being decomposed into lower-level primitives.
+
+Each call returns a fresh copy of the table — mutating it does not affect other callers.
+
+**Returns:** `dict` — a decomposition table suitable for `ExportedProgram.run_decompositions()`.
+
+**With `add_exported_program`** (caller runs decompositions manually):
+
+```python
+import torch
+from coreai_torch import TorchConverter, get_decomp_table
+
+ep = torch.export.export(model, args=example_inputs)
+ep = ep.run_decompositions(get_decomp_table())
+coreai_program = TorchConverter().add_exported_program(ep).to_coreai()
+coreai_program.optimize()
+```
+
+**With `add_pytorch_module`**:
+
+```python
+from coreai_torch import TorchConverter
+
+coreai_program = (
+    TorchConverter()
+    .add_pytorch_module(
+        model,
+        export_fn=lambda m: torch.export.export(
+            m, args=example_inputs
+        ).run_decompositions(coreai_torch.get_decomp_table()),
+    )
+    .to_coreai()
+)
+coreai_program.optimize()
+```
+
+---
+
+## IO naming
+
+The `input_names`, `output_names`, and `state_names` parameters control the names of the graph’s inputs and outputs. These names propagate to the Core AI runtime descriptor (`desc.input_names`, `desc.output_names`, `desc.state_names`).
+
+### Parameters
+
+| Parameter      | Controls                                      | Scope                                                                                    |
+|----------------|-----------------------------------------------|------------------------------------------------------------------------------------------|
+| `input_names`  | Non-stateful `forward()` arguments            | Inputs that are read but not mutated                                                     |
+| `output_names` | Return values from `forward()`                | Outputs that are not mutation side-effects                                               |
+| `state_names`  | Mutable state (buffers + mutated user inputs) | A single name per state, applied to both the input and its corresponding mutation output |
+
+#### WARNING
+**What counts as state (no opt-out).** The converter treats two things as state:
+
+1. **Mutable buffers** registered via `self.register_buffer(...)` and mutated in-place inside `forward()` (e.g., `self.buf.add_(x)`).
+2. **User inputs mutated in-place** inside `forward()` (e.g., `x.mul_(2)` on a `forward()` arg).
+
+Both are detected from the exported program’s graph signature. There is **no flag** to opt a mutated user input out of state — it follows directly from how the model mutates its inputs and buffers.
+
+If you don’t want a `forward()` argument treated as state, eliminate the in-place mutation from your model — clone first (`x_local = x.clone(); x_local.mul_(2)`) or use the out-of-place form (`x_scaled = x * 2`). The mutation then disappears from the exported graph and the argument becomes a regular non-state input.
+
+### Default names
+
+When a naming parameter is not provided, the converter uses names derived from the FX graph:
+
+| Category                       | FX graph source                 | Relates to                      | Example                                                  |
+|--------------------------------|---------------------------------|---------------------------------|----------------------------------------------------------|
+| **Input**                      | Placeholder `node.name`         | `forward()` arg name            | `def forward(self, x, z)` → `"x"`, `"z"`                 |
+| **Output**                     | Output node’s input `node.name` | Internal op name                | `return a + b, c * d` → `"add"`, `"mul"`                 |
+| **State (buffer)**             | Placeholder `node.name`         | `"b_"` + `register_buffer` attr | `self.register_buffer("kv_cache", ...)` → `"b_kv_cache"` |
+| **State (mutated user input)** | Placeholder `node.name`         | `forward()` arg name            | `def forward(self, y): y.mul_(2)` → `"y"`                |
+
+#### WARNING
+These naming conventions are observed behavior from the FX graph, not a stable contract from PyTorch. They may change across PyTorch versions. Always provide explicit names for production use.
+
+### Ordering
+
+| Parameter      | Order follows                                                                                                  |
+|----------------|----------------------------------------------------------------------------------------------------------------|
+| `input_names`  | Non-mutated `forward()` args in signature order                                                                |
+| `output_names` | `return` values in tuple order                                                                                 |
+| `state_names`  | Mutable buffers (`register_buffer` registration order), then mutated user inputs (`forward()` signature order) |
+
+#### WARNING
+The ordering of `state_names` (buffers first, then mutated user inputs) is based on observed FX graph behavior, not a stable PyTorch contract. The converter asserts that the number of state inputs matches state outputs, but cannot detect silent reordering. Always verify state ordering when upgrading PyTorch versions.
+
+### Examples
+
+**Stateless model** — only `input_names` and `output_names` apply:
+
+```python
+class Linear(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc = nn.Linear(8, 4)
+
+    def forward(self, x):
+        return self.fc(x)
+
+
+ep = torch.export.export(Linear().eval(), args=(torch.randn(1, 8),))
+ep = ep.run_decompositions(get_decomp_table())
+
+TorchConverter().add_exported_program(
+    ep,
+    input_names=["features"],
+    output_names=["logits"],
+).to_coreai().optimize()
+```
+
+**Stateful model** — all three parameters:
+
+```python
+class KVCache(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.register_buffer("kv_cache", torch.zeros(1, 4))  # state[0]
+        self.register_buffer("pos_idx", torch.zeros(1))  # state[1]
+
+    def forward(self, x, y, z):
+        self.kv_cache.add_(x)  # buffer mutation
+        self.pos_idx.add_(1)  # buffer mutation
+        y.mul_(2)  # state[2]: mutated user input
+        # non-mutated: x -> input[0], z -> input[1]
+        return self.kv_cache + y, z * 3
+
+
+ep = torch.export.export(
+    KVCache().eval(),
+    args=(torch.randn(1, 4), torch.randn(1, 4), torch.randn(1, 4)),
+)
+ep = ep.run_decompositions(get_decomp_table())
+
+TorchConverter().add_exported_program(
+    ep,
+    state_names=["kv_cache", "pos_idx", "y_state"],
+    input_names=["query", "context"],
+    output_names=["attn_out", "scaled"],
+).to_coreai().optimize()
+```
+
+The converter applies these names to the graph’s inputs and outputs: mutated buffers and mutated user inputs become model state (in `state_names` order), followed by the non-mutated `input_names` and the returned `output_names`.
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc.
+
+
+# TorchMetalKernel.html.md
+
+# TorchMetalKernel
+
+Wraps a Metal GPU kernel as a PyTorch custom op so it traces through `torch.export` and is converted into a Core AI operation during conversion.
+
+#### WARNING
+Authoring Metal kernels uses APIs from `coreai-core` (such as `coreai.authoring`). These APIs are experimental and subject to change in future releases.
+
+## Public import
+
+```python
+from coreai_torch import TorchMetalKernel, MetalParameter
+```
+
+`MetalParameter` is re-exported from `coreai.authoring` for convenience and is used to declare Metal thread attributes (e.g. `thread_position_in_grid`).
+
+For a tutorial walkthrough, see [Custom Metal Kernels](../guides/custom-metal-kernels.md).
+
+## Constructor
+
+```python
+TorchMetalKernel(
+    name: str,
+    input_names: list[str],
+    result_names: list[str],
+    src: str,
+    torch_defn: Callable[..., Any],
+    metal_params: list[MetalParameter] | None = None,
+    helper_src: str | None = None,
+    template_dtypes: dict[str, str] | None = None,
+)
+```
+
+| Parameter         | Type                          | Default   | Description                                                                                                                                                                                |
+|-------------------|-------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`            | `str`                         | —         | Kernel identifier. Becomes part of the generated kernel’s name in the converted model.                                                                                                     |
+| `input_names`     | `list[str]`                   | —         | Names matching the input variables in the Metal source. Must match the parameter count of `torch_defn`.                                                                                    |
+| `result_names`    | `list[str]`                   | —         | Names matching the output variables in the Metal source.                                                                                                                                   |
+| `src`             | `str`                         | —         | Body of the Metal `[[kernel]]` function. The signature, buffer bindings, and `#include <metal_stdlib>` are generated automatically from `input_names`, `result_names`, and `metal_params`. |
+| `torch_defn`      | `Callable`                    | —         | Reference PyTorch implementation used for shape inference during `torch.export`. See [Constraints]() below.                                                                                |
+| `metal_params`    | `list[MetalParameter] | None` | `None`    | Metal thread attributes to bind in the generated kernel signature (e.g. `MetalParameter("id", "uint", "thread_position_in_grid")`).                                                        |
+| `helper_src`      | `str | None`                  | `None`    | Additional Metal source pasted before the kernel definition (helper functions, type aliases, etc.).                                                                                        |
+| `template_dtypes` | `dict[str, str] | None`       | `None`    | Map from input name to a placeholder string in `src`. Each placeholder is replaced with the corresponding Metal dtype at compile time, allowing one kernel to serve multiple dtypes.       |
+
+## Calling the kernel
+
+```python
+def __call__(
+    self,
+    *args,
+    threads_per_grid: tuple[int, int, int],
+    threads_per_thread_group: tuple[int, int, int],
+    result_shapes: list[list[int]],
+)
+```
+
+| Argument                   | Type                   | Description                                                                    |
+|----------------------------|------------------------|--------------------------------------------------------------------------------|
+| `*args`                    | tensors / scalars      | Positional arguments matching `input_names` and the signature of `torch_defn`. |
+| `threads_per_grid`         | `tuple[int, int, int]` | Total Metal grid dimensions.                                                   |
+| `threads_per_thread_group` | `tuple[int, int, int]` | Threadgroup dimensions.                                                        |
+| `result_shapes`            | `list[list[int]]`      | Shape of each result tensor, in the order of `result_names`.                   |
+
+Returns a `torch.Tensor`, `list[torch.Tensor]`, or `tuple[torch.Tensor, ...]` matching the return annotation of `torch_defn`.
+
+## Constraints
+
+`torch_defn` must satisfy two rules:
+
+1. **Inputs** — every parameter must be annotated as `torch.Tensor`, `int`, `float`, or `bool`. The parameter count must match `len(input_names)`.
+2. **Return** — the return annotation must be `torch.Tensor`, `list[torch.Tensor]`, or `tuple[torch.Tensor, ...]` (with a concrete number of tuple members).
+
+Violations raise `TypeError` (input/return annotations) or `ValueError` (parameter count mismatch) at construction time.
+
+## Registering with the converter
+
+`TorchMetalKernel` instances must be registered with the converter via `register_custom_kernels()` before `add_exported_program()`:
+
+```python
+converter = TorchConverter()
+converter.register_custom_kernels([custom_add])
+converter.add_exported_program(exported, ...)
+```
+
+See [TorchConverter API reference](TorchConverter.md) for `register_custom_kernels` details.
+
+## Example
+
+```python
+import torch
+from coreai_torch import TorchMetalKernel, MetalParameter
+
+
+def torch_add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    return x + y
+
+
+custom_add = TorchMetalKernel(
+    name="vector_add",
+    input_names=["x", "y"],
+    result_names=["output"],
+    src="output[id] = x[id] + y[id];",
+    torch_defn=torch_add,
+    metal_params=[
+        MetalParameter("id", "uint", "thread_position_in_grid"),
+    ],
+)
+```
+
+Use it inside an `nn.Module`:
+
+```python
+import torch.nn as nn
+
+
+class AddModel(nn.Module):
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        return custom_add(
+            x,
+            y,
+            threads_per_grid=(x.shape[0], 1, 1),
+            threads_per_thread_group=(1, 1, 1),
+            result_shapes=[list(x.shape)],
+        )
+```
+
+## Dtype templating
+
+Use `template_dtypes` to write one kernel that compiles for multiple dtypes:
+
+```python
+custom_matmul = TorchMetalKernel(
+    name="matmul",
+    input_names=["A", "B"],
+    result_names=["C"],
+    src="""
+        TYPE sum = 0.0f;
+        ...
+    """,
+    torch_defn=torch_matmul,
+    metal_params=[MetalParameter("gid", "uint2", "thread_position_in_grid")],
+    # The dtype of input "A" determines what "TYPE" is replaced with at compile time.
+    template_dtypes={"A": "TYPE"},
+)
+```
+
+Every occurrence of `"TYPE"` in `src` is replaced with the Metal type matching the dtype of input `A` (e.g. `half`, `float`, `bfloat`).
+
+## Multiple outputs
+
+`torch_defn` may return a `list[torch.Tensor]` or `tuple[torch.Tensor, ...]`; supply one entry in `result_shapes` per output:
+
+```python
+def torch_sincos(x: torch.Tensor) -> list[torch.Tensor]:
+    return [torch.sin(x), torch.cos(x)]
+
+
+sincos = TorchMetalKernel(
+    name="sincos",
+    input_names=["x"],
+    result_names=["out_sin", "out_cos"],
+    src="out_sin[id] = sin(x[id]); out_cos[id] = cos(x[id]);",
+    torch_defn=torch_sincos,
+    metal_params=[MetalParameter("id", "uint", "thread_position_in_grid")],
+)
+
+# call site
+results = sincos(
+    x,
+    threads_per_grid=(x.shape[0], 1, 1),
+    threads_per_thread_group=(1, 1, 1),
+    result_shapes=[list(x.shape), list(x.shape)],
+)
+```
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc. Metal is a trademark of Apple Inc.
+
+
+# aten-derived.html.md
+
+# ATen-derived composite ops
+
+Composite ops recognized automatically from the ATen nodes (`fx.Node`s) in your `ExportedProgram` during conversion. These have no corresponding `nn.Module` wrapper — use the standard PyTorch APIs (e.g., `torch.nn.BatchNorm2d`, `torch.nn.functional.pixel_shuffle`) and Core AI preserves them as composite ops, as long as `get_decomp_table()` keeps them from being decomposed.
+
+* [batch_norm](batch-norm.md)
+* [group_norm](group-norm.md)
+* [hard_sigmoid](hard-sigmoid.md)
+* [instance_norm](instance-norm.md)
+* [layer_norm](layer-norm.md)
+* [linalg_vector_norm](linalg-vector-norm.md)
+* [log_softmax](log-softmax.md)
+* [pixel_shuffle](pixel-shuffle.md)
+
+For the ATen ops these are derived from, see [Supported ATen ops](../supported-aten-ops.md).
+
+
+# batch-norm.html.md
+
+# batch_norm
+
+Inference-time batch normalization using running statistics:
+
+$$
+y = \gamma \cdot \frac{x - \mu}{\sqrt{\sigma^2 + \varepsilon}} + \beta
+$$
+
+The mean and variance are pre-computed running statistics passed in as inputs; `momentum` (a training-only construct) is dropped during conversion.
+
+**ATen source:** `aten._native_batch_norm_legit_no_training`
+
+## Inputs
+
+| Name       | Shape              | Description                                                                            |
+|------------|--------------------|----------------------------------------------------------------------------------------|
+| `input`    | `(N, C, *spatial)` | Supported ranks: 2, 3, 4, 5 — `(N, C)`, `(N, C, L)`, `(N, C, H, W)`, `(N, C, D, H, W)` |
+| `gamma`    | `(C,)`             | Per-channel scale, applied after normalization                                         |
+| `beta`     | `(C,)`             | Per-channel shift, added after the scale                                               |
+| `mean`     | `(C,)`             | Per-channel running mean                                                               |
+| `variance` | `(C,)`             | Per-channel running variance                                                           |
+
+## Attributes
+
+| Name      | Type    | Description                                       |
+|-----------|---------|---------------------------------------------------|
+| `eps`     | `float` | Numerical-stability epsilon added to the variance |
+| `version` | `int`   | Composite op version                              |
+
+## Output
+
+| Name     | Shape              | Description           |
+|----------|--------------------|-----------------------|
+| `output` | `(N, C, *spatial)` | Same shape as `input` |
+
+## Data types
+
+`fp16`, `fp32`, `bf16` for all tensor inputs and the output.
+
+## PyTorch example
+
+```python
+import torch
+
+N, C, H, W = 20, 5, 10, 10
+input = torch.randn(N, C, H, W)
+running_mean = torch.zeros(C)
+running_var = torch.ones(C)
+
+output = torch.ops.aten._native_batch_norm_legit_no_training(
+    input,
+    weight=torch.ones(C),
+    bias=torch.zeros(C),
+    running_mean=running_mean,
+    running_var=running_var,
+    momentum=0.1,
+    eps=1e-5,
+)
+```
+
+## Reference
+
+[`torch.nn.BatchNorm2d`](https://docs.pytorch.org/docs/stable/generated/torch.nn.BatchNorm2d.html)
+
+
+# composite-ops.html.md
+
+# Composite Ops Guide
+
+Composite ops preserve an operation’s boundary — such as RMSNorm, RoPE, or attention — keeping it intact as a recognizable unit during conversion. This lets the compiler recognize the operation and apply an implementation optimized for it.
+
+coreai-torch produces composite ops in two ways:
+
+- **Module-class composite ops** — `nn.Module` subclasses exposed in `coreai_torch.composite_ops` (such as `RMSNormImpl`, `RoPE`, and `SDPA`). You build these into your model and externalize them with an `ExternalizeSpec`, as shown in this guide.
+- **ATen-derived composite ops** — recognized automatically from the ATen nodes (`fx.Node`s) in your `ExportedProgram` during conversion (such as `instance_norm`, `layer_norm`, and `pixel_shuffle`). These have no `nn.Module` wrapper: use the standard PyTorch APIs and the converter preserves them as composite ops, as long as `get_decomp_table()` keeps them from being decomposed.
+
+This guide covers the module-class workflow. For the full list of both kinds, see the [Composite ops API reference](../api/composite-ops.md) reference.
+
+## The General Pattern
+
+Using any composite op involves three steps:
+
+1. **Use the provided class** as a named submodule in your model — not as the root module.
+2. **Convert via `add_pytorch_module`** — this is the required entrypoint for composite op externalization.
+3. **Pass an `ExternalizeSpec`** with `composite_op_name` and `composite_attrs` identifying the op and the instance attributes that define it.
+
+Generic skeleton:
+
+```ipython3
+import torch
+import torch.nn as nn
+
+import coreai_torch
+from coreai_torch import ExternalizeSpec, TorchConverter
+from coreai_torch.composite_ops import RMSNormImpl
+```
+
+```python
+import torch
+
+import coreai_torch
+from coreai_torch import ExternalizeSpec, TorchConverter
+
+coreai_program = (
+    TorchConverter()
+    .add_pytorch_module(
+        model,
+        export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+            coreai_torch.get_decomp_table()
+        ),
+        externalize_modules=[
+            ExternalizeSpec(
+                target_class=SomeOp,
+                composite_op_name="some_op",
+                composite_attrs=["attr1", "attr2"],
+            )
+        ],
+    )
+    .to_coreai()
+)
+coreai_program.optimize()
+```
+
+The converter preserves each matching submodule instance as a named composite op carrying its attributes, so the compiler can recognize and optimize it.
+
+---
+
+## Worked Example: RMSNorm
+
+This section walks through the full cycle — model definition, conversion, and numerical verification.
+
+### Define a model
+
+```ipython3
+class RMSNorm(nn.Module):
+    """Convenience wrapper that owns the learnable scale parameter."""
+
+    def __init__(self, dim: int, eps: float = 1e-5):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(dim))
+        self.norm = RMSNormImpl(eps=eps)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.norm(x, self.weight)
+
+
+class FeedForwardBlock(nn.Module):
+    def __init__(self, dim: int, ff_dim: int, eps: float = 1e-5):
+        super().__init__()
+        self.norm = RMSNorm(dim=dim, eps=eps)
+        self.fc1 = nn.Linear(dim, ff_dim, bias=False)
+        self.fc2 = nn.Linear(ff_dim, dim, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.fc2(torch.relu(self.fc1(self.norm(x))))
+
+
+model = FeedForwardBlock(dim=64, ff_dim=256).eval()
+sample = (torch.randn(2, 16, 64),)
+```
+
+### Convert
+
+Externalize `RMSNormImpl` as the `rms_norm` composite op. Because `RMSNormImpl.forward(input, scale)` takes the scale as an explicit argument, the learnable `weight` parameter on the wrapper appears as a graph input on the composite op boundary rather than being baked in as a constant.
+
+#### NOTE
+`coreai_torch.composite_ops` also ships an `RMSNorm` convenience wrapper that owns the learnable scale for you, so you can import that instead of defining one yourself — but `target_class` in the `ExternalizeSpec` must still be `RMSNormImpl`.
+
+```ipython3
+import torch
+
+coreai_program = (
+    TorchConverter()
+    .add_pytorch_module(
+        model,
+        export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+            coreai_torch.get_decomp_table()
+        ),
+        externalize_modules=[
+            ExternalizeSpec(
+                target_class=RMSNormImpl,
+                composite_op_name="rms_norm",
+                composite_attrs=["axes", "eps"],
+            )
+        ],
+    )
+    .to_coreai()
+)
+coreai_program.optimize()
+```
+
+### Verify numerical correctness
+
+```ipython3
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import torch
+from coreai.runtime import NDArray
+
+
+async def run_and_compare(coreai_program, model, sample):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        asset = coreai_program.save_asset(Path(tmpdir) / "rms_norm_example.aimodel")
+        async with asset.executable() as ai_model:
+            function = ai_model.load_function("main")
+
+            x = sample[0]
+            coreai_out = await function({"x": NDArray(x)})
+            coreai_np = list(coreai_out.values())[0].numpy()
+
+            with torch.no_grad():
+                torch_np = model(x).numpy()
+
+            print(f"Max abs error: {np.abs(torch_np - coreai_np).max():.2e}")
+            print(f"Outputs match: {np.allclose(torch_np, coreai_np, atol=1e-4)}")
+
+
+await run_and_compare(coreai_program, model, sample)
+```
+
+---
+
+## Other Composite Ops
+
+The same three-step pattern (use the class as a submodule → convert via `add_pytorch_module` → pass an `ExternalizeSpec`) works for every built-in composite op. See the [Composite ops API reference](../api/composite-ops.md) reference for the full list, including constructor signatures, forward arguments, and attributes.
+
+---
+
+#### TIP
+- Use `add_pytorch_module` — it is the required entrypoint for externalization.
+- `composite_attrs` must match actual instance attribute names on the target class (e.g., `self.eps`, `self.axes`).
+
+## Next Steps
+
+- [Externalization](externalization.md) — extract composite op submodules as separate named functions in the converted model.
+- [Custom Op Lowering](custom-op-lowering.md) — implement a custom composite op lowering with `register_torch_lowering` and `generate_composite_decl`.
+- [Composite ops API reference](../api/composite-ops.md) — full API reference for all built-in composite op modules.
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc. Hugging Face is a trademark of Hugging Face, Inc.
+
+
+# composite-ops.html.md
+
+# Composite ops API reference
+
+Use these module subclasses (and ATen-derived ops) to preserve an operation’s boundary through Core AI conversion as named composite ops the compiler can recognize and optimize.
+
+## Overview
+
+**Public import:**
+
+```python
+from coreai_torch.composite_ops import (
+    GatherMM,
+    GatedDeltaUpdate,
+    RMSNormImpl,
+    RoPE,
+    SDPA,
+)
+```
+
+coreai-torch provides composite ops in two categories:
+
+- **[Module-class composite ops](composite-ops/module-class.md)** — `nn.Module` subclasses you build into your model and externalize with an `ExternalizeSpec`. Pass them (or `ExternalizeSpec` objects) to the `externalize_modules` parameter of `add_pytorch_module()` to trigger externalization. For a tutorial walkthrough, see [Composite Ops Guide](../guides/composite-ops.md).
+- **[ATen-derived composite ops](composite-ops/aten-derived.md)** — recognized automatically from the ATen nodes in your `ExportedProgram` during conversion. These have no corresponding `nn.Module` wrapper; use the standard PyTorch APIs (e.g., `torch.nn.BatchNorm2d`, `torch.nn.functional.pixel_shuffle`) and Core AI preserves them as composite ops.
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc. Hugging Face is a trademark of Hugging Face, Inc.
+
+
+# construct-a-graph.html.md
+
+# Constructing a CoreAI Graph
+
+This notebook walks through building a minimal CoreAI graph from scratch — without
+going through a framework importer like PyTorch — and saving it as an `.aimodel`
+asset on disk. By the end you will have a file you can load and execute in the
+next tutorial.
+
+Along the way we touch the four authoring concepts you will see throughout the
+rest of these tutorials:
+
+- **`TensorSpec`** — describes a tensor’s shape and dtype.
+- **`Module`** — the container you append graphs into.
+- **Graph entrypoint** — a named function (here, `main`) that defines the
+  computation: its inputs, outputs, and the ops in between.
+- **`AIProgram`** — a deployable program built from one or more modules. This is
+  the unit you save to disk.
+
+#### WARNING
+**APIs in flux.** A few graph-building primitives (the `@graph` decorator and
+elementwise op constructors) currently live under `coreai._compiler` while the
+public authoring surface is finalized. They will be re-exported from
+`coreai.authoring` in a follow-up release; the import paths in the setup cell
+below are the only place this leaks through.
+
+## Setup
+
+Import the public authoring types from `coreai.authoring`, plus the (temporary)
+graph-building primitives noted above.
+
+```ipython3
+import shutil
+from pathlib import Path
+from typing import Annotated
+
+import numpy as np
+
+# Graph-building primitives — pending re-export from coreai.authoring.
+from coreai._compiler.dialects import coreai as ops
+from coreai._compiler.ir import Value
+from coreai.authoring import AIModelAsset, AIProgram, Module, TensorSpec
+```
+
+## Describe the inputs and outputs
+
+A `TensorSpec` describes a tensor by **shape** and **dtype**. Inputs and outputs
+of a graph are described with specs — the runtime uses them to validate the
+tensors you pass in and the tensors it returns.
+
+We will build a graph that takes one `2 × 3` `float32` tensor and produces one
+`2 × 3` `float32` tensor.
+
+```ipython3
+input_spec = TensorSpec(shape=[2, 3], dtype=np.float32)
+output_spec = TensorSpec(shape=[2, 3], dtype=np.float32, name="y")
+
+print(f"input:  {input_spec}")
+print(f"output: {output_spec}")
+```
+
+## Build the graph
+
+Create a `Module` and, inside its `with` block, declare a graph entrypoint. The
+`@ops.graph` decorator inspects a regular Python function and uses it to build
+a CoreAI graph: the parameter and return annotations describe the graph’s
+inputs and outputs, and the function body defines the computation. You do not
+call `main` yourself — CoreAI builds the graph at decoration time.
+
+Here the graph has one input `x` and returns `x + x` — a single elementwise add.
+
+```ipython3
+module = Module.create()
+with module:
+
+    @ops.graph
+    def main(
+        x: Annotated[Value, input_spec],
+    ) -> Annotated[Value, output_spec]:
+        return ops.add(x, x)
+
+
+module.verify()
+print("Module verified.")
+```
+
+## Wrap in an `AIProgram`
+
+An `AIProgram` is the deployable unit. You construct one from a `Module` and use
+it to run optimization passes or to serialize the program to disk.
+
+```ipython3
+program = AIProgram(module)
+```
+
+## Save as an `.aimodel`
+
+`AIProgram.save_asset(path)` writes the program out as an `.aimodel` directory —
+a small bundle containing the program bytecode plus a `metadata.json` file. The
+saved asset is the artifact you ship; it can be loaded later for inference
+without any of the authoring code you wrote above.
+
+```ipython3
+asset_path = Path("./hello-graph.aimodel")
+if asset_path.exists():
+    shutil.rmtree(asset_path)
+
+asset = program.save_asset(asset_path)
+print(f"saved to: {asset.path}")
+```
+
+## Inspect the saved asset
+
+An `.aimodel` is a directory. List its contents and total size to confirm the
+save succeeded — you should see the program bytecode plus its metadata.
+
+```ipython3
+files = sorted(p.name for p in asset_path.iterdir())
+total_bytes = sum(p.stat().st_size for p in asset_path.rglob("*") if p.is_file())
+
+print(f"contents:   {files}")
+print(f"total size: {total_bytes} bytes")
+```
+
+## Validate that the asset is loadable
+
+As a final check, load the asset back with `AIModelAsset.load`, open it as an
+executable model, and confirm the `main` function is present. The next tutorial
+in this series picks up from `hello.aimodel` and runs an actual inference.
+
+```ipython3
+reloaded = AIModelAsset.load(asset_path)
+async with reloaded.executable() as model:
+    # load_function raises KeyError if the name is missing.
+    model.load_function("main")
+print("OK")
+```
+
+
+# contributing.html.md
+
+# Contributing
+
+
+# conversion-workflows.html.md
+
+# Conversion Workflows
+
+`TorchConverter` accepts models in two forms. Pick based on what you have and whether you need [Externalization](externalization.md) to optimize submodules independently or hand off to specialized backends.
+
+---
+
+## From an ExportedProgram
+
+You export and decompose the model yourself, then pass the `ExportedProgram` directly.
+
+```ipython3
+import torch
+import torch.nn as nn
+
+from coreai_torch import TorchConverter, get_decomp_table
+
+
+class MyModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear = nn.Linear(10, 5)
+
+    def forward(self, x):
+        return self.linear(x)
+
+
+model = MyModel().eval()
+
+ep = torch.export.export(model, args=(torch.randn(1, 10),))
+ep = ep.run_decompositions(get_decomp_table())
+
+converter = TorchConverter().add_exported_program(ep)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+```
+
+**When to use:** You need full control over the export pipeline, or you already have an exported program from another tool.
+
+#### WARNING
+You **must** call `run_decompositions()` before passing the program. Use `get_decomp_table()` to preserve the operations that `TorchConverter` lowers as composite ops.
+
+---
+
+## From an nn.Module
+
+Pass your model and an `export_fn` that returns a decomposed `ExportedProgram`. This is equivalent to calling `add_exported_program()` with the result of `export_fn`.
+
+```ipython3
+import torch
+
+import coreai_torch
+
+model = MyModel().eval()
+sample = (torch.randn(1, 10),)
+
+converter = TorchConverter().add_pytorch_module(
+    model,
+    export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+        coreai_torch.get_decomp_table()
+    ),
+)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+```
+
+**When to use:** You have an `nn.Module` and want to pass it directly. Required if you need externalization; otherwise equivalent to `add_exported_program()`.
+
+---
+
+## Externalizing submodules
+
+Externalizing a submodule preserves its operation boundary during conversion, so the operation stays intact as a recognizable unit. When you mark a well-known building block — such as attention, RoPE, or RMSNorm — as a **composite op**, the compiler recognizes that operation and can apply an optimized implementation tailored to it, producing a faster model.
+
+Externalization uses `add_pytorch_module` with the `externalize_modules` argument.
+
+### Composite op externalization
+
+Tag a submodule with an `ExternalizeSpec`, giving it a composite op name and the attributes that define its behavior. The name and attributes are carried through conversion so the compiler can recognize the operation and optimize it:
+
+```ipython3
+import torch
+import torch.nn as nn
+
+from coreai_torch import ExternalizeSpec, TorchConverter
+from coreai_torch.composite_ops import RMSNormImpl
+
+
+class RMSNorm(nn.Module):
+    """Convenience wrapper that owns the learnable scale parameter."""
+
+    def __init__(self, dim: int, eps: float = 1e-5):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(dim))
+        self.norm = RMSNormImpl(eps=eps)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.norm(x, self.weight)
+
+
+class ModelWithNorm(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.norm = RMSNorm(dim=10)
+        self.linear = nn.Linear(10, 5)
+
+    def forward(self, x):
+        return self.linear(self.norm(x))
+
+
+model = ModelWithNorm().eval()
+sample = (torch.randn(1, 10),)
+
+converter = TorchConverter().add_pytorch_module(
+    model,
+    export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+        coreai_torch.get_decomp_table()
+    ),
+    externalize_modules=[
+        ExternalizeSpec(
+            target_class=RMSNormImpl,
+            composite_op_name="rms_norm",
+            composite_attrs=["axes", "eps"],
+        )
+    ],
+)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+```
+
+**When to use:** Mark performance-critical building blocks (RMSNorm, RoPE, SDPA, and similar) so the compiler can optimize them as recognized operations.
+
+#### NOTE
+`coreai_torch.composite_ops` ships convenience wrappers like `RMSNorm` that own the learnable scale for you, so you can use those instead of defining one yourself — but `target_class` in the `ExternalizeSpec` must still be `RMSNormImpl` (the inner module the converter recognizes as the `rms_norm` composite op).
+
+Passing a bare module class to `externalize_modules` instead of an `ExternalizeSpec` performs *simple externalization*: the submodule is extracted into its own standalone graph with no composite-op metadata and no optimization benefit. This is **experimental** — prefer composite-op externalization above.
+
+See [Composite Ops Guide](composite-ops.md) for built-in composite ops and [Externalization](externalization.md) for advanced externalization patterns.
+
+---
+
+## Comparison
+
+|                     | From ExportedProgram          | From nn.Module                           | With externalization                     |
+|---------------------|-------------------------------|------------------------------------------|------------------------------------------|
+| **Entry point**     | `add_exported_program()`      | `add_pytorch_module()`                   | `add_pytorch_module()`                   |
+| **You manage**      | Export + decomposition        | Export + decomposition (via `export_fn`) | Export + decomposition (via `export_fn`) |
+| **Decomposition**   | Manual (`run_decompositions`) | Manual (inside `export_fn`)              | Manual (inside `export_fn`)              |
+| **Externalization** | Not available                 | Not available                            | `externalize_modules`                    |
+| **Best for**        | Full pipeline control         | nn.Module input                          | Composite ops                            |
+
+## Next Steps
+
+- [Composite Ops Guide](composite-ops.md) — preserve attention, normalization, and MoE ops as recognizable units for hardware-optimized dispatch.
+- [Custom Op Lowering](custom-op-lowering.md) — register lowerings for custom or unsupported PyTorch ops.
+- [Supported ATen ops](../api/supported-aten-ops.md) — full list of ATen ops with built-in lowering rules.
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc.
+
+
+# coreai.html.md
+
+# coreai
+
+CoreAI high-level Python API.
+
+## coreai.runtime
+
+CoreAI Runtime.
+
+### *final class* coreai.runtime.InferenceFunction
+
+Represents a function in a model.
+
+#### *property* desc *: InferenceFunctionDescriptor*
+
+The descriptor for this function.
+
+### *final class* coreai.runtime.NDArray(data: np.ndarray[Any, Any] | torch.Tensor | list[Any], backing: [StorageKind](#coreai.runtime.StorageKind) = StorageKind.BYTES)
+
+Represent a multi-dimensional array.
+
+#### *property* dtype *: str*
+
+The type of scalars in the array.
+
+#### *classmethod* from_descriptor(descriptor: NDArrayDescriptor) → Self
+
+Allocates an NDArray from an NDArrayDescriptor.
+
+Will have the correct shape, dtype, and alignment.
+
+#### numpy() → ndarray[Any, Any]
+
+Return the array as a NumPy array.
+
+Standard dtypes (e.g. float32, int8) return a zero-copy view that shares the
+backing buffer and preserves strides via DLPack. For bfloat16 / float8 dtypes,
+which DLPack may not support depending on the NumPy version, it falls back to
+the buffer protocol: C-contiguous arrays return a zero-copy view, non-contiguous
+arrays (e.g. a transpose) return a copy gathered in C order. Sub-byte dtypes
+(int2, int4, …) are always unpacked into a new array.
+
+#### *property* shape *: tuple[int, ...]*
+
+The shape of the array.
+
+#### *property* strides *: tuple[int, ...]*
+
+The strides, in elements (not bytes).
+
+Describes the distance, in elements, between consecutive values along a
+given dimension.
+
+### *class* coreai.runtime.SpecializationOptions
+
+Options for configuring model specialization.
+
+#### *property* allowed_compute_unit_kinds *: list[ComputeUnitKind]*
+
+Get the allowed compute unit kinds for this specialization.
+
+#### *classmethod* cpu_only() → [SpecializationOptions](#coreai.runtime.SpecializationOptions)
+
+Specialization options restricted to CPU only.
+
+#### *classmethod* default() → [SpecializationOptions](#coreai.runtime.SpecializationOptions)
+
+Default specialization options.
+
+#### *classmethod* from_preferred_compute_unit_kind(compute_unit_kind: ComputeUnitKind) → [SpecializationOptions](#coreai.runtime.SpecializationOptions)
+
+Create specialization options with a specific preferred compute unit kind.
+
+#### *static* is_supported() → bool
+
+Whether delegate specialization is available on this platform and setup.
+
+Returns `True` on macOS with env var USE_OS_COREAI=1 (because the
+in-package Core AI runtime doesn’t support delegates). Unlike the
+constructors below, this never
+raises, so callers can use it to gate or skip cleanly before attempting
+to build options.
+
+#### *property* preferred_compute_unit_kind *: ComputeUnitKind | None*
+
+Get the preferred compute unit for this specialization.
+
+#### with_debug(, enabled: bool) → [SpecializationOptions](#coreai.runtime.SpecializationOptions)
+
+Return a new SpecializationOptions instance with debugging toggled.
+
+### *class* coreai.runtime.StorageKind(value)
+
+Backing buffer type for NDArray.
+
+Python analogue for CoreAI.NDArrayDescriptor.StorageKind.
+
+## coreai.authoring
+
+Authoring utilities for CoreAI.
+
+### *final class* coreai.authoring.AIModelAsset
+
+A model asset.
+
+Represents an unspecialized source model asset on disk. Unlike a loaded
+`AIModel`, an asset cannot be used directly for inference — it is used to
+query model information such as function signatures, metadata, storage/compute
+types, and to manage derived compilation artifacts.
+The asset is a directory (typically with an `.aimodel` extension) that
+contains an unspecialized model asset, along with any associated metadata.
+
+#### executable(specialization_options: [SpecializationOptions](#coreai.runtime.SpecializationOptions) | None = None) → AsyncGenerator[AIModel]
+
+Async context manager that loads this asset as a runnable `AIModel`.
+
+Loads the model on entry and releases its resources on exit. Use this
+instead of constructing an `AIModel` directly to ensure the model
+lifetime is scoped to the block:
+
+```default
+async with asset.executable() as model:
+    outputs = await model.run(inputs)
+```
+
+Args:
+: specialization_options: Optional specialization options for model
+  : compilation. Only available on macOS.
+
+Yields:
+: AIModel: A loaded model ready for inference.
+
+#### *static* is_valid(path: Path | str) → bool
+
+Return `True` if the path contains a valid model asset.
+
+Checks that the path is an existing directory with a known model extension
+and that it contains either a source program or a derived artifact.
+
+#### *classmethod* load(path: Path | str) → [AIModelAsset](#coreai.authoring.AIModelAsset)
+
+Load an existing model asset from disk.
+
+Args:
+: path: Path to the asset directory. The directory must already exist.
+
+Raises:
+: RuntimeError: If the asset cannot be read or its metadata is malformed.
+
+#### *property* metadata *: AIModelAssetMetadata*
+
+The asset metadata, loaded from `metadata.json`.
+
+#### *property* path *: Path*
+
+The file-system path to the asset directory.
+
+#### *property* program *: [AIProgram](#coreai.authoring.AIProgram)*
+
+Return an in-memory representation of the on-disk IR bytecode.
+
+Changes to this are not persisted to the on-disk asset.
+
+#### summary(, include_statistics: bool = True) → AIModelAssetSummary | None
+
+Return a summary of the model’s source program.
+
+Args:
+: include_statistics: When `True`, also reads storage types, compute
+  : types, and the operation distribution. This is considerably slower
+    for large models. When `False`, only the function signatures are
+    populated.
+
+Returns:
+: An `AIModelAssetSummary`, or `None` if no source bytecode exists.
+
+Raises:
+: RuntimeError: If the bytecode file cannot be read or parsed.
+
+#### update_metadata(updates: Callable[[AIModelAssetMetadata], None]) → None
+
+Update the asset metadata atomically.
+
+Calls `updates` with the current `AIModelAssetMetadata` object, which
+must be mutated **in-place**. Changes are written to `metadata.json`
+after the callable returns.
+
+#### WARNING
+The callback **must mutate the object it receives**, not reassign the
+local variable. Reassigning is silently ignored:
+
+```default
+# WRONG — reassignment has no effect; the update is lost
+def update(m):
+    m = AIModelAssetMetadata()   # rebinds local 'm', does nothing
+
+# CORRECT — mutate the received object in-place
+def update(m):
+    m.author = "Alice"
+```
+
+Args:
+: updates: A callable that receives the current metadata and mutates it
+  : in-place. Example:
+    <br/>
+    ```default
+    asset.update_metadata(lambda m: setattr(m, "author", "Alice"))
+    ```
+
+Raises:
+: RuntimeError: If the updated metadata cannot be written to disk.
+
+### *class* coreai.authoring.AIProgram(module: [Module](#coreai.authoring.Module))
+
+A machine-agnostic, deployable CoreAI program.
+
+Holds the CoreAI authoring representation that can be optimized and
+serialized into a deployable asset.
+
+#### get_graph(entrypoint: str) → GraphOp | None
+
+Get the GraphOp for the given name. Recurses into udml.namespace ops as required to try and find the graph.
+
+#### optimize() → None
+
+Apply frontend-agnostic optimization passes to the program.
+
+Applies common optimization passes like CSE, DCE, canonicalize,
+and CoreAI-specific optimizations. Mutations are made in-place on the
+program.
+
+#### save_asset(path: Path, metadata: AIModelAssetMetadata | None = None, minimum_os: [OSVersion](#coreai.authoring.OSVersion) = OSVersion.v27) → [AIModelAsset](#coreai.authoring.AIModelAsset)
+
+Persist an AIProgram in AIModelAsset format.
+
+#### set_hardware_constraints(entrypoint: str, hw_constraint_config: dict[str, [HardwareConstraints](#coreai.authoring.HardwareConstraints)]) → None
+
+Rewrite the named entrypoint with harware constraints on the specified IO.
+
+Args:
+: entrypoint
+  : Name of the `coreai.graph` to rewrite.
+  <br/>
+  hw_constraint_config
+  : Mapping of tensor name → hardware constraints to apply.
+    Names not present in the dict are left with their original types.
+
+#### set_static_shape_config(entrypoint: str, shapes_config: dict[str, dict[str, tuple[int, ...]]]) → None
+
+Attach static input shape configurations to a graph’s argument attributes.
+
+### Parameters
+
+entrypoint
+: Name of the `coreai.graph` to configure.
+
+shapes_config
+: Mapping of new entrypoint name → (input name → static shape).
+  Each input that appears in any entrypoint’s dict will receive a
+  `coreai.enumerated_shapes` attribute enumerating all
+  provided specializations for that input. Inputs not mentioned in
+  any entrypoint dict are left unchanged.
+
+### *class* coreai.authoring.AllocationType(value)
+
+Allocations for hardware constraints.
+
+#### Heap *= 'Heap'*
+
+Use Heap for the allocation.
+
+#### IOSurface *= 'IOSurface'*
+
+Use a IOSurface for the allocation.
+
+#### MTLBuffer *= 'MTLBuffer'*
+
+Use a Metal buffer for the allocation.
+
+### *class* coreai.authoring.ContainerType(value)
+
+Backing allocation.
+
+### *class* coreai.authoring.Context
+
+A CoreAI authoring context.
+
+Holds the runtime state needed to build a CoreAI program. Use it as a
+context manager to make it active while constructing a program:
+
+```default
+with Context():
+    ...
+```
+
+### *class* coreai.authoring.CustomMetalKernel(name: str, input_names: list[str], result_names: list[str], src: str, metal_params: list[[MetalParameter](#coreai.authoring.MetalParameter)] | None = None, helper_src: str | None = None, template_dtypes: dict[str, str] | None = None)
+
+Specification class for metal kernels.
+
+Intended for use by coreai-torch. The invocation path (_construct_kernel_op)
+is intentionally private in 0.1.0; do not call directly from end-user code.
+
+#### template_kernel_src(kernel_id: str, input_metadata: list[TensorMeta], result_metadata: list[TensorMeta]) → str
+
+Template the kernel signature based on the provided IO types.
+
+#### validate_and_set_dtype_templates(templates: dict[str, str], input_names: list[str]) → None
+
+Validate and set dtype template dict.
+
+### *class* coreai.authoring.FourCC(value)
+
+Four character code denoting image type.
+
+### *class* coreai.authoring.HardwareConstraints(allocation_type: [AllocationType](#coreai.authoring.AllocationType), alignments: list[int], interleave: list[int])
+
+Hardware constraints attribute.
+
+### *class* coreai.authoring.ImageConstraints(four_cc: [FourCC](#coreai.authoring.FourCC), backing: [ContainerType](#coreai.authoring.ContainerType), row_alignments_per_plane: list[int])
+
+Tensor encoding attribute describing an image encoding.
+
+### Parameters
+
+four_cc: FourCC
+: - Four-character code denoting image type.
+
+backing: ContainerType
+: - Backing buffer type.
+
+row_alignments_per_plane: list[int]
+: - Minimum row alignment for each row in the image.
+
+### *class* coreai.authoring.ImageSpec(fourcc: Any, height: int, width: int, name: str | None = None, constraints: [ImageConstraints](#coreai.authoring.ImageConstraints) | None = None)
+
+Image spec describing an image input/output for graph functions.
+
+### Examples
+
+```python
+import numpy as np
+from typing import Annotated
+
+from coreai.authoring import FourCC, ImageSpec, TensorSpec
+
+# An RGBA image input and a uint8 tensor output, used as
+# Annotated metadata on a graph function's signature.
+image_in = Annotated[object, ImageSpec(FourCC.RGBA, 224, 224, "input")]
+tensor_out = Annotated[object, TensorSpec((224, 224, 3), np.uint8, "output")]
+```
+
+### Parameters
+
+fourcc: coreai.authoring.FourCC
+: - The image format (e.g. `FourCC.RGBA`)
+
+height: int
+: - The height of the image in pixels
+
+width: int
+: - The width of the image in pixels
+
+name: str (optional)
+: - Name of the image input/output
+
+constraints: ImageConstraints (optional)
+: - Any image-specific constraints (CVPixelBuffer vs MTLTexture, etc.)
+
+### *class* coreai.authoring.MetalParameter(name: str, dtype: str, attr: str)
+
+Specification class for metal parameters.
+
+This class is to be used to specify metal parameters that are not the input tensors
+and their associated metadata. This should be used to specify parameters like
+thread_position_in_grid.
+
+name: variable name to be included in parameters.
+dtype: variable type, e.g. uint2, etc.
+attr: metal attribute type, e.g. thread_position_in_grid, etc.
+
+### *final class* coreai.authoring.Module
+
+A CoreAI authoring module that holds the IR being constructed.
+
+- Create a `Module` with `Module.create()`; a default context and
+  source-line location are bootstrapped for you.
+- Use the `Module` as a context manager to append operations to the module body.
+- Inspect the constructed IR with `verify`, `dump`, and `as_string`.
+
+#### as_string() → str
+
+Return the IR as a string.
+
+#### *classmethod* create() → Self
+
+Create a Module.
+
+Bootstraps a context and an active location if they do not exist.
+
+#### dump() → None
+
+Print the IR to stderr (useful for debugging).
+
+#### verify() → None
+
+Verify the constructed IR for correctness. Raises on error.
+
+### *class* coreai.authoring.OSVersion(value)
+
+Operating system version to serialize for.
+
+### *class* coreai.authoring.TensorSpec(shape: list[int] | None = None, dtype: type[np.generic] | Type | None = None, name: str | None = None, encoding: [HardwareConstraints](#coreai.authoring.HardwareConstraints) | [ImageConstraints](#coreai.authoring.ImageConstraints) | None = None)
+
+Tensor spec describing a tensor’s shape, dtype, and constraints.
+
+#### *property* is_materialized *: bool*
+
+Check if shape and dtype info is available.
+
+#### *property* rank *: int | None*
+
+Get rank of tensor.
+
+#### set_default_mtl_constraints() → None
+
+Set metal constraints with default alignments and interleave.
+
+
+# custom-metal-kernels.html.md
+
+# Custom Metal Kernels
+
+This guide shows how to author inline Metal GPU kernels and convert them through `TorchConverter`. Custom Metal kernels let you write raw Metal shader code, wrap it as a PyTorch op, and compile it into CoreAI operations for on-device execution.
+
+#### WARNING
+Authoring Metal kernels uses APIs from `coreai-core` (such as `coreai.authoring`). These APIs are experimental and subject to change in future releases.
+
+## When You Need This
+
+- You need a GPU kernel that is not available as a standard PyTorch or CoreAI op.
+- You want to fuse multiple operations into a single Metal dispatch for performance.
+- You need fine-grained control over thread dispatch, shared memory, or Metal-specific features.
+
+---
+
+## Step 1 — Define the Metal Kernel
+
+Use `TorchMetalKernel` from `coreai_torch` to specify the kernel. You provide:
+
+- A **name** for the kernel.
+- **Input and result names** that match the variables in your Metal source.
+- The **Metal shader body** (the code inside the `[[kernel]]` function — the signature is generated automatically).
+- A **torch reference implementation** used during `torch.export` for shape inference.
+- **Metal parameters** like `thread_position_in_grid` for indexing.
+
+```ipython3
+import torch
+from coreai.authoring import MetalParameter
+
+from coreai_torch import TorchMetalKernel
+
+
+def torch_add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Reference implementation for shape inference during export."""
+    return x + y
+
+
+custom_add = TorchMetalKernel(
+    "vector_add",
+    input_names=["x", "y"],
+    result_names=["output"],
+    src="output[id] = x[id] + y[id];",
+    torch_defn=torch_add,
+    metal_params=[
+        MetalParameter("id", "uint", "thread_position_in_grid"),
+    ],
+)
+```
+
+The `src` string is the body of the Metal `[[kernel]]` function. The function signature — buffer bindings, thread attributes, and `#include <metal_stdlib>` — is generated automatically from `input_names`, `result_names`, and `metal_params`.
+
+`TorchMetalKernel` wraps your kernel as a PyTorch op, so you can call it directly inside an `nn.Module`.
+
+## Step 2 — Use the Kernel in a Model
+
+Call the kernel inside an `nn.Module`. You must specify `threads_per_grid`, `threads_per_thread_group`, and `result_shapes` at each call site.
+
+```ipython3
+import torch
+import torch.nn as nn
+
+
+class AddModel(nn.Module):
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        return custom_add(
+            x,
+            y,
+            threads_per_grid=(x.shape[0], 1, 1),
+            threads_per_thread_group=(1, 1, 1),
+            result_shapes=[list(x.shape)],
+        )
+```
+
+## Step 3 — Export and Decompose
+
+Export the model as usual. Custom kernel ops are preserved through `run_decompositions()` — they are not decomposed.
+
+```ipython3
+import torch
+
+from coreai_torch import get_decomp_table
+
+model = AddModel().eval()
+example_inputs = (torch.randn(16), torch.randn(16))
+
+exported = torch.export.export(model, args=example_inputs)
+exported = exported.run_decompositions(get_decomp_table())
+```
+
+## Step 4 — Register Kernels and Convert
+
+Use `register_custom_kernels()` to tell the converter how to lower the kernel ops. This must be called **before** `add_exported_program()`.
+
+```ipython3
+from coreai_torch import TorchConverter
+
+converter = TorchConverter()
+converter.register_custom_kernels([custom_add])
+converter.add_exported_program(
+    exported,
+    input_names=["x", "y"],
+    output_names=["result"],
+)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+```
+
+---
+
+## Dtype Templating
+
+Use `template_dtypes` to write a single kernel that works across multiple data types. Placeholder strings in the Metal source are replaced with the actual Metal type at compile time.
+
+```ipython3
+import torch
+
+
+def torch_matmul(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    return torch.matmul(x, y)
+
+
+custom_matmul = TorchMetalKernel(
+    "matmul",
+    input_names=["A", "B"],
+    result_names=["C"],
+    src="""
+        const uint K = A.get_extent(0);
+        const uint M = A.get_extent(1);
+        const uint N = B.get_extent(0);
+        if (gid.x >= N || gid.y >= M) return;
+        TYPE sum = 0.0f;
+        for (uint k = 0; k < K; ++k) {
+            sum += A[k, gid.y] * B[gid.x, k];
+        }
+        C[gid.x, gid.y] = sum;
+    """,
+    torch_defn=torch_matmul,
+    metal_params=[
+        MetalParameter("gid", "uint2", "thread_position_in_grid"),
+    ],
+    # "A" is the input whose dtype determines the substitution;
+    # every occurrence of "TYPE" in src is replaced with the
+    # corresponding Metal type (e.g. "half", "float", "bfloat").
+    template_dtypes={"A": "TYPE"},
+)
+```
+
+```ipython3
+import torch
+import torch.nn as nn
+
+
+def torch_sincos(x: torch.Tensor) -> list[torch.Tensor]:
+    return [torch.sin(x), torch.cos(x)]
+
+
+sincos_kernel = TorchMetalKernel(
+    "sincos",
+    input_names=["x"],
+    result_names=["out_sin", "out_cos"],
+    src="out_sin[id] = sin(x[id]); out_cos[id] = cos(x[id]);",
+    torch_defn=torch_sincos,
+    metal_params=[MetalParameter("id", "uint", "thread_position_in_grid")],
+)
+
+
+class SinCosModel(nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        results = sincos_kernel(
+            x,
+            threads_per_grid=(x.shape[0], 1, 1),
+            threads_per_thread_group=(1, 1, 1),
+            result_shapes=[list(x.shape), list(x.shape)],
+        )
+        return results[0] + results[1]  # sin(x) + cos(x)
+```
+
+## Next Steps
+
+- [Custom Op Lowering](custom-op-lowering.md) — a simpler alternative for ops that can be expressed using standard Core AI operations.
+- [TorchMetalKernel](../api/TorchMetalKernel.md) — full `TorchMetalKernel` API reference.
+- [TorchConverter API reference](../api/TorchConverter.md) — `register_custom_kernels` API reference.
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc.
+
+
+# custom-op-lowering.html.md
+
+# Custom Op Lowering
+
+`TorchConverter` maps standard ATen ops to CoreAI graphs automatically. This guide shows how to register lowerings for custom or unsupported ops.
+
+#### WARNING
+Writing a lowering uses authoring APIs from `coreai-core` (such as `coreai._compiler.dialects`). The leading underscore on `_compiler` marks this as private upstream API — it may move or change without notice across `coreai-core` releases.
+
+## When You Need This
+
+- Your model calls a custom torch op (registered via `torch.library`) that the converter does not recognize.
+- You want to replace the built-in lowering for a standard ATen op with a specialized implementation.
+
+---
+
+## Lowering a custom torch Op
+
+### Step 1 — Define the custom torch Op
+
+Use `@torch.library.custom_op` to register the op with the PyTorch dispatcher, and `register_fake` to provide the abstract implementation needed by `torch.export`.
+
+```ipython3
+import torch
+
+
+@torch.library.custom_op("my_lib::scaled_add", mutates_args=())
+def scaled_add(x: torch.Tensor, y: torch.Tensor, scale: float) -> torch.Tensor:
+    """Eager implementation: runs on CPU during normal PyTorch inference."""
+    return x + scale * y
+
+
+@scaled_add.register_fake
+def _(x: torch.Tensor, y: torch.Tensor, scale: float) -> torch.Tensor:
+    """Abstract implementation: called by torch.export to infer output shapes."""
+    return torch.empty_like(x)
+```
+
+The eager body runs during regular PyTorch execution. The `register_fake` body is called by the exporter’s shape-propagation machinery; it only needs to return a tensor with the correct shape and dtype.
+
+### Step 2 — Use the Op in a model
+
+```ipython3
+import torch
+import torch.nn as nn
+
+
+class ScaledAddModel(nn.Module):
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        return torch.ops.my_lib.scaled_add(x, y, 0.5)
+```
+
+### Step 3 — Export the model
+
+Export and run decompositions as usual. Custom ops are not touched by the decomposition pass, so `my_lib::scaled_add` remains as a single node in the graph.
+
+```ipython3
+import torch
+
+from coreai_torch import get_decomp_table
+
+model = ScaledAddModel().eval()
+example_inputs = (torch.randn(4, 8), torch.randn(4, 8))
+
+exported = torch.export.export(model, args=example_inputs)
+exported = exported.run_decompositions(get_decomp_table())
+```
+
+### Step 4 — Register the CoreAI lowering
+
+Create a `TorchConverter`, then use `register_torch_lowering` as a decorator. The lowering function receives:
+
+| Argument     | Type               | Description                                                                                        |
+|--------------|--------------------|----------------------------------------------------------------------------------------------------|
+| `values_map` | `dict[str, Value]` | Maps FX node names to their CoreAI `Value`s. Use this to look up tensor operands.                  |
+| `node`       | `torch.fx.Node`    | The FX node being lowered. Tensor args are `fx.Node` objects; scalar args are plain Python values. |
+| `loc`        | `Location`         | CoreAI Location. Pass to CoreAI op constructors.                                                   |
+
+The op’s qualified name in the FX graph always carries the overload suffix `.default`, so register it as `"my_lib::scaled_add.default"`.
+
+```ipython3
+from coreai._compiler.dialects import coreai
+
+from coreai_torch import TorchConverter
+from coreai_torch._utils import get_operands
+
+converter = TorchConverter()
+
+
+@converter.register_torch_lowering("my_lib::scaled_add.default")
+def lower_scaled_add(values_map, node, loc):
+    x, y = get_operands(values_map, node, [0, 1], loc)
+    scale = node.args[2]  # plain Python float
+
+    scale_val = coreai.constant(scale, dtype=x.type.element_type)
+    scaled_y = coreai.broadcasting_mul(y, scale_val, loc=loc)
+    return coreai.broadcasting_add(x, scaled_y, loc=loc)
+```
+
+### Step 5 — Convert
+
+```ipython3
+coreai_program = converter.add_exported_program(
+    exported,
+    input_names=["x", "y"],
+    output_names=["result"],
+).to_coreai()
+coreai_program.optimize()
+```
+
+### Step 6 — Inspect the generated CoreAI graph
+
+```ipython3
+print(str(coreai_program))
+```
+
+---
+
+## Overriding built-in lowerings
+
+To replace the built-in lowering for a standard ATen op, pass `allow_override=True`. This is useful when you know your model’s runtime constraints allow a simpler implementation.
+
+For example, the default lowering for `aten._adaptive_avg_pool2d` handles dynamic input shapes and non-divisible output sizes. If your model always runs with static shapes and an output size that evenly divides the input (e.g., ResNet’s final `adaptive_avg_pool2d(output_size=(1, 1))`), you can replace it with a simpler `sumpool2d` + divide:
+
+```ipython3
+import numpy as np
+import torch
+import torch.nn as nn
+
+from coreai_torch._utils import get_operand
+
+
+# A model that uses adaptive_avg_pool2d
+class PoolModel(nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.nn.functional.adaptive_avg_pool2d(x, (1, 1))
+
+
+pool_model = PoolModel().eval()
+pool_input = (torch.randn(1, 3, 8, 8),)
+pool_exported = torch.export.export(pool_model, args=pool_input)
+pool_exported = pool_exported.run_decompositions(get_decomp_table())
+
+converter = TorchConverter()
+
+
+@converter.register_torch_lowering(
+    "aten::_adaptive_avg_pool2d.default", allow_override=True
+)
+def lower_adaptive_avg_pool2d_static(values_map, node, loc):
+    x = get_operand(values_map, node, 0, loc)
+    output_h, output_w = node.args[1]
+    input_h, input_w = x.type.shape[2], x.type.shape[3]
+    stride_h, stride_w = input_h // output_h, input_w // output_w
+    kernel_h = input_h - (output_h - 1) * stride_h
+    kernel_w = input_w - (output_w - 1) * stride_w
+    return coreai.broadcasting_divide(
+        coreai.sumpool2d(
+            x,
+            kernel_size=np.array([kernel_h, kernel_w], dtype=np.uint32),
+            strides=np.array([stride_h, stride_w], dtype=np.uint32),
+            dilation=coreai.constant([1, 1], dtype=np.uint32),
+        ),
+        coreai.cast(float(kernel_h * kernel_w), x.type.element_type),
+    )
+
+
+coreai_program = converter.add_exported_program(pool_exported).to_coreai()
+coreai_program.optimize()
+```
+
+---
+
+## Notes
+
+- **Op name format.** The qualified name must be `"namespace::op_name.overload"`. Custom ops defined with `@custom_op` always use the `.default` overload.
+- **Reserved namespaces.** `aten`, `higher_order`, `coreai`, and `coreaix` are built-in. Overriding requires `allow_override=True`.
+- **Per-instance registration.** Lowerings are stored on the `TorchConverter` instance and do not affect other converters or the global resolver tables.
+- **Multiple return values.** If your op returns a tuple, return a Python list of `Value`s from the lowering function. The converter stores them as `"node_name#0"`, `"node_name#1"`, etc. in `values_map`.
+
+## Next Steps
+
+- [Supported ATen ops](../api/supported-aten-ops.md) — check the full built-in op coverage before writing a custom lowering.
+- [Composite Ops Guide](composite-ops.md) — use `generate_composite_decl` to write composite op lowerings that dispatch to hardware-optimized kernels.
+- [TorchConverter API reference](../api/TorchConverter.md) — `register_torch_lowering` API reference.
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc.
+
+
+# debugging.html.md
+
+# Debugging
+
+Find NaN/infinity issues, compare model implementations, and analyze structural differences with the debugging module.
+
+#### NOTE
+During the current preview, set the following environment variables to ensure
+operation-level debug metadata is preserved and available to these tools:
+
+```bash
+export USE_LOCAL_COREAI=1
+export ENABLE_DEBUG_INFO=1
+```
+
+## Quick start
+
+```python
+from coreai_torch.debugging.validator import create_validator_for_exported_program
+
+# Find NaN/inf issues in PyTorch models
+model = MyModel().eval()
+exported = torch.export.export(model, args=(torch.randn(1, 10),))
+
+validator = create_validator_for_exported_program(exported)
+result = await validator.check_for_nans(inputs=(torch.randn(1, 10),))
+
+if result.failed_nodes:
+    print(f"NaN detected at: {result.failed_nodes[0]}")
+```
+
+## Finding NaN/infinity issues
+
+**Use when:** Your model produces NaN or infinity values and you need to find which operation caused the issue.
+
+### PyTorch models
+
+```python
+from coreai_torch.debugging.validator import create_validator_for_exported_program
+
+# Export your model
+exported_program = torch.export.export(model, args=example_input)
+
+# Create validator
+validator = create_validator_for_exported_program(exported_program)
+
+# Check for numerical issues
+nan_result = await validator.check_for_nans(inputs=example_input)
+inf_result = await validator.check_for_infs(inputs=example_input)
+
+# Get first failing operation
+if nan_result.failed_nodes:
+    print(f"First NaN at: {nan_result.failed_nodes[0]}")
+```
+
+### Core AI programs
+
+```python
+from coreai_torch.debugging.validator import create_validator_for_coreai_program
+
+# Convert to Core AI
+converter = TorchConverter().add_exported_program(exported_program)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+
+# Create validator
+validator = await create_validator_for_coreai_program(coreai_program, "main")
+
+# Check for issues
+result = await validator.check_for_nans(inputs={"x": torch.randn(2, 4)})
+```
+
+## Comparing model implementations
+
+**Use when:** You need to verify that PyTorch and Core AI models produce the same outputs after conversion.
+
+### Cross-framework comparison
+
+Compare PyTorch vs Core AI to verify conversion correctness:
+
+```python
+from coreai_torch.debugging.comparator import create_comparator_for_programs
+
+# Create comparator between PyTorch and Core AI
+comparator = await create_comparator_for_programs(
+    source_program=exported_program,
+    target_program=coreai_program,
+    target_entry_point="main",
+)
+
+# Compare outputs with tolerance
+result = await comparator.compare_with_tolerance(
+    inputs={"x": example_input}, rtol=1e-5, atol=1e-8
+)
+
+# Check for differences
+if result.failed_nodes:
+    for source_op, target_op in result.failed_nodes:
+        print(f"Mismatch: {source_op} vs {target_op}")
+```
+
+## Core AI inspector
+
+**Use when:** You need to examine intermediate values from specific operations in a deployed Core AI model.
+
+Capture intermediate values from deployed Core AI models:
+
+```python
+from coreai_torch.debugging.inspector import CoreAIInspector
+from coreai.runtime import AIModel
+
+# Load deployed Core AI model
+asset_path = Path("my_model.aimodel")
+ai_model = await AIModel.load(asset_path)
+
+# Create inspector
+inspector = CoreAIInspector(model=ai_model, function_name="main")
+
+# Get operation IDs to inspect (from debug info)
+coreai_op_ids = [1, 5, 10, 15]
+
+# Capture intermediate values
+results = await inspector.get_intermediates_for_ops(
+    coreai_op_ids, inputs={"x": np.random.randn(2, 4).astype(np.float32)}
+)
+
+# Check results
+for op_id, outputs in results.items():
+    print(f"Op {op_id}: {len(outputs) if outputs else 0} outputs")
+```
+
+## Structural graph analysis
+
+**Use when:** You want to understand how model structure changes between different versions or after optimization passes.
+
+### Graph difference analysis
+
+Analyze structural differences between model implementations using graph isomorphism:
+
+```python
+from coreai_torch.debugging.graph_diff import (
+    compute_exported_program_diff,
+    compute_coreai_program_diff,
+    write_diff,
+)
+
+# Compare two PyTorch programs
+source_program = torch.export.export(model_v1, example_input)
+target_program = torch.export.export(model_v2, example_input)
+
+diff = compute_exported_program_diff(source_program, target_program)
+
+# Check structural compatibility
+if diff.is_isomorphic:
+    print("✓ Graphs have identical structure")
+else:
+    print(f"✗ Found {diff.summary.unmapped_source_node_count} structural differences")
+
+    # Write detailed diff report to stdout
+    write_diff(diff, diff.source_graph, diff.target_graph, max_items=20)
+```
+
+## Performance profiling
+
+**Use when:** You need to identify slow operations and performance bottlenecks in your Core AI model.
+
+Profile operation timing in Core AI programs:
+
+```python
+from coreai_torch.debugging.benchmarker import benchmark_coreai_program
+
+# Run benchmark
+result = await benchmark_coreai_program(
+    coreai_program=coreai_program, inputs={"x": torch.randn(2, 4)}, num_runs=50
+)
+
+# Show timing summary
+result.write_summary(sys.stdout)
+
+# Get module-level timing
+module_timings = result.get_module_timings()
+for name, module in module_timings.items():
+    print(f"{name}: {module.aggregated_op_stats.average:.3f}ms avg")
+```
+
+## Custom validation
+
+**Use when:** You need to check for specific conditions beyond NaN/infinity (e.g., value ranges, specific patterns).
+
+Create custom checks beyond NaN/infinity:
+
+```python
+def check_large_values(outputs):
+    """Check if any output has values > threshold"""
+    return any(abs(arr).max() > 1000.0 if arr is not None else False for arr in outputs)
+
+
+# Use custom check
+result = await validator.check(check_large_values, inputs=example_input)
+```
+
+## Configuration
+
+### Search strategies
+
+Choose how to search through operations:
+
+```python
+from coreai_torch.debugging.search_strategy import LevelOrderStrategy
+
+# Binary search (default - fastest for finding first issue)
+strategy = LevelOrderStrategy.bisection(graph, batch_size=10)
+
+# Top-down (systematic from inputs to outputs)
+strategy = LevelOrderStrategy.top_down(graph)
+
+# Adaptive (automatically selects best approach)
+strategy = LevelOrderStrategy.auto(graph)
+```
+
+### Batch size
+
+```python
+# Control batch size for memory efficiency
+strategy = LevelOrderStrategy.bisection(graph, batch_size=5)  # Smaller batches
+strategy = LevelOrderStrategy.bisection(graph, batch_size=20)  # Larger batches
+validator = create_validator_for_exported_program(exported)
+```
+
+## Torch utilities
+
+**Use when:** You need to save intermediate values to disk for later analysis or share debug data.
+
+### Saving intermediate values
+
+Save all intermediate tensor values from PyTorch model execution:
+
+```python
+from coreai_torch.debugging.torch_utils import save_intermediates, load_intermediates
+from pathlib import Path
+
+# Export your PyTorch model
+exported_program = torch.export.export(model, args=example_input)
+
+# Save intermediate values to disk
+metadata_path = save_intermediates(
+    program=exported_program, inputs=example_input, output_dir=Path("./debug_output")
+)
+
+print(f"Intermediates saved to: {metadata_path}")
+```
+
+### Loading intermediate values
+
+Load saved intermediate values for analysis:
+
+```python
+# Load intermediate values from disk
+debug_trace = load_intermediates(Path("./debug_output/main.aimodelintermediates"))
+
+# Access saved values
+print(f"Inputs: {list(debug_trace.inputs.keys())}")
+print(f"Outputs: {list(debug_trace.outputs.keys())}")
+print(f"Intermediates: {len(debug_trace.intermediates)} operations")
+
+# Analyze specific intermediate values
+for node_name, tensor in debug_trace.intermediates.items():
+    print(f"{node_name}: shape {tensor.shape}, mean {tensor.mean():.3f}")
+```
+
+### Custom value filtering
+
+Filter which intermediate values to save:
+
+```python
+def custom_filter(node, result):
+    """Only save convolution and linear layer outputs"""
+    return any(op in str(node.target).lower() for op in ["conv", "linear", "matmul"])
+
+
+# Save only filtered operations
+metadata_path = save_intermediates(
+    program=exported_program,
+    inputs=example_input,
+    output_dir=Path("./debug_output"),
+    node_filter=custom_filter,
+)
+```
+
+The debugging module provides tools for validating model correctness, analyzing structural changes, and identifying performance issues.
+
+## See also
+
+- [Conversion Workflows](../guides/conversion-workflows.md) — understand the full pipeline from export to `DeployableProgram`.
+- [Supported ATen ops](supported-aten-ops.md) — check which ATen ops have built-in lowering rules if you hit a conversion error.
+- [TorchConverter API reference](TorchConverter.md) — the main conversion class; `to_coreai()` produces the program you validate here.
+
+
+# externalization.html.md
+
+# Externalization
+
+Externalization preserves a submodule’s operation boundary during conversion, so the operation stays intact as a recognizable unit in the converted model. When you mark a well-known building block — such as attention, RoPE, or RMSNorm — as a **composite op**, the compiler recognizes that operation and can apply an implementation optimized for it, producing a faster model.
+
+Use `ExternalizeSpec` to tag the extracted submodule with a composite op name and the attributes that define it, so the compiler can recognize and optimize the operation.
+
+---
+
+## What externalization produces
+
+Both modes extract the matching submodule into its own `coreai.graph` that `@main` calls with `coreai.invoke`. The difference is what that graph carries. Take a model whose `forward` is `linear(norm(x))`, with the `norm` submodule externalized:
+
+**Composite op externalization** marks the extracted graph as a named composite op — note the `private` graph and the `composite_decl` attribute recording the op name and its attributes, which the compiler recognizes and optimizes:
+
+```llvm
+module {
+  coreai.graph private noinline @norm.rms_norm(
+      %arg0: tensor<1x10xf32> {coreai.name = "input"},
+      %arg1: tensor<10xf32> {coreai.name = "scale"}
+  ) -> tensor<1x10xf32> attributes {
+      composite_decl = #coreai.composite_declaration<"rms_norm" = {
+          input_names = ["input", "scale"],
+          op_attrs = {axes = -1 : si64, eps = 9.99999974E-6 : f32, version = 1 : si64},
+          output_names = ["output"]}>
+  } {
+    // ... rms-norm body ...
+    coreai.output %15 : tensor<1x10xf32>
+  }
+  coreai.graph @main(%arg0: tensor<1x10xf32>) -> tensor<1x5xf32> {
+    %3 = coreai.invoke @norm.rms_norm(%arg0, %0)
+        : (tensor<1x10xf32>, tensor<10xf32>) -> tensor<1x10xf32>
+    // ... linear ...
+    coreai.output %7 : tensor<1x5xf32>
+  }
+}
+```
+
+**Simple externalization** extracts the same submodule as a plain graph boundary — no `composite_decl`, so the compiler sees an opaque subgraph rather than a named op:
+
+```llvm
+module {
+  coreai.graph noinline @norm(%arg0: tensor<1x10xf32>) -> tensor<1x10xf32> {
+    // ... rms-norm body ...
+    coreai.output %16 : tensor<1x10xf32>
+  }
+  coreai.graph @main(%arg0: tensor<1x10xf32>) -> tensor<1x5xf32> {
+    %3 = coreai.invoke @norm(%arg0)
+        : (tensor<1x10xf32>) -> tensor<1x10xf32>
+    // ... linear ...
+    coreai.output %7 : tensor<1x5xf32>
+  }
+}
+```
+
+Symbol names and constants above are illustrative (the converter appends a hash suffix to each externalized graph name).
+
+---
+
+## Composite Op Externalization
+
+Use `ExternalizeSpec` to mark a submodule as a named composite op:
+
+```ipython3
+import torch
+import torch.nn as nn
+
+
+class RMSNormComposite(nn.Module):
+    def __init__(self, axes=-1, eps=1e-5, version=1):
+        super().__init__()
+        self.axes = axes
+        self.eps = eps
+        self.version = version
+
+    def forward(self, input: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
+        x_f32 = input.to(torch.float32)
+        inv_rms = torch.rsqrt((x_f32 * x_f32).mean(self.axes, keepdim=True) + self.eps)
+        return (input * inv_rms).to(input.dtype) * scale
+
+
+model = RMSNormComposite().eval()
+sample = (torch.randn(10), torch.randn(10))
+```
+
+```python
+import torch
+
+import coreai_torch
+from coreai_torch import ExternalizeSpec, TorchConverter
+
+converter = TorchConverter().add_pytorch_module(
+    model,
+    export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+        coreai_torch.get_decomp_table()
+    ),
+    externalize_modules=[
+        ExternalizeSpec(
+            target_class=RMSNormComposite,
+            composite_op_name="rms_norm",
+            composite_attrs=["axes", "eps", "version"],
+        )
+    ],
+)
+coreai_program = converter.to_coreai()
+coreai_program.optimize()
+```
+
+Each instance is externalized using its own attribute values, so two instances configured differently are preserved as distinct composite ops.
+
+### Input and output names
+
+`input_names` and `output_names` for each composite op are derived automatically from the module’s parameters, buffers, and `forward()` signature — no manual bookkeeping is needed. Optional arguments passed as `None` at a call site are excluded automatically.
+
+### Requirements for composite op modules
+
+Composite op `forward` methods must follow two rules:
+
+1. **Forward arguments must be tensors** — all `forward` parameters that become inputs must be `torch.Tensor`. Scalar configuration (e.g., `eps`, `is_causal`) should be stored as instance attributes and serialized via `composite_attrs` in `ExternalizeSpec`.
+2. **Optional arguments must use `torch.Tensor | None = None`** — when an optional is not provided (left as `None`), it is excluded entirely and does not appear in `input_names`. There is no support for default tensor values.
+
+---
+
+## Simple externalization (experimental)
+
+Passing a bare module class to `externalize_modules` — instead of an `ExternalizeSpec` — extracts the submodule into its own standalone graph with no composite-op metadata. It offers no optimization benefit and simply defines a boundary around the submodule.
+
+#### WARNING
+Simple externalization is **experimental**. Prefer composite-op externalization above.
+
+---
+
+## API Quick Reference
+
+### ExternalizeSpec
+
+| Field               | Type               | Description                                                                                         |
+|---------------------|--------------------|-----------------------------------------------------------------------------------------------------|
+| `target_class`      | `type`             | The `nn.Module` subclass to match. Every instance found in the model will be externalized.          |
+| `composite_op_name` | `str | None`       | If set, the submodule is preserved as a named composite op the compiler can recognize and optimize. |
+| `composite_attrs`   | `list[str] | None` | Instance attribute names to record as attributes of the composite op.                               |
+
+Set `composite_op_name`, and optionally `composite_attrs`, to preserve the submodule as a composite op the compiler can optimize.
+
+### Relevant `add_pytorch_module` parameters
+
+| Parameter             | Type                           | Description                                                                                       |
+|-----------------------|--------------------------------|---------------------------------------------------------------------------------------------------|
+| `externalize_modules` | `list[ExternalizeSpec] | None` | The `ExternalizeSpec` objects describing which submodule classes to externalize as composite ops. |
+
+See [TorchConverter API reference](../api/TorchConverter.md) for the full method signature.
+
+## Next Steps
+
+- [Composite Ops Guide](composite-ops.md) — the built-in composite op modules you can pass to `externalize_modules`.
+- [Conversion Workflows](conversion-workflows.md) — `add_pytorch_module` workflow, which is required for externalization.
+- [ExternalizeSpec](../api/ExternalizeSpec.md) — full API reference for `ExternalizeSpec`.
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc.
+
+
+# faq.html.md
+
+# Frequently asked questions
+
+
+# gated-delta-update.html.md
+
+# GatedDeltaUpdate
+
+Gated Delta Network recurrence — a linear-complexity alternative to softmax attention for sequence modeling. Used in modern efficient attention mechanisms like Delta Networks (Qwen3-Next) and other recurrent-style transformers. Use this op when your model implements a state-space or linear recurrence layer that you want preserved as a single composite op in the lowered IR. The state tensor `S` is a key-value memory matrix that accumulates over timesteps; `initial_state` lets you pass a cached state for autoregressive generation or chunked processing.
+
+$$
+S_t = g_t \odot S_{t-1} + \beta_t \, k_t^\top \bigl(v_t - S_{t-1} k_t\bigr)
+$$
+
+## Dimension variables
+
+| Symbol       | Meaning                                                                                           |
+|--------------|---------------------------------------------------------------------------------------------------|
+| `B`          | Batch size                                                                                        |
+| `S`          | Sequence length                                                                                   |
+| `N_kq_heads` | Number of attention heads for query and key (note: Q and K have the same head count, unlike SDPA) |
+| `N_v_heads`  | Number of attention heads for value                                                               |
+| `D_k`        | Per-head dim for query / key                                                                      |
+| `D_v`        | Per-head dim for value / output                                                                   |
+
+## Constructor
+
+```python
+GatedDeltaUpdate(use_qk_l2_norm=True)
+```
+
+| Parameter        | Type   | Default   | Description                                                                 |
+|------------------|--------|-----------|-----------------------------------------------------------------------------|
+| `use_qk_l2_norm` | `bool` | `True`    | Whether to apply L2 normalization to query and key before the delta update. |
+
+## Forward
+
+```python
+def forward(
+    self,
+    query: torch.Tensor,          # [B, N_kq_heads, S, D_k]
+    key: torch.Tensor,            # [B, N_kq_heads, S, D_k]
+    value: torch.Tensor,          # [B, N_v_heads, S, D_v]
+    g: torch.Tensor,              # [B, N_v_heads, S]
+    beta: torch.Tensor,           # [B, N_v_heads, S]
+    initial_state: torch.Tensor,  # [B, N_v_heads, D_k, D_v]
+) -> tuple[torch.Tensor, torch.Tensor]
+```
+
+| Argument        | Description                                                                                                         |
+|-----------------|---------------------------------------------------------------------------------------------------------------------|
+| `query`         | Queries.                                                                                                            |
+| `key`           | Keys. Same head count as `query`.                                                                                   |
+| `value`         | Values. May have a different head count than `query` / `key` (`N_v_heads` is typically a multiple of `N_kq_heads`). |
+| `g`             | Gate / decay factors. Should be negative (the op applies `exp` internally; `exp(g)` ends up in `[0, 1]`).           |
+| `beta`          | Update strength factors, typically in `[0, 1]` (often the output of a sigmoid).                                     |
+| `initial_state` | Recurrent state from prior sequence — pass zeros for a fresh sequence.                                              |
+
+Returns `(output, final_state)`:
+
+| Return value   | Shape                      | Description                                                           |
+|----------------|----------------------------|-----------------------------------------------------------------------|
+| `output`       | `[B, S, N_v_heads, D_v]`   | Per-timestep retrieval outputs. Same dtype as input.                  |
+| `final_state`  | `[B, N_v_heads, D_k, D_v]` | State matrix after processing all `S` timesteps. Same dtype as input. |
+
+## ExternalizeSpec
+
+```python
+ExternalizeSpec(
+    target_class=GatedDeltaUpdate,
+    composite_op_name="gated_delta_update",
+    composite_attrs=["use_qk_l2_norm"],
+)
+```
+
+## Data types
+
+`fp32`, `fp16`, `bf16` for all tensor inputs and outputs.
+
+## Constraints
+
+- All input tensors must have compatible (promotable) dtypes; the output dtype matches the promoted input dtype.
+- `g` should be negative — the op applies `exp` internally and `exp(g)` must lie in `[0, 1]` for the decay to behave correctly.
+- `beta` is typically in `[0, 1]` (often the output of a sigmoid).
+
+## L2 normalization flag
+
+When `use_qk_l2_norm=True` (default), the op applies L2 normalization to `query` and `key` before the recurrence. Set it to `False` if your model already L2-normalizes Q/K externally.
+
+
+# gather-mm.html.md
+
+# GatherMM
+
+Gather matmul — optionally gathers rows from one or both operands before performing the matrix multiplication:
+
+$$
+\text{GatherMM}(A, B) = \text{matmul}(\text{gather}(A,\, i_A),\, \text{gather}(B,\, i_B))
+$$
+
+The primary use case is Mixture-of-Experts (MoE): each token selects a subset of expert weight matrices and the result is computed in a single fused operation. Without `GatherMM`, you would explicitly gather the relevant expert weights and then run a matmul; this op fuses both for better performance.
+
+If neither `lhs_indices` nor `rhs_indices` is provided, the op is equivalent to a plain `matmul`.
+
+## Constructor
+
+```python
+GatherMM(num_batch_axes=0)
+```
+
+| Parameter        | Type   | Default   | Description                                                                                                             |
+|------------------|--------|-----------|-------------------------------------------------------------------------------------------------------------------------|
+| `num_batch_axes` | `int`  | `0`       | Number of leading batch axes shared by all operands. The gather is applied along the axis at position `num_batch_axes`. |
+
+## Forward
+
+```python
+def forward(
+    self,
+    lhs: torch.Tensor,
+    rhs: torch.Tensor,
+    lhs_indices: torch.Tensor | None = None,
+    rhs_indices: torch.Tensor | None = None,
+) -> torch.Tensor
+```
+
+| Argument      | Required   | Description                                                                                                                                                   |
+|---------------|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `lhs`         | Yes        | Left-hand operand. Rank ≥ 2 (≥ 3 if `lhs_indices` is provided). MoE: the input hidden-state tensor.                                                           |
+| `rhs`         | Yes        | Right-hand operand. Rank ≥ 2 (≥ 3 if `rhs_indices` is provided). MoE: the stacked expert weight matrices.                                                     |
+| `lhs_indices` | No         | Unsigned-int tensor of flat indices into the batch dims of `lhs` (range `[0, A1·A2·…·AS)` for an `lhs` shape `(A1, A2, …, AS, M, K)`). MoE: typically `None`. |
+| `rhs_indices` | No         | Unsigned-int tensor of flat indices into the batch dims of `rhs`. MoE: the active-experts indices.                                                            |
+
+## Data types
+
+| Tensor                       | Allowed dtypes                                                   |
+|------------------------------|------------------------------------------------------------------|
+| `lhs`, `rhs`, `output`       | Any real or complex float type (`fp32`, `fp16`, `bf16`, complex) |
+| `lhs_indices`, `rhs_indices` | Unsigned integer index types (e.g., `uint16`, `uint32`)          |
+
+## Input names variants
+
+| Arguments provided                         | `input_names` in IR                            |
+|--------------------------------------------|------------------------------------------------|
+| `lhs`, `rhs`                               | `["lhs", "rhs"]`                               |
+| `lhs`, `rhs`, `rhs_indices`                | `["lhs", "rhs", "rhs_indices"]`                |
+| `lhs`, `rhs`, `lhs_indices`                | `["lhs", "rhs", "lhs_indices"]`                |
+| `lhs`, `rhs`, `lhs_indices`, `rhs_indices` | `["lhs", "rhs", "lhs_indices", "rhs_indices"]` |
+
+## ExternalizeSpec
+
+```python
+ExternalizeSpec(
+    target_class=GatherMM,
+    composite_op_name="gather_mm",
+    composite_attrs=["num_batch_axes"],
+)
+```
+
+## Examples
+
+**MoE with `rhs_indices`:**
+
+```python
+import coreai_torch
+from coreai_torch import TorchConverter, ExternalizeSpec
+from coreai_torch.composite_ops import GatherMM
+import torch
+import torch.nn as nn
+
+
+class MoELayer(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.gather_mm = GatherMM(num_batch_axes=0)
+
+    def forward(
+        self,
+        x: torch.Tensor,  # [B, T, 1, 1, D]
+        experts: torch.Tensor,  # [E, D, H]
+        indices: torch.Tensor,  # [B, T, K]
+    ) -> torch.Tensor:  # [B, T, K, 1, H]
+        return self.gather_mm(x, experts, rhs_indices=indices)
+
+
+B, T, D, H, E, K = 1, 16, 64, 128, 8, 2
+model = MoELayer().eval()
+sample = (
+    torch.randn(B, T, 1, 1, D),
+    torch.randn(E, D, H),
+    torch.zeros(B, T, K, dtype=torch.int32),
+)
+
+coreai_program = (
+    TorchConverter()
+    .add_pytorch_module(
+        model,
+        export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+            coreai_torch.get_decomp_table()
+        ),
+        externalize_modules=[
+            ExternalizeSpec(
+                target_class=GatherMM,
+                composite_op_name="gather_mm",
+                composite_attrs=["num_batch_axes"],
+            )
+        ],
+    )
+    .to_coreai()
+)
+coreai_program.optimize()
+```
+
+**Fused projections (`num_batch_axes=1`):**
+
+When gate and up projections are stacked along a leading fused axis, set `num_batch_axes=1` so the gather operates on the expert axis (dim 1) rather than dim 0:
+
+```python
+class FusedMoELayer(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.gather_mm = GatherMM(num_batch_axes=1)
+
+    def forward(
+        self,
+        x: torch.Tensor,  # [B, T, 1, 1, D]
+        fused_experts: torch.Tensor,  # [2, E, D, H]  (gate + up stacked)
+        indices: torch.Tensor,  # [B, T, K]
+    ) -> torch.Tensor:  # [2, B, T, K, 1, H]
+        return self.gather_mm(x, fused_experts, rhs_indices=indices)
+```
+
+**`lhs_indices` only:**
+
+```python
+class LhsGatherLayer(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.gather_mm = GatherMM(num_batch_axes=0)
+
+    def forward(self, x, weight, indices):
+        return self.gather_mm(x, weight, lhs_indices=indices)
+```
+
+**Both `lhs_indices` and `rhs_indices`:**
+
+```python
+class BothGatherLayer(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.gather_mm = GatherMM(num_batch_axes=0)
+
+    def forward(self, x, experts, lhs_idx, rhs_idx):
+        return self.gather_mm(x, experts, lhs_indices=lhs_idx, rhs_indices=rhs_idx)
+```
+
+## Decomposition
+
+`GatherMM` is semantically equivalent to a `gather` followed by a `matmul`:
+
+```python
+def _gather(x, indices, num_batch_axes=0):
+    flat_indices = indices.to(torch.int32).flatten()
+    flat_gather = torch.index_select(x, dim=num_batch_axes, index=flat_indices)
+    result_shape = (
+        x.shape[:num_batch_axes] + indices.shape + x.shape[num_batch_axes + 1 :]
+    )
+    return flat_gather.view(result_shape)
+
+
+def gather_mm(lhs, rhs, lhs_indices=None, rhs_indices=None, num_batch_axes=0):
+    if lhs_indices is not None:
+        lhs = _gather(lhs, lhs_indices, num_batch_axes=num_batch_axes)
+    if rhs_indices is not None:
+        rhs = _gather(rhs, rhs_indices, num_batch_axes=num_batch_axes)
+    return torch.matmul(lhs, rhs)
+```
+
+
+# generate-composite-decl.html.md
+
+# generate_composite_decl
+
+Generates the composite declaration attribute required when implementing custom op lowerings.
+
+#### WARNING
+Implementing custom op lowerings uses authoring APIs from `coreai-core` (such as `coreai._compiler.dialects`). The leading underscore on `_compiler` marks this as private upstream API — it may move or change without notice across `coreai-core` releases.
+
+## Overview
+
+When lowering a custom op to a `coreai.graph` composite, the graph must carry a `CompositeDeclaration` attribute that specifies the composite name, input and output names, and any op-specific attributes. `generate_composite_decl` builds this attribute from its arguments.
+
+**Public import:**
+
+```python
+from coreai_torch import generate_composite_decl
+```
+
+## Declaration
+
+```python
+def generate_composite_decl(
+    context,
+    op_name: str,
+    input_names: list[str],
+    output_names: list[str],
+    op_attributes: dict[str, Any],
+) -> CompositeDeclaration
+```
+
+## Parameters
+
+| Parameter       | Type             | Description                                                                                                                |
+|-----------------|------------------|----------------------------------------------------------------------------------------------------------------------------|
+| `context`       | `Context`        | The Core AI Context. Pass `value.context` from any `Value` in scope.                                                       |
+| `op_name`       | `str`            | Name of the composite op as it appears in the `composite_decl` attribute.                                                  |
+| `input_names`   | `list[str]`      | Names for the composite inputs, in argument order.                                                                         |
+| `output_names`  | `list[str]`      | Names for the composite outputs, in result order.                                                                          |
+| `op_attributes` | `dict[str, Any]` | Op-specific attributes to embed in the declaration. The `"version"` key is required; pass `1` for the current API version. |
+
+## Returns
+
+A `CompositeDeclaration` Core AI attribute to pass as `composite_decl` when defining a `coreai.graph`.
+
+## Discussion
+
+Use this function inside a lowering function registered with `TorchConverter.register_torch_lowering()`.
+
+The following example registers a lowering for a custom op `"mylib::my_custom_op"`:
+
+```python
+from coreai_torch import generate_composite_decl, TorchConverter
+
+
+def my_custom_op_conversion(values_map, node, loc):
+    arg0 = values_map[node.args[0].name]
+    arg1 = values_map[node.args[1].name]
+    op_attributes = {
+        "some_attribute": 0.5,
+        "version": 1,
+    }
+    composite_decl = generate_composite_decl(
+        arg0.context,
+        "my_custom_op",
+        ["argument0", "argument1"],
+        ["output"],
+        op_attributes,
+    )
+
+    # The decorator transforms this function: calling it returns an OpResultList
+    @coreai.graph(no_inline=True, composite_decl=composite_decl)
+    def my_custom_op_impl(argument0: Value, argument1: Value) -> Value:
+        ...
+        return result
+
+    return my_custom_op_impl(arg0, arg1)[0]
+
+
+converter = TorchConverter()
+converter.register_torch_lowering("mylib::my_custom_op")(my_custom_op_conversion)
+```
+
+The `coreai.graph` decorator always returns an `OpResultList`. Index it at `[0]` when the composite produces a single output.
+
+For a full walkthrough of custom op lowering, see [Custom Op Lowering](../guides/custom-op-lowering.md).
+
+
+# group-norm.html.md
+
+# group_norm
+
+Splits the channel dimension into `num_groups` groups and normalizes each group independently across spatial dims. `num_channels` must be divisible by `num_groups`.
+
+**ATen source:** `aten.native_group_norm`
+
+## Inputs
+
+| Name     | Shape              | Description                                   |
+|----------|--------------------|-----------------------------------------------|
+| `input`  | `(N, C, *spatial)` | Tensor to normalize                           |
+| `weight` | `(C,)`             | Per-channel scale applied after normalization |
+| `bias`   | `(C,)`             | Per-channel shift applied after the scale     |
+
+## Attributes
+
+| Name           | Type    | Description                                                         |
+|----------------|---------|---------------------------------------------------------------------|
+| `num_groups`   | `int`   | Number of groups to split channels into                             |
+| `num_channels` | `int`   | Number of channels in the input (must be divisible by `num_groups`) |
+| `eps`          | `float` | Numerical-stability epsilon                                         |
+| `version`      | `int`   | Composite op version                                                |
+
+## Output
+
+| Name     | Shape              | Description           |
+|----------|--------------------|-----------------------|
+| `output` | `(N, C, *spatial)` | Same shape as `input` |
+
+## PyTorch example
+
+```python
+import torch
+
+N, C, H, W = 2, 6, 10, 10
+input = torch.randn(N, C, H, W)
+weight = torch.randn(C)
+bias = torch.randn(C)
+
+output = torch.group_norm(input, num_groups=2, weight=weight, bias=bias, eps=1e-5)
+```
+
+## Reference
+
+[`torch.nn.GroupNorm`](https://docs.pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html)
+
+
+# hard-sigmoid.html.md
+
+# hard_sigmoid
+
+Piecewise-linear approximation of sigmoid:
+
+$$
+\text{HardSigmoid}(x) = \frac{\min(\max(x + 3,\ 0),\ 6)}{6}
+$$
+
+**ATen source:** `aten.hardsigmoid`
+
+## Inputs
+
+| Name    | Description        |
+|---------|--------------------|
+| `input` | Tensor of any rank |
+
+## Attributes
+
+| Name      | Type   | Description          |
+|-----------|--------|----------------------|
+| `version` | `int`  | Composite op version |
+
+## Output
+
+| Name     | Shape           | Description                     |
+|----------|-----------------|---------------------------------|
+| `output` | same as `input` | Same shape and dtype as `input` |
+
+## Data types
+
+`fp16`, `fp32`, `bf16`.
+
+## PyTorch example
+
+```python
+import torch
+
+input = torch.rand(1, 3, 64, 64)
+output = torch.nn.functional.hardsigmoid(input)
+```
+
+## Reference
+
+[`torch.nn.Hardsigmoid`](https://docs.pytorch.org/docs/stable/generated/torch.nn.Hardsigmoid.html)
+
+
+# installation.html.md
+
+# Installing coreai-torch
+
+Set up a Python environment and install coreai-torch.
+
+## Overview
+
+This article covers two installation paths for coreai-torch: `uv` and `conda`. Use `uv` when possible — it creates an isolated virtual environment, pins the correct Python version, and resolves all dependencies in one command.
+
+## Prerequisites
+
+- Python 3.11 or later
+- PyTorch 2.8.0 or later
+
+## Install with uv
+
+[uv](https://docs.astral.sh/uv/) is the recommended package manager. For a development environment, run `uv sync` from the repository root:
+
+```bash
+uv sync
+```
+
+This installs standard dependencies in editable mode. To also include test dependencies, run:
+
+```bash
+uv sync --extra test
+```
+
+## Install with conda
+
+If you prefer `conda`, create and activate a new environment first:
+
+```bash
+conda create -n coreai-torch python=3.11 -y
+conda activate coreai-torch
+```
+
+Then install **from source** — clone the repository, navigate to its root, and run:
+
+```bash
+pip install -e .
+```
+
+## Verify installation
+
+Run the following to confirm coreai-torch is installed correctly — a version string confirms success:
+
+```python
+import coreai_torch
+
+print(coreai_torch.__version__)
+```
+
+## Next steps
+
+Head to the [Quickstart](quickstart.md) tutorial to convert your first PyTorch model and explore more.
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc. conda is a product of Anaconda, Inc.
+
+
+# instance-norm.html.md
+
+# instance_norm
+
+Normalizes each `(sample, channel)` slice independently across its spatial dims — mean and variance are computed per-sample rather than across the batch.
+
+**ATen source:** `aten.instance_norm` (preserved as composite by `get_decomp_table()`)
+
+## Inputs
+
+| Name    | Shape              | Description                                           |
+|---------|--------------------|-------------------------------------------------------|
+| `input` | `(N, C, *spatial)` | 1, 2, or 3 spatial dims (e.g., `(N, C, H, W)` for 2D) |
+| `gamma` | `(C,)`             | Per-channel scale applied after normalization         |
+| `beta`  | `(C,)`             | Per-channel shift applied after the scale             |
+
+## Attributes
+
+| Name      | Type    | Description                 |
+|-----------|---------|-----------------------------|
+| `eps`     | `float` | Numerical-stability epsilon |
+| `version` | `int`   | Composite op version        |
+
+## Output
+
+| Name     | Shape              | Description           |
+|----------|--------------------|-----------------------|
+| `output` | `(N, C, *spatial)` | Same shape as `input` |
+
+## Data types
+
+`fp16`, `fp32`.
+
+## PyTorch example
+
+```python
+import torch
+
+N, C, H, W = 2, 6, 10, 10
+input = torch.randn(N, C, H, W)
+gamma = torch.randn(C)
+beta = torch.randn(C)
+
+output = torch.ops.aten.instance_norm.default(
+    input,
+    gamma,
+    beta,
+    None,
+    None,  # running_mean / running_var unused in inference
+    True,  # use_input_stats
+    0.1,  # momentum (ignored in inference)
+    1e-5,  # eps
+    True,  # cudnn_enabled (ignored)
+)
+```
+
+## Reference
+
+[`torch.nn.InstanceNorm2d`](https://docs.pytorch.org/docs/stable/generated/torch.nn.InstanceNorm2d.html)
+
+
+# layer-norm.html.md
+
+# layer_norm
+
+Normalizes over the last `D` dimensions (specified via `axes`); mean and variance are computed across those axes for each remaining slice.
+
+**ATen source:** `aten.native_layer_norm`
+
+## Inputs
+
+| Name    | Shape                   | Description                            |
+|---------|-------------------------|----------------------------------------|
+| `input` | `(*batch, *D)`          | Tensor to normalize                    |
+| `gamma` | matches normalized dims | Scale applied to the normalized tensor |
+| `beta`  | matches normalized dims | Shift added after the scale            |
+
+## Attributes
+
+| Name      | Type        | Description                                                              |
+|-----------|-------------|--------------------------------------------------------------------------|
+| `axes`    | `list[int]` | Dimensions over which mean/variance are computed (the trailing `D` dims) |
+| `eps`     | `float`     | Numerical-stability epsilon                                              |
+| `version` | `int`       | Composite op version                                                     |
+
+## Output
+
+| Name     | Shape          | Description           |
+|----------|----------------|-----------------------|
+| `output` | `(*batch, *D)` | Same shape as `input` |
+
+## Data types
+
+`fp16`, `fp32`, `bf16`.
+
+## PyTorch example
+
+```python
+import torch
+from torch.nn.functional import layer_norm
+
+N, C, H, W = 20, 5, 10, 10
+input = torch.randn(N, C, H, W)
+
+# Normalize over the last three dims (C, H, W)
+output = layer_norm(input, normalized_shape=[C, H, W], weight=None, bias=None, eps=1e-5)
+```
+
+## Reference
+
+[`torch.nn.LayerNorm`](https://docs.pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html)
+
+
+# linalg-vector-norm.html.md
+
+# linalg_vector_norm
+
+Computes the vector $p$-norm along one or more axes:
+
+$$
+\lVert x \rVert_p = \left( \sum_i \lvert x_i \rvert^{p} \right)^{1/p}
+$$
+
+For `ord = +inf` / `-inf`, the sum is replaced by max / min over the reduced axes.
+
+**ATen source:** `aten.linalg_vector_norm`
+
+## Inputs
+
+| Name    | Description   |
+|---------|---------------|
+| `input` | Input tensor  |
+
+## Attributes
+
+| Name       | Type            | Description                                                              |
+|------------|-----------------|--------------------------------------------------------------------------|
+| `ord`      | `int` / `float` | Order of the norm. `+inf` / `-inf` use max / min instead of the sum      |
+| `axes`     | `list[int]`     | Dims to reduce. `None` reduces over all dims                             |
+| `keep_dim` | `bool`          | If `True`, reduced dims remain with size 1; if `False`, they are removed |
+| `version`  | `int`           | Composite op version                                                     |
+
+## Output
+
+| Name     | Description                                                                                     |
+|----------|-------------------------------------------------------------------------------------------------|
+| `output` | Input shape with reduced dims either set to `1` (`keep_dim=True`) or removed (`keep_dim=False`) |
+
+## PyTorch example
+
+```python
+import torch
+
+input = torch.randn(8, 128, 256, 1024)
+# Note: the PyTorch arg is `dim`; Core AI's IR attribute is `axes`
+output = torch.linalg.vector_norm(input, ord=-1.5, dim=[1, 3], keepdim=False)
+# Output shape: (8, 256)
+```
+
+## Reference
+
+[`torch.linalg.vector_norm`](https://docs.pytorch.org/docs/stable/generated/torch.linalg.vector_norm.html)
+
+
+# log-softmax.html.md
+
+# log_softmax
+
+Computes $\log(\text{softmax}(x))$ along a single dim.
+
+**ATen source:** `aten._log_softmax`
+
+## Inputs
+
+| Name    | Description        |
+|---------|--------------------|
+| `input` | Tensor of any rank |
+
+## Attributes
+
+| Name      | Type   | Description                                     |
+|-----------|--------|-------------------------------------------------|
+| `axis`    | `int`  | Dimension along which `log_softmax` is computed |
+| `version` | `int`  | Composite op version                            |
+
+## Output
+
+| Name     | Shape           | Description                     |
+|----------|-----------------|---------------------------------|
+| `output` | same as `input` | Same shape and dtype as `input` |
+
+## Data types
+
+`fp16`, `fp32`, `bf16`.
+
+## PyTorch example
+
+```python
+import torch
+from torch.nn.functional import log_softmax
+
+input = torch.randn(2, 3)
+output = log_softmax(input, dim=1)
+```
+
+## Reference
+
+[`torch.nn.LogSoftmax`](https://docs.pytorch.org/docs/stable/generated/torch.nn.LogSoftmax.html)
+
+
+# module-class.html.md
+
+# Module-class composite ops
+
+`nn.Module` subclasses exposed in `coreai_torch.composite_ops`. Build these into your model as named submodules and externalize them with an `ExternalizeSpec`, passing them to the `externalize_modules` parameter of `add_pytorch_module()`. For a tutorial walkthrough, see [Composite Ops Guide](../../guides/composite-ops.md).
+
+* [GatherMM](gather-mm.md)
+* [GatedDeltaUpdate](gated-delta-update.md)
+* [RMSNormImpl](rms-norm.md)
+* [RoPE](rope.md)
+* [SDPA](sdpa.md)
+
+
+# pixel-shuffle.html.md
+
+# pixel_shuffle
+
+Rearranges elements in a tensor of shape $(*, C \cdot r^2, H, W)$ into shape $(*, C, H \cdot r, W \cdot r)$, where $r$ is the upscale factor. The input’s channel dimension must be divisible by $r^2$.
+
+**ATen source:** `aten.pixel_shuffle` (preserved as composite by `get_decomp_table()`)
+
+## Inputs
+
+| Name    | Description                                                                              |
+|---------|------------------------------------------------------------------------------------------|
+| `input` | Tensor with at least 3 dims; size of dim `-3` must be divisible by `upscale_factor ** 2` |
+
+## Attributes
+
+| Name             | Type   | Description                                    |
+|------------------|--------|------------------------------------------------|
+| `upscale_factor` | `int`  | Factor by which to increase spatial resolution |
+| `version`        | `int`  | Composite op version                           |
+
+## Output
+
+| Name     | Description                                                                 |
+|----------|-----------------------------------------------------------------------------|
+| `output` | Same leading dims; channel divided by $r^2$, spatial dims multiplied by $r$ |
+
+## PyTorch example
+
+```python
+import torch
+
+N, C, H, W = 8, 1000, 32, 32
+input = torch.randn(N, C, H, W)
+# Output shape: (8, 10, 320, 320)
+output = torch.nn.functional.pixel_shuffle(input, upscale_factor=10)
+```
+
+## Reference
+
+[`torch.nn.PixelShuffle`](https://docs.pytorch.org/docs/stable/generated/torch.nn.PixelShuffle.html)
+
+
+# quickstart.html.md
+
+# Quickstart
+
+Convert a PyTorch model to Core AI format, compile it, and run inference.
+
+This tutorial walks through the full conversion pipeline for a simple PyTorch model — from export to on-device inference. By the end, you have a working end-to-end pipeline you can adapt for your own models. For a production-scale example, see [Real-World Model: MobileNetV2]() at the end of this tutorial.
+
+## Define a Model
+
+```ipython3
+import torch
+import torch.nn as nn
+
+
+class SimpleModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear1 = nn.Linear(10, 20)
+        self.relu = nn.ReLU()
+        self.linear2 = nn.Linear(20, 5)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.relu(x)
+        x = self.linear2(x)
+        return x
+
+
+model = SimpleModel()
+model.eval()
+```
+
+Always call `.eval()` before exporting. Layers such as `BatchNorm` and `Dropout` behave differently in training mode and produce a different graph.
+
+## Export
+
+Use `torch.export.export` to capture the computation graph as an `ExportedProgram`. The result is shape- and dtype-specialized to the provided example input.
+
+```ipython3
+example_input = (torch.randn(1, 10),)
+exported = torch.export.export(model, args=example_input)
+```
+
+## Decompose
+
+`get_decomp_table()` returns the default PyTorch ATen decomposition table minus the operations that `TorchConverter` lowers as composite ops, so those operations are preserved in the exported graph rather than being decomposed into lower-level primitives.
+
+```ipython3
+from coreai_torch import get_decomp_table
+
+exported = exported.run_decompositions(get_decomp_table())
+```
+
+#### WARNING
+This call is required when using `add_exported_program()`. Skipping it will leave ops in the graph that have no lowering rule.
+
+## Convert
+
+`TorchConverter` walks the FX graph node-by-node and emits CoreAI operations, returning a `AIProgram`.
+
+```ipython3
+from coreai_torch import TorchConverter
+
+converter = TorchConverter()
+coreai_program = converter.add_exported_program(
+    exported,
+    input_names=["x"],
+    output_names=["out"],
+).to_coreai()
+coreai_program.optimize()
+```
+
+## Compile and Run
+
+The `AIProgram` must be compiled to a native executable before it can run inference. The full async function below saves the program to an `.aimodel` directory, loads the executable, runs the `main` function on the example input, and compares the result to PyTorch.
+
+```ipython3
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import torch
+from coreai.runtime import NDArray
+
+
+async def compile_and_run(coreai_program, example_input, model):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Compile: save the AIProgram to an .aimodel directory on disk.
+        asset = coreai_program.save_asset(Path(tmpdir) / "quick_start_example.aimodel")
+
+        # Load: open the executable and bind the `main` function.
+        async with asset.executable() as ai_model:
+            function = ai_model.load_function("main")
+
+            # Run: invoke the function on the example input.
+            coreai_outputs = await function({"x": NDArray(example_input[0])})
+
+            # Compare with PyTorch: run the same input through the original model.
+            with torch.no_grad():
+                pytorch_output = model(example_input[0])
+
+            coreai_output = coreai_outputs["out"].numpy()
+            pytorch_numpy = pytorch_output.numpy()
+
+            print(f"PyTorch output shape: {pytorch_numpy.shape}")
+            print(f"Core AI output shape: {coreai_output.shape}")
+            print(
+                f"Outputs match: {np.allclose(pytorch_numpy, coreai_output, atol=1e-4)}"
+            )
+
+
+await compile_and_run(coreai_program, example_input, model)
+```
+
+---
+
+## Real-World Model: MobileNetV2
+
+#### NOTE
+This example uses [torchvision](https://pytorch.org/vision/), which is not a dependency of coreai-torch. Install it into your environment first:
+
+```bash
+pip install torchvision
+```
+
+The same pattern works with production models. Here is the full pipeline for torchvision’s MobileNetV2:
+
+```ipython3
+import torch
+import torchvision.models as tv_models
+
+model = tv_models.mobilenet_v2(weights=None).eval()
+example_input = (torch.randn(1, 3, 224, 224),)
+
+exported = torch.export.export(model, args=example_input)
+exported = exported.run_decompositions(get_decomp_table())
+
+coreai_program = (
+    TorchConverter()
+    .add_exported_program(
+        exported,
+        input_names=["image"],
+        output_names=["logits"],
+    )
+    .to_coreai()
+)
+coreai_program.optimize()
+```
+
+Compile and run the same way as above:
+
+```ipython3
+async def run():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        asset = coreai_program.save_asset(Path(tmpdir) / "mobilenet_v2_example.aimodel")
+        async with asset.executable() as ai_model:
+            function = ai_model.load_function("main")
+            outputs = await function({"image": NDArray(example_input[0])})
+            logits = outputs["logits"].numpy()
+            print("logits shape:", logits.shape)  # (1, 1000)
+
+
+await run()
+```
+
+---
+
+## Alternative: `add_pytorch_module`
+
+`add_pytorch_module()` accepts an `nn.Module` directly. You still provide an `export_fn` that handles export and decomposition:
+
+```ipython3
+import torch
+
+import coreai_torch
+
+model = SimpleModel().eval()
+sample = (torch.randn(1, 10),)
+
+coreai_program = (
+    TorchConverter()
+    .add_pytorch_module(
+        model,
+        export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+            coreai_torch.get_decomp_table()
+        ),
+    )
+    .to_coreai()
+)
+coreai_program.optimize()
+```
+
+This uses `add_pytorch_module` to wrap export and conversion in one call. See [Conversion Workflows](../guides/conversion-workflows.md) for all options.
+
+## Next Steps
+
+- [Conversion Workflows](../guides/conversion-workflows.md) — when to use `add_exported_program` vs `add_pytorch_module`, and how to handle dynamic shapes.
+- [Composite Ops Guide](../guides/composite-ops.md) — preserve ops like attention and RMSNorm so the compiler can dispatch them to hardware-optimized kernels.
+- [TorchConverter API reference](../api/TorchConverter.md) — full API reference for `TorchConverter`.
+
+## Notices
+
+PyTorch and torchvision are trademarks of Meta Platforms, Inc.
+
+
+# release-notes.html.md
+
+# Release notes
+
+
+# resources.html.md
+
+# Resources
+
+
+# rms-norm.html.md
+
+# RMSNormImpl
+
+Root Mean Square Layer Normalization ([Zhang & Sennrich, 2019](https://arxiv.org/abs/1910.07467)).
+
+$$
+\text{RMSNorm}(x, \gamma) = \frac{x}{\sqrt{E[x^2] + \varepsilon}} \cdot \gamma
+$$
+
+`RMSNormImpl` is the true composite op — the class the converter externalizes as `rms_norm`. It takes both the input `x` and the scale `γ` as explicit forward arguments so that, when externalized, the scale appears as a graph input on the composite op boundary rather than being baked in as a constant from a sibling parameter. Hold the scale as an `nn.Parameter` on your enclosing module and pass it through.
+
+## Constructor
+
+```python
+RMSNormImpl(eps=1e-5)
+```
+
+| Parameter   | Type    | Default   | Description                      |
+|-------------|---------|-----------|----------------------------------|
+| `eps`       | `float` | `1e-5`    | Epsilon for numerical stability. |
+
+The reduction axis is fixed to the last dimension (`axes = -1`).
+
+## Forward
+
+```python
+def forward(self, input: torch.Tensor, scale: torch.Tensor) -> torch.Tensor
+```
+
+Normalizes `input` over its last dimension and multiplies by `scale`. The caller owns the `scale` tensor — typically an `nn.Parameter` on the enclosing module, with shape `(dim,)` for the standard case or `(n_heads, 1, dim)` for fused Q/K normalization.
+
+## ExternalizeSpec
+
+```python
+from coreai_torch.composite_ops import RMSNormImpl
+
+ExternalizeSpec(
+    target_class=RMSNormImpl,
+    composite_op_name="rms_norm",
+    composite_attrs=["axes", "eps"],
+)
+```
+
+## Data types
+
+| Tensor                     | Allowed types          |
+|----------------------------|------------------------|
+| `input`, `scale`, `output` | `fp32`, `fp16`, `bf16` |
+
+## `RMSNorm`: convenience wrapper
+
+```python
+from coreai_torch.composite_ops import RMSNorm
+
+RMSNorm(dim, eps=1e-5, n_heads=None)
+```
+
+`RMSNorm` is a thin `nn.Module` wrapper around `RMSNormImpl` that owns the learnable scale parameter so callers don’t have to wire one up themselves. Its `forward(x)` applies the normalization with the internally-held weight.
+
+| Parameter   | Type         | Default   | Description                                                                                                 |
+|-------------|--------------|-----------|-------------------------------------------------------------------------------------------------------------|
+| `dim`       | `int`        | —         | Size of the last dimension. Determines the shape of the learnable scale.                                    |
+| `eps`       | `float`      | `1e-5`    | Epsilon for numerical stability.                                                                            |
+| `n_heads`   | `int | None` | `None`    | If set, scale shape is `(n_heads, 1, dim)` for fused Q/K normalization. If `None`, scale shape is `(dim,)`. |
+
+The wrapper itself is not the externalization target — it composes `RMSNormImpl` internally, so `target_class=RMSNormImpl` still produces the `rms_norm` composite op.
+
+
+# rope.html.md
+
+# RoPE
+
+Rotary Positional Embedding ([Su et al., 2021](https://arxiv.org/abs/2104.09864)) — encodes both absolute position and relative distance between tokens by rotating pairs of elements in the last dimension. The rotation angle is derived from the token’s absolute position; either the embedding is split in half or its alternate elements are paired (`interleaved=True`) before the rotation matrix is applied.
+
+Three ways to drive the rotation, in priority order:
+
+1. Pass precomputed `cos` and `sin` directly.
+2. Pass `position_ids` (and optionally `freqs`) — the op constructs `cos`/`sin` internally.
+3. Pass nothing extra — the op derives `position_ids` from `offset` + `scale` and `freqs` from `base`.
+
+Use `position_ids` when your model computes position indices externally (custom sequence packing or variable-length inputs). Use `cos`/`sin` when you have precomputed frequency tensors. Use `offset` for KV-cache decoding steps where only a single new token position is needed.
+
+## Constructor
+
+```python
+RoPE(scale=1.0, base=1e4, dims=None, interleaved=False)
+```
+
+| Parameter     | Type         | Default   | Description                                                                                      |
+|---------------|--------------|-----------|--------------------------------------------------------------------------------------------------|
+| `scale`       | `float`      | `1.0`     | Frequency scaling factor applied to positions.                                                   |
+| `base`        | `float`      | `1e4`     | Base for the geometric frequency sequence.                                                       |
+| `dims`        | `int | None` | `None`    | Number of dimensions to rotate. If `None`, rotates all dimensions.                               |
+| `interleaved` | `bool`       | `False`   | If `True`, uses interleaved (Hugging Face-style) rotation; if `False`, uses split-half rotation. |
+
+## Forward
+
+```python
+def forward(
+    self,
+    input: torch.Tensor,
+    cos: torch.Tensor | None = None,
+    sin: torch.Tensor | None = None,
+    position_ids: torch.Tensor | None = None,
+    freqs: torch.Tensor | None = None,
+    offset: torch.Tensor | None = None,
+) -> torch.Tensor
+```
+
+| Argument       | Description                                                                                                                                                                                             |
+|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `input`        | Tensor of rank ≥ 3, shape `[batch, ..., seq_len, embed]`.                                                                                                                                               |
+| `cos`, `sin`   | Precomputed cosines / sines, broadcastable to `[batch, ..., seq_len, embed/2]`. If both are provided, all other position-construction arguments are ignored.                                            |
+| `position_ids` | Position indices, broadcastable to `[batch, ..., seq_len]`. Ignored if `cos` and `sin` are provided.                                                                                                    |
+| `freqs`        | Custom angular frequencies of shape `[embed/2]`. Useful for advanced variants like SuScaledRoPE. Ignored if `cos` and `sin` are provided.                                                               |
+| `offset`       | Starting position for the sequence. Tensor of shape `[]` / `[1]` / `[batch]` / `[batch, 1]`, or an `int` attribute. If a tensor is provided alongside the int attribute, the tensor wins. Default: `0`. |
+
+When `cos`/`sin` are not provided, position ids are constructed as `position_ids = (offset + arange(seq_len)) * scale`, and frequencies are `freqs[i] = 1 / base ** (i / (embed/2))`.
+
+## Optional input resolution order
+
+1. If `cos` and `sin` are both provided, use them directly.
+2. Else, build `cos`/`sin` from `position_ids` and `freqs`:
+   - `position_ids`: use the argument if provided; otherwise construct from `offset` and `scale`.
+   - `freqs`: use the argument if provided; otherwise construct from `base`.
+
+## Input names variants
+
+| Arguments provided      | `input_names` in IR         |
+|-------------------------|-----------------------------|
+| `input` only            | `["input"]`                 |
+| `input`, `cos`, `sin`   | `["input", "cos", "sin"]`   |
+| `input`, `freqs`        | `["input", "freqs"]`        |
+| `input`, `offset`       | `["input", "offset"]`       |
+| `input`, `position_ids` | `["input", "position_ids"]` |
+
+## ExternalizeSpec
+
+```python
+ExternalizeSpec(
+    target_class=RoPE,
+    composite_op_name="rope",
+    composite_attrs=["scale", "base", "dims", "interleaved"],
+)
+```
+
+## Partial rotation (`dims`)
+
+When `dims` is set to a positive even integer smaller than `embed`, only the first `dims` features are rotated; the rest pass through unchanged:
+
+```python
+y_partial = rope(input[..., :dims])
+output = torch.cat([y_partial, input[..., dims:]], dim=-1)
+```
+
+When `dims` is `None` or `dims >= embed`, the full last dimension is rotated.
+
+## Data types
+
+| Tensor                                   | Allowed dtypes         |
+|------------------------------------------|------------------------|
+| `input`, `cos`, `sin`, `freqs`, `output` | `fp32`, `fp16`, `bf16` |
+| `position_ids`, `offset`                 | integer                |
+
+`input`, `cos`, and `sin` dtypes must be promotable; the output dtype is the promoted type.
+
+## Reference
+
+- [Su et al., RoFormer: Enhanced Transformer with Rotary Position Embedding](https://arxiv.org/abs/2104.09864)
+
+
+# run-an-aimodel.html.md
+
+# Running an `.aimodel` with `coreai.runtime`
+
+This notebook loads an `.aimodel` asset and runs inference on it. We will use
+four public types:
+
+- **`AIModelAsset`** — the on-disk representation of a saved program
+  (from `coreai.authoring`).
+- **`InferenceFunction`** — a callable function inside the model (here, `main`).
+- **`NDArray`** — the runtime’s multi-dimensional array type, used to pass
+  inputs in and read outputs back.
+- **`SpecializationOptions`** — for advanced device/configuration tuning
+  (covered briefly at the end).
+
+Inside the `async with` block you will also see an `AIModel` — the runnable
+handle yielded by the asset’s `executable()` context manager. It is the type
+you call `load_function` on, but you do not import or construct it directly.
+
+We assume you have already produced a `hello.aimodel` from the previous
+tutorial (*Constructing a CoreAI Graph*). The setup cell below recreates it
+if it is missing, so this notebook is also safe to run standalone.
+
+## Setup
+
+Import the asset and runtime types. Inference is asynchronous, so we will
+use `await` and `async with` directly inside cells (Jupyter runs each cell
+in an event loop).
+
+```ipython3
+from pathlib import Path
+
+import numpy as np
+from coreai.authoring import AIModelAsset
+from coreai.runtime import InferenceFunction, NDArray
+
+asset_path = Path("./hello-run.aimodel")
+```
+
+### Ensure `hello.aimodel` exists
+
+If the asset from the previous tutorial is not on disk, build a fresh copy
+now. The build path mirrors the construction shown in *Constructing a CoreAI
+Graph*. We’re going to go ahead and recreate the asset path.
+
+```ipython3
+from shutil import rmtree
+from typing import Annotated
+
+# Pending re-export from coreai.authoring; see the previous tutorial.
+from coreai._compiler.dialects import coreai as ops
+from coreai._compiler.ir import Value
+from coreai.authoring import AIProgram, Module, TensorSpec
+
+# Reconstruct asset.
+if asset_path.exists():
+    rmtree(asset_path)
+
+module = Module.create()
+with module:
+
+    @ops.graph
+    def main(
+        x: Annotated[Value, TensorSpec(shape=[2, 3], dtype=np.float32)],
+    ) -> Annotated[Value, TensorSpec(shape=[2, 3], dtype=np.float32, name="y")]:
+        return ops.add(x, x)
+
+
+AIProgram(module).save_asset(asset_path)
+print(f"created {asset_path}")
+```
+
+## Open the asset
+
+`AIModelAsset.load` reads the `.aimodel` directory header from disk so you
+can inspect it; it does not yet compile the program for inference. That work
+happens lazily inside the `executable()` async context manager used in the
+next section.
+
+#### NOTE
+**Two ways to load a model.** This tutorial uses `AIModelAsset.load(path)`
+followed by `async with asset.executable() as model:` — the resource-managed
+form, which gives you explicit control over when the compiled model is
+released. There is also a one-shot `await AIModel.load(path)` that returns
+a runnable `AIModel` directly; reach for it when you want a long-lived
+model handle without the `async with` block (e.g. inside an application
+object that owns the model for its full lifetime).
+
+```ipython3
+asset = AIModelAsset.load(asset_path)
+```
+
+## Open the model and run inference
+
+`asset.executable()` returns an async context manager that yields an
+`AIModel` — a runnable handle to the compiled program. Resources are released
+when the `async with` block exits, so all model usage happens inside it.
+
+Inside the block we do five things in order:
+
+1. list the functions exposed by the model,
+2. look up `main` and inspect its `desc` (name, input names, output names),
+3. build the input dict — each name from the signature maps to an `NDArray`
+   (which accepts a NumPy array, a PyTorch tensor, or a Python list, wrapping
+   the data without a copy where possible),
+4. `await` the call to get back a `dict` keyed by output name, and
+5. copy the result out as NumPy so we can inspect it after exiting the
+   context.
+
+```ipython3
+async with asset.executable() as model:
+    print(f"functions: {model.function_names}")
+
+    function: InferenceFunction = model.load_function("main")
+    desc = function.desc
+    print(f"name:    {desc.name}")
+    print(f"inputs:  {desc.input_names}")
+    print(f"outputs: {desc.output_names}")
+
+    x = np.full((2, 3), 1.5, dtype=np.float32)
+    inputs = {"x": NDArray(x)}
+    print(f"input x:\n{x}")
+
+    outputs = await function(inputs)
+    print(f"output keys: {list(outputs.keys())}")
+
+    # Materialize the result inside the block — the model's backing buffers
+    # are only guaranteed valid until the context exits.
+    result = outputs["y"].numpy()
+```
+
+## Inspect the output
+
+`.numpy()` was called inside the `async with` block to ensure the result was
+materialized before the model’s buffers could be released. We can now inspect
+the array freely. Our `main` function computes `x + x`, so for an input of
+all `1.5`s we expect all `3.0`s back.
+
+```ipython3
+print(f"shape: {result.shape}")
+print(f"dtype: {result.dtype}")
+print(f"value:\n{result}")
+
+assert result.shape == (2, 3)
+assert result.dtype == np.float32
+print("OK — inference produced expected output shape and dtype")
+```
+
+## What’s next
+
+You now have the core loop: **load** an asset, **enter** its executable,
+**build** inputs, **await** the call, and **read** the outputs back as NumPy.
+
+For more advanced configuration, two types in `coreai.runtime` are worth
+knowing about:
+
+- **`SpecializationOptions`** — pass to `asset.executable(options)` to pin the
+  preferred compute unit (CPU / GPU / Neural Engine) or enable debug mode.
+   *(macOS only.)*
+- **`StorageKind`** — passed to `NDArray(data, backing=...)` to choose
+  byte-backed, IOSurface-backed, or Metal-backed storage. The default
+  (`StorageKind.BYTES`) is what you want unless you are interoperating with
+  graphics or camera buffers.
+
+Both are importable from `coreai.runtime`, e.g.:
+
+```python
+from coreai.runtime import SpecializationOptions, StorageKind
+```
+
+
+# sdpa.html.md
+
+# SDPA
+
+Scaled Dot-Product Attention with optional causal masking, sliding window, and attention sinks.
+
+$$
+\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{Q K^\top}{\sqrt{d_k}}\right) V
+$$
+
+Use this class instead of `torch.nn.functional.scaled_dot_product_attention` when you need the full attention operation preserved as a single composite op in the lowered IR. The `is_causal`, `window_size`, and `sinks` options compose: you can enable causal masking, restrict the attended context with a sliding window, and designate a fixed number of global sink tokens — all in a single externalized op.
+
+## Constructor
+
+```python
+SDPA(scale=None, is_causal=False, window_size=0)
+```
+
+| Parameter     | Type           | Default   | Description                                                 |
+|---------------|----------------|-----------|-------------------------------------------------------------|
+| `scale`       | `float | None` | `None`    | Attention scale factor. If `None`, uses `head_dim ** -0.5`. |
+| `is_causal`   | `bool`         | `False`   | Apply lower-right causal mask.                              |
+| `window_size` | `int`          | `0`       | Sliding window size. `0` means no window (full attention).  |
+
+## Forward
+
+```python
+def forward(
+    self,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None = None,
+    sinks: torch.Tensor | None = None,
+) -> torch.Tensor
+```
+
+## Input names variants
+
+| Arguments provided                    | `input_names` in IR                               |
+|---------------------------------------|---------------------------------------------------|
+| `query, key, value`                   | `["query", "key", "value"]`                       |
+| `query, key, value, attn_mask`        | `["query", "key", "value", "attn_mask"]`          |
+| `query, key, value, sinks`            | `["query", "key", "value", "sinks"]`              |
+| `query, key, value, attn_mask, sinks` | `["query", "key", "value", "attn_mask", "sinks"]` |
+
+## ExternalizeSpec
+
+```python
+ExternalizeSpec(
+    target_class=SDPA,
+    composite_op_name="scaled_dot_product_attention",
+    composite_attrs=["scale", "is_causal", "window_size"],
+)
+```
+
+## Supported attention schemas
+
+`SDPA` covers Multi-Head, Grouped-Query, and Multi-Query Attention based on the relationship between `N_q` (query heads) and `N_kv` (key/value heads):
+
+| Schema                        | Constraint                      | Example                     |
+|-------------------------------|---------------------------------|-----------------------------|
+| Multi-Head Attention (MHA)    | `N_q == N_kv`                   | 32 query heads, 32 kv heads |
+| Grouped-Query Attention (GQA) | `N_q > N_kv`, `N_q % N_kv == 0` | 32 query heads, 8 kv heads  |
+| Multi-Query Attention (MQA)   | `N_kv == 1`                     | 32 query heads, 1 kv head   |
+
+Tensor shapes: `query` is `[B, N_q, T_q, D]`, `key` is `[B, N_kv, T_kv, D]`, `value` is `[B, N_kv, T_kv, D_v]`. For GQA / MQA, do **not** pre-tile `key` / `value` to match `N_q` — pass them with their native `N_kv` and the broadcasting is recorded as part of the composite op.
+
+## Reference
+
+[`torch.nn.functional.scaled_dot_product_attention`](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html)
+
+
+# supported-aten-ops.html.md
+
+# Supported ATen ops
+
+This page lists every PyTorch ATen operator that `TorchConverter` lowers to Core AI operations out of the box.
+
+## How to read this page
+
+- Op names use the FX qualified-name form `op_name.overload` (e.g. `add.Tensor`, `mean.dim`). When PyTorch’s decomposition pipeline produces a different overload than the one listed, that overload is not supported.
+- A few names appear without an overload suffix (e.g. `add`, `mul`, `getitem`) — these match plain Python-operator FX nodes that have no `.default` overload.
+- Three ops — `instance_norm.default`, `pixel_shuffle.default`, and `scaled_dot_product_attention.default` — are deliberately preserved by `get_decomp_table()` and emitted as composite ops in the lowered IR.
+- All ops below are resolved through the registry in `coreai_torch._aten_to_core`. To override a built-in lowering with your own, pass `allow_override=True` to `register_torch_lowering()`.
+
+## ATen ops
+
+| ATen op                                                                               | Notes                                                            |
+|---------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| `_adaptive_avg_pool2d.default`                                                        |                                                                  |
+| `_local_scalar_dense.default`                                                         | Returns the 0-dim input as-is                                    |
+| `_log_softmax.default`                                                                |                                                                  |
+| `_native_batch_norm_legit_no_training.default`                                        | Inference path only                                              |
+| `_softmax.default`                                                                    |                                                                  |
+| `_to_copy.default`                                                                    | Identity or `coreai.cast`                                        |
+| `_unsafe_view.default`                                                                |                                                                  |
+| `abs.default`                                                                         |                                                                  |
+| `acos.default`                                                                        |                                                                  |
+| `acosh.default`                                                                       |                                                                  |
+| `add`, `add.Scalar`, `add.Tensor`                                                     |                                                                  |
+| `addmm.default`                                                                       | `alpha`, `beta` honored                                          |
+| `alias.default`                                                                       | Identity — no IR emitted                                         |
+| `amax.default`                                                                        |                                                                  |
+| `amin.default`                                                                        |                                                                  |
+| `any.default`, `any.dim`, `any.dims`                                                  |                                                                  |
+| `arange.start_step`                                                                   |                                                                  |
+| `argmax.default`                                                                      |                                                                  |
+| `asin.default`                                                                        |                                                                  |
+| `asinh.default`                                                                       |                                                                  |
+| `atan.default`                                                                        |                                                                  |
+| `atanh.default`                                                                       |                                                                  |
+| `avg_pool2d.default`                                                                  | Lowered as a composite op                                        |
+| `avg_pool3d.default`                                                                  | Lowered as a composite op                                        |
+| `bitwise_and.Tensor`                                                                  |                                                                  |
+| `bitwise_not.default`                                                                 |                                                                  |
+| `bitwise_or.Tensor`                                                                   |                                                                  |
+| `bitwise_xor.Tensor`                                                                  |                                                                  |
+| `bmm.default`                                                                         |                                                                  |
+| `cat.default`                                                                         |                                                                  |
+| `ceil`, `ceil.default`                                                                |                                                                  |
+| `clamp.default`, `clamp.Tensor`                                                       |                                                                  |
+| `clone.default`                                                                       | Identity in the absence of memory-format changes                 |
+| `complex.default`                                                                     |                                                                  |
+| `constant_pad_nd.default`                                                             |                                                                  |
+| `convolution.default`                                                                 | 1D / 2D / 3D, transposed, grouped                                |
+| `copy.default`                                                                        |                                                                  |
+| `cos.default`                                                                         |                                                                  |
+| `cosh.default`                                                                        |                                                                  |
+| `cumsum.default`                                                                      | Lowered to `coreai.scan` with a sum combiner                     |
+| `div.Scalar`, `div.Tensor`                                                            |                                                                  |
+| `div.Tensor_mode`                                                                     | Honors `rounding_mode` (`None`, `"floor"`, `"trunc"`)            |
+| `embedding.default`                                                                   | Lowered to `coreai.gather_nd`                                    |
+| `empty.default`, `empty.memory_format`                                                |                                                                  |
+| `eq.Scalar`, `eq.Tensor`                                                              |                                                                  |
+| `erf.default`                                                                         |                                                                  |
+| `exp.default`                                                                         |                                                                  |
+| `exp2.default`                                                                        |                                                                  |
+| `expand.default`                                                                      |                                                                  |
+| `expm1.default`                                                                       |                                                                  |
+| `flip.default`                                                                        |                                                                  |
+| `floor.default`                                                                       |                                                                  |
+| `floor_divide.default`                                                                |                                                                  |
+| `floordiv`, `floordiv.Scalar`, `floordiv.Tensor`                                      |                                                                  |
+| `fmod.Scalar`, `fmod.Tensor`                                                          |                                                                  |
+| `full.default`                                                                        |                                                                  |
+| `full_like.default`                                                                   |                                                                  |
+| `gather.default`                                                                      | Lowered to `coreai.gather_along_axis`                            |
+| `ge.Scalar`, `ge.Tensor`                                                              |                                                                  |
+| `gelu.default`                                                                        |                                                                  |
+| `getitem`                                                                             |                                                                  |
+| `gt.Scalar`, `gt.Tensor`                                                              |                                                                  |
+| `hardsigmoid.default`                                                                 | Lowered as a composite                                           |
+| `hardswish.default`                                                                   |                                                                  |
+| `hardtanh.default`                                                                    |                                                                  |
+| `index.Tensor`                                                                        | Lowered to `coreai.gather_nd`                                    |
+| `index_put.default`                                                                   | Lowered to `coreai.scatter_nd`                                   |
+| `index_select.default`                                                                | Lowered to `coreai.gather_along_axis`                            |
+| `instance_norm.default`                                                               | Preserved as composite by `get_decomp_table()`                   |
+| `isinf.default`                                                                       | Lowered as `(x == +inf) | (x == -inf)`                           |
+| `le.Scalar`, `le.Tensor`                                                              |                                                                  |
+| `leaky_relu.default`                                                                  |                                                                  |
+| `lift_fresh_copy.default`                                                             |                                                                  |
+| `linalg_vector_norm.default`                                                          |                                                                  |
+| `log.default`                                                                         |                                                                  |
+| `log10.default`                                                                       |                                                                  |
+| `log1p.default`                                                                       |                                                                  |
+| `log2.default`                                                                        |                                                                  |
+| `logical_and.default`                                                                 |                                                                  |
+| `logical_not.default`                                                                 |                                                                  |
+| `logical_or.default`                                                                  |                                                                  |
+| `logical_xor.default`                                                                 |                                                                  |
+| `lt.Scalar`, `lt.Tensor`                                                              |                                                                  |
+| `max.default`, `max.dim`                                                              |                                                                  |
+| `max_pool2d_with_indices.default`                                                     |                                                                  |
+| `maximum.default`                                                                     |                                                                  |
+| `mean.default`, `mean.dim`                                                            |                                                                  |
+| `min.default`, `min.dim`                                                              |                                                                  |
+| `minimum.default`                                                                     |                                                                  |
+| `mm.default`                                                                          |                                                                  |
+| `mod`, `mod.Scalar`, `mod.Tensor`                                                     |                                                                  |
+| `mul`, `mul.Scalar`, `mul.Tensor`                                                     |                                                                  |
+| `native_group_norm.default`                                                           |                                                                  |
+| `native_layer_norm.default`                                                           |                                                                  |
+| `ne.Scalar`, `ne.Tensor`                                                              |                                                                  |
+| `neg`, `neg.default`                                                                  |                                                                  |
+| `nonzero.default`                                                                     |                                                                  |
+| `nonzero_numpy.default`                                                               |                                                                  |
+| `permute.default`                                                                     |                                                                  |
+| `pixel_shuffle.default`                                                               | Preserved as composite by `get_decomp_table()`                   |
+| `polar.default`                                                                       |                                                                  |
+| `pow.Scalar`, `pow.Tensor_Scalar`, `pow.Tensor_Tensor`                                |                                                                  |
+| `prod.default`, `prod.dim_int`                                                        |                                                                  |
+| `reciprocal.default`                                                                  |                                                                  |
+| `reflection_pad1d.default`, `reflection_pad2d.default`, `reflection_pad3d.default`    | Lowered to `coreai.pad` with `reflect` mode                      |
+| `relu.default`                                                                        |                                                                  |
+| `remainder.Tensor`                                                                    |                                                                  |
+| `repeat.default`                                                                      |                                                                  |
+| `replication_pad1d.default`, `replication_pad2d.default`, `replication_pad3d.default` | Lowered to `coreai.pad` with `replicate` mode                    |
+| `round.default`, `round.decimals`                                                     |                                                                  |
+| `rsqrt.default`                                                                       |                                                                  |
+| `scalar_tensor.default`                                                               |                                                                  |
+| `scaled_dot_product_attention.default`                                                | Preserved as composite by `get_decomp_table()`                   |
+| `scatter.reduce`, `scatter.src`, `scatter.value`, `scatter.value_reduce`              |                                                                  |
+| `select.int`                                                                          | Lowered to `coreai.slice_` plus a dim removal                    |
+| `sigmoid.default`                                                                     |                                                                  |
+| `sign.default`                                                                        |                                                                  |
+| `silu.default`                                                                        |                                                                  |
+| `sin.default`                                                                         |                                                                  |
+| `sinh.default`                                                                        |                                                                  |
+| `slice.Tensor`                                                                        | Lowered to `coreai.slice_`                                       |
+| `slice_scatter.default`                                                               | Lowered to `coreai.slice_update`                                 |
+| `split_with_sizes.default`                                                            | Lowered to `coreai.split`                                        |
+| `sqrt.default`                                                                        |                                                                  |
+| `squeeze.dims`                                                                        |                                                                  |
+| `sub`, `sub.Scalar`, `sub.Tensor`                                                     |                                                                  |
+| `sum.dim_IntList`                                                                     |                                                                  |
+| `sym_float`                                                                           | Casts a `SymInt` scalar tensor to a `SymFloat` scalar tensor     |
+| `sym_min`                                                                             |                                                                  |
+| `sym_size.int`                                                                        | Returns the size of a tensor along a dim as a shape-`[1]` tensor |
+| `tan.default`                                                                         |                                                                  |
+| `tanh.default`                                                                        |                                                                  |
+| `tile.default`                                                                        |                                                                  |
+| `to.dtype`                                                                            | Identity or `coreai.cast`                                        |
+| `topk.default`                                                                        |                                                                  |
+| `true_divide.Tensor`                                                                  |                                                                  |
+| `truediv`                                                                             |                                                                  |
+| `trunc`, `trunc.default`                                                              |                                                                  |
+| `unsqueeze.default`                                                                   |                                                                  |
+| `upsample_bilinear2d.vec`                                                             | Lowered to `coreai.interpolate` (linear mode)                    |
+| `upsample_nearest2d.vec`                                                              | Lowered to `coreai.interpolate` (nearest-neighbor mode)          |
+| `view.default`                                                                        |                                                                  |
+| `view_as_complex.default`, `view_as_complex_copy.default`                             |                                                                  |
+| `view_as_real.default`, `view_as_real_copy.default`                                   |                                                                  |
+| `where.self`                                                                          |                                                                  |
+
+## Higher-order ops
+
+| Op           | Notes                                                                     |
+|--------------|---------------------------------------------------------------------------|
+| `cond`       | `torch.cond` — emitted as a Core AI conditional with two branch subgraphs |
+| `while_loop` | `torch._higher_order_ops.while_loop`                                      |
+
+## See also
+
+- [TorchConverter API reference](TorchConverter.md) — `register_torch_lowering()` for adding or overriding op lowerings.
+- [Custom Op Lowering](../guides/custom-op-lowering.md) — tutorial walkthrough.
+- [Composite ops API reference](composite-ops.md) — built-in composite op modules.
+
+## Notices
+
+PyTorch is a trademark of Meta Platforms, Inc.
+
+
+# whats-new.html.md
+
+# What’s new
+
+

@@ -241,15 +241,19 @@ import torch
 from coreai._compiler.dialects import coreai
 from coreai_torch._utils import get_operands
 
+
 @torch.library.custom_op("my_lib::scaled_add", mutates_args=())
 def scaled_add(x: torch.Tensor, y: torch.Tensor, scale: float) -> torch.Tensor:
     return x + scale * y
+
 
 @scaled_add.register_fake
 def _(x, y, scale):
     return torch.empty_like(x)
 
+
 converter = TorchConverter()
+
 
 @converter.register_torch_lowering("my_lib::scaled_add.default")
 def lower_scaled_add(values_map, node, loc):
@@ -258,6 +262,7 @@ def lower_scaled_add(values_map, node, loc):
     scale_val = coreai.constant(scale, dtype=x.type.element_type)
     scaled_y = coreai.broadcasting_mul(y, scale_val, loc=loc)
     return coreai.broadcasting_add(x, scaled_y, loc=loc)
+
 
 coreai_program = converter.add_exported_program(exported).to_coreai()
 coreai_program.optimize()
@@ -272,7 +277,10 @@ from coreai_torch._utils import get_operand
 
 converter = TorchConverter()
 
-@converter.register_torch_lowering("aten::_adaptive_avg_pool2d.default", allow_override=True)
+
+@converter.register_torch_lowering(
+    "aten::_adaptive_avg_pool2d.default", allow_override=True
+)
 def lower_adaptive_avg_pool2d_static(values_map, node, loc):
     x = get_operand(values_map, node, 0, loc)
     output_h, output_w = node.args[1]
@@ -289,6 +297,7 @@ def lower_adaptive_avg_pool2d_static(values_map, node, loc):
         ),
         coreai.cast(float(kernel_h * kernel_w), x.type.element_type),
     )
+
 
 coreai_program = converter.add_exported_program(exported).to_coreai()
 coreai_program.optimize()
@@ -317,7 +326,12 @@ Registers one or more `TorchMetalKernel` objects so the converter can convert th
 
 ```python
 import torch
-from coreai_torch import TorchConverter, TorchMetalKernel, MetalParameter, get_decomp_table
+from coreai_torch import (
+    TorchConverter,
+    TorchMetalKernel,
+    MetalParameter,
+    get_decomp_table,
+)
 
 
 def torch_add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -383,9 +397,9 @@ coreai_program = (
     TorchConverter()
     .add_pytorch_module(
         model,
-        export_fn=lambda m: torch.export.export(m, args=example_inputs).run_decompositions(
-            coreai_torch.get_decomp_table()
-        ),
+        export_fn=lambda m: torch.export.export(
+            m, args=example_inputs
+        ).run_decompositions(coreai_torch.get_decomp_table()),
     )
     .to_coreai()
 )
@@ -457,6 +471,7 @@ class Linear(nn.Module):
     def forward(self, x):
         return self.fc(x)
 
+
 ep = torch.export.export(Linear().eval(), args=(torch.randn(1, 8),))
 ep = ep.run_decompositions(get_decomp_table())
 
@@ -473,15 +488,16 @@ TorchConverter().add_exported_program(
 class KVCache(nn.Module):
     def __init__(self):
         super().__init__()
-        self.register_buffer("kv_cache", torch.zeros(1, 4))   # state[0]
-        self.register_buffer("pos_idx", torch.zeros(1))       # state[1]
+        self.register_buffer("kv_cache", torch.zeros(1, 4))  # state[0]
+        self.register_buffer("pos_idx", torch.zeros(1))  # state[1]
 
     def forward(self, x, y, z):
-        self.kv_cache.add_(x)       # buffer mutation
-        self.pos_idx.add_(1)        # buffer mutation
-        y.mul_(2)                   # state[2]: mutated user input
+        self.kv_cache.add_(x)  # buffer mutation
+        self.pos_idx.add_(1)  # buffer mutation
+        y.mul_(2)  # state[2]: mutated user input
         # non-mutated: x -> input[0], z -> input[1]
         return self.kv_cache + y, z * 3
+
 
 ep = torch.export.export(
     KVCache().eval(),

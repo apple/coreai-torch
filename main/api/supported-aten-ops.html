@@ -565,14 +565,20 @@ data-aria-dark="Switch to auto color mode">
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reciprocal.default</span></code></p></td>
 <td><p></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">relu.default</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reflection_pad1d.default</span></code>, <code class="docutils literal notranslate"><span class="pre">reflection_pad2d.default</span></code>, <code class="docutils literal notranslate"><span class="pre">reflection_pad3d.default</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.pad</span></code> with <code class="docutils literal notranslate"><span class="pre">reflect</span></code> mode</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">relu.default</span></code></p></td>
 <td><p></p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remainder.Tensor</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remainder.Tensor</span></code></p></td>
 <td><p></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">repeat.default</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">repeat.default</span></code></p></td>
 <td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">replication_pad1d.default</span></code>, <code class="docutils literal notranslate"><span class="pre">replication_pad2d.default</span></code>, <code class="docutils literal notranslate"><span class="pre">replication_pad3d.default</span></code></p></td>
+<td><p>Lowered to <code class="docutils literal notranslate"><span class="pre">coreai.pad</span></code> with <code class="docutils literal notranslate"><span class="pre">replicate</span></code> mode</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">round.default</span></code>, <code class="docutils literal notranslate"><span class="pre">round.decimals</span></code></p></td>
 <td><p></p></td>
