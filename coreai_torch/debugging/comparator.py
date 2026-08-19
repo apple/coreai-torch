@@ -250,23 +250,23 @@ class Comparator(
     @staticmethod
     def _get_status_display(status: Status) -> tuple[str, str]:
         """
-        Get color and symbol for a status.
+        Get the style and symbol for a status.
+
+        The style is a `rich` style name rather than an ANSI escape, so a caller
+        passing it to
+        :func:`~coreai_torch.debugging.annotations._write_line` gets colour on a
+        terminal and plain text in a file.
 
         Returns:
-            Tuple of (color_code, status_symbol)
+            Tuple of (style_name, status_symbol)
 
         """
-        # ANSI color codes
-        green = "\033[92m"
-        red = "\033[91m"
-        yellow = "\033[93m"
-
         if status == Comparator.Status.PASS:
-            return green, "✓"
+            return "green", "✓"
         elif status == Comparator.Status.FAIL:
-            return red, "✗"
+            return "red", "✗"
         else:
-            return yellow, "?"
+            return "yellow", "?"
 
     def _sort_statuses_by_topo_order(
         self,

@@ -1071,6 +1071,22 @@ class _DebugInfoRecorder:
             )
             target_debug_info.output_maps.append(output_map)
 
+    def reset_module_registry(self: Self) -> None:
+        """Start instance numbering again from one.
+
+        Instance counts are meant to number the instances of a class *within one
+        module hierarchy* -- ``Block$1``, ``Block$2``, ``Block$3`` for a model with
+        three of them. A submodule converted standalone is a different hierarchy:
+        its root is ``L__self__`` of that submodule's own type, not a path within
+        the model. Counting both in one sequence consumed numbers that never
+        appear in the emitted asset, so a three-block model reported
+        ``Block$2..Block$4`` and had no ``Block$1`` at all.
+
+        Called between hierarchies rather than reaching into the registry, so what
+        the numbering promises stays stated in one place.
+        """
+        self.module_registry = _ModuleInstanceRegistry()
+
     @contextmanager
     def record_module(self: Self, module: Module):
         """Context manager for module-level debug recording.
@@ -1152,7 +1168,9 @@ class _DebugInfoRecorder:
     def _find_new_operations(self: Self) -> list[Operation]:
         """Find operations that were added during the current operation context.
 
-        Uses op_results to find candidate operations, then checks all nested operations.
+        Uses op_results to find candidate operations, then walks operands to
+        reach the rest of the ops the lowering emitted, then checks all nested
+        operations.
 
         Returns:
             List of newly added operations that don't have debug info yet
@@ -1167,6 +1185,18 @@ class _DebugInfoRecorder:
                 and isinstance(op, Operation)
                 and op not in seen_ops
                 and op not in self._debug_info_map
+                # Never step out of the graph. The walk below goes *up* through
+                # parents, so without this it reaches the graph op itself, and
+                # the nested-operation scan a few lines down then yields every
+                # operation in the graph -- handing the whole body the debug info
+                # of whichever node was being lowered at the time.
+                #
+                # The first node lowered is the one that pays: it collects every
+                # parameter constant materialized during graph setup. In a
+                # 100-layer model that was 701 of 712 constants, all reporting
+                # the module of the first node (`Model$1/Block$1/RMSNorm$1`), so
+                # every Linear's weight claimed to belong to the first norm.
+                and op != self._current_graph
             )
 
         operations = []
@@ -1177,6 +1207,25 @@ class _DebugInfoRecorder:
                 seen_ops.add(op)
                 operations.append(op)
                 op = op.parent
+
+        # Lowering one FX node can emit a chain of operations, of which only the
+        # last produces a returned result. The rest are reachable only through
+        # operand edges, so without this they never receive the node's debug info
+        # and fall through to _ensure_all_operations_have_debug_locations, which
+        # can give them nothing but an operation ID. aten.addmm is one such case:
+        # it lowers to a transpose feeding a batch matmul feeding an add, and
+        # only the add would keep its file, line and module hierarchy.
+        #
+        # Ops already carrying debug info belong to an earlier node and end the
+        # walk there, so attribution is never reassigned from one node to another.
+        queue = list(operations)
+        while queue:
+            for operand in queue.pop().operands:
+                producer = operand.owner  # a Block, for a block argument
+                if should_process_op(producer):
+                    seen_ops.add(producer)
+                    operations.append(producer)
+                    queue.append(producer)
 
         added_operations = []
         for op in operations:
