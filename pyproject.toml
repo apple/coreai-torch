@@ -50,6 +50,7 @@ docs = [
     "nbmake>=1.5.0",
     "ghp-import>=2.1.0",
     "nest-asyncio>=1.5.0",
+    "sphinx-llm==0.3.0",
 ]
 dev = [
     "deptry>=0.20",
@@ -123,7 +124,7 @@ exclude = ["venv", ".venv", ".direnv", ".eggs", ".git", "setup.py", "__pycache__
 #                   — pulled by transformers/test fixtures transitively; no direct import.
 #   pytest-{randomly,rerunfailures,sugar,xdist}
 #                   — pytest plugins, auto-loaded via entry points (never imported).
-#   sphinx, shibuya, myst-nb, nbmake, nest-asyncio, ghp-import
+#   sphinx, shibuya, myst-nb, nbmake, nest-asyncio, ghp-import, sphinx-llm
 #                   — docs build infra used in docs/ (not scanned).
 #   ruff, deptry, nbstripout, pre-commit
 #                   — dev tools invoked via CLI, never imported.
@@ -142,6 +143,7 @@ DEP002 = [
     "nbmake",
     "nest-asyncio",
     "ghp-import",
+    "sphinx-llm",
     "ruff",
     "deptry",
     "nbstripout",
