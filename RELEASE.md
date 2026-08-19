@@ -10,7 +10,7 @@ one job, so no long-lived API token is stored in the repo or in an org secret.
 
 1. On a release branch, pin dependencies, bump `__version__` in
    `coreai_torch/__version__.py`, update the docs version metadata, and get the
-   PR reviewed and merged. `/release stage1` walks these checks.
+   PR reviewed and merged.
 2. Tag the merge commit `vMAJOR.MINOR.PATCH` — matching `__version__` exactly —
    and push the tag:
 
@@ -26,7 +26,7 @@ one job, so no long-lived API token is stored in the repo or in an org secret.
    public API.
 4. `publish` then waits on the `pypi` GitHub environment. A release manager other
    than the tag pusher approves it, and the vetted artifact is uploaded to PyPI.
-5. Deploy the docs: `./docs/deploy.sh` and `./docs/deploy.sh --remote pie`.
+5. Deploy the docs: `./docs/deploy.sh`.
 
 To exercise the build and smoke test without publishing, run the workflow
 manually — `gh workflow run release.yml --ref <branch>`. The `publish` job is
