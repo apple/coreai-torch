@@ -16,15 +16,24 @@ from __future__ import annotations
 
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import Enum
+from io import StringIO
 from typing import Any, TextIO
 
 import networkx as nx  # type: ignore[import-untyped]
 import torch
 from coreai._compiler.ir import Block, Operation, Region, Value
 from coreai.authoring import AIProgram
-from networkx.algorithms import isomorphism  # type: ignore[import-untyped]
+
+from .graph_match import (
+    Label,
+    WeightPolicy,
+    align,
+    node_labels,
+    responsible_op,
+)
+from .table_writer import _Column, _Row, _TableSpec, _write_table
 
 # ---------------------------------------------------------------------------
 # Regex patterns for composite diffing
@@ -38,10 +47,9 @@ class OpDiffType(Enum):
     """Type of operation difference in structural diff."""
 
     ALIGNED = "aligned"  # Structurally identical
-    MODIFIED = "modified"  # Same name, different structure
+    MODIFIED = "modified"  # Corresponds, but is not identical
     REMOVED = "removed"  # Only in source
     ADDED = "added"  # Only in target
-    POSITION_ONLY = "position_only"  # Same structure, different position (not shown)
 
 
 class _AIProgramGraphBuilder:
@@ -203,6 +211,7 @@ class GraphDiffSummary:
     source_edge_count: int
     target_edge_count: int
     mapped_node_count: int = 0
+    modified_node_count: int = 0
     unmapped_source_node_count: int = 0
     unmapped_target_node_count: int = 0
     unmapped_source_edge_count: int = 0
@@ -212,25 +221,39 @@ class GraphDiffSummary:
 @dataclass
 class GraphDiff:
     """
-    Result of structural graph comparison using isomorphism.
+    Result of structural graph comparison.
 
     Attributes:
-        is_isomorphic: Whether the graphs are structurally identical
-        source_to_target_mapping: Maps node IDs from source graph to target graph
-        target_to_source_mapping: Maps node IDs from target graph to source graph
-        unmapped_source_nodes: Node IDs present only in source graph
-        unmapped_target_nodes: Node IDs present only in target graph
-        unmapped_source_edges: Edges present only in source graph
-        unmapped_target_edges: Edges present only in target graph
+        is_isomorphic: Whether the graphs are provably the same graph. A complete
+            verified correspondence accounting for every edge, not a search result:
+            see `graph_match._is_isomorphism` for what the proof rests on.
+        source_to_target_mapping: Every source node that has a counterpart, mapped
+            to it -- identical and modified alike. `modified_node_pairs` is what
+            separates the two.
+        target_to_source_mapping: The same correspondence, inverted
+        modified_node_pairs: Nodes that correspond but are not identical, as
+            `(source, target)`. The same op, wired or configured differently -- a
+            rewiring, a reshape, a changed attribute. Neither added nor removed,
+            because it is still there and still in the same place in the source.
+        unmapped_source_nodes: Node IDs with no counterpart in the target
+        unmapped_target_nodes: Node IDs with no counterpart in the source
+        unmapped_source_edges: Source edges with no corresponding target edge
+        unmapped_target_edges: Target edges with no corresponding source edge
         summary: Summary statistics
         source_graph: Source NetworkX graph with IR references in nodes
         target_graph: Target NetworkX graph with IR references in nodes
+
+    Lifetime: the two graphs hold `ir_object` references owned by the programs they
+    were built from, and comparison reads them lazily. A `GraphDiff` is therefore
+    only usable while both programs are alive -- dropping an `AIProgram` and keeping
+    its diff segfaults the interpreter, with no Python traceback to say why.
 
     """
 
     is_isomorphic: bool
     source_to_target_mapping: dict[int, int]
     target_to_source_mapping: dict[int, int]
+    modified_node_pairs: list[tuple[int, int]]
     unmapped_source_nodes: list[int]
     unmapped_target_nodes: list[int]
     unmapped_source_edges: list[tuple[int, int]]
@@ -241,108 +264,65 @@ class GraphDiff:
 
 
 # ---------------------------------------------------------------------------
-# Greedy topological matching
+# Edge correspondence
 # ---------------------------------------------------------------------------
 
 
-def _greedy_topological_match(
-    source_graph: nx.DiGraph,
-    target_graph: nx.DiGraph,
-    node_match: Any,
-    edge_match: Any,
-) -> dict[int, int]:
-    """Find partial node mapping using greedy topological matching.
-
-    This is much faster than subgraph_isomorphisms_iter for large graphs,
-    providing O(n) matching instead of exponential worst case.
+def _slot(data: dict[str, Any]) -> tuple[str, int]:
     """
+    Which operand position an edge occupies.
 
-    def get_op_nodes_by_name(graph: nx.DiGraph) -> dict[str, list[int]]:
-        ops_by_name: dict[str, list[int]] = {}
-        try:
-            ordered_nodes = list(nx.topological_sort(graph))
-        except nx.NetworkXUnfeasible:
-            ordered_nodes = sorted(graph.nodes())
-        for n in ordered_nodes:
-            attrs = graph.nodes[n]
-            if attrs.get("type") == "op":
-                op_name = attrs.get("op_name", "unknown")
-                ops_by_name.setdefault(op_name, []).append(n)
-        return ops_by_name
-
-    source_ops = get_op_nodes_by_name(source_graph)
-    target_ops = get_op_nodes_by_name(target_graph)
-
-    mapping: dict[int, int] = {}
-    for op_name in source_ops:
-        if op_name not in target_ops:
-            continue
-        src_ids = source_ops[op_name]
-        tgt_ids = target_ops[op_name]
-        for src_id, tgt_id in zip(src_ids, tgt_ids, strict=False):
-            mapping[src_id] = tgt_id
-
-    _extend_mapping_to_connected_nodes(mapping, source_graph, target_graph)
-    return mapping
+    Normalised the same way `graph_match` normalises it, so a graph flavour that
+    omits either attribute compares equal to `("", 0)` rather than raising.
+    """
+    return (str(data.get("edge_type", "")), int(data.get("index", 0)))
 
 
-def _extend_mapping_to_connected_nodes(
-    mapping: dict[int, int],
-    source_graph: nx.DiGraph,
-    target_graph: nx.DiGraph,
-) -> None:
-    """Extend an op-level mapping to include connected non-op nodes."""
-    mapped_target: set[int] = set(mapping.values())
-    for src_op, tgt_op in list(mapping.items()):
-        _match_neighbors(
-            src_op, tgt_op, source_graph, target_graph, mapping, mapped_target, "out"
-        )
-        _match_neighbors(
-            src_op, tgt_op, source_graph, target_graph, mapping, mapped_target, "in"
-        )
-
-
-def _match_neighbors(
-    src_node: int,
-    tgt_node: int,
+def _unmapped_edges(
     source_graph: nx.DiGraph,
     target_graph: nx.DiGraph,
     mapping: dict[int, int],
-    mapped_target: set[int],
-    direction: str,
-) -> None:
-    """Match neighboring non-op nodes by edge type and index."""
-    if direction == "out":
-        src_edges = list(source_graph.out_edges(src_node, data=True))
-        tgt_edges = list(target_graph.out_edges(tgt_node, data=True))
-    else:
-        src_edges = list(source_graph.in_edges(src_node, data=True))
-        tgt_edges = list(target_graph.in_edges(tgt_node, data=True))
+) -> list[tuple[int, int]]:
+    """
+    Source edges with no counterpart in the target under `mapping`.
 
-    def group_edges(
-        edges: list[tuple[int, int, dict[str, Any]]], direction: str
-    ) -> dict[tuple[str, int], int]:
-        groups: dict[tuple[str, int], int] = {}
-        for u, v, data in edges:
-            key = (data.get("edge_type", ""), data.get("index", 0))
-            neighbor = v if direction == "out" else u
-            groups[key] = neighbor
-        return groups
+    An edge corresponds only if both endpoints map, the mapped pair is an edge on
+    the other side, *and* it occupies the same slot. Checking only that both
+    endpoints were mapped -- which is what this replaced -- counted an edge as
+    common whenever its nodes were, so a pure rewiring reported every edge as
+    common and the "common subgraph" line read 100% for a graph that had been
+    rewired.
 
-    src_groups = group_edges(src_edges, direction)
-    tgt_groups = group_edges(tgt_edges, direction)
+    Called with the full correspondence, modified pairs included: a modified op
+    still exists on the other side, so its untouched operand edges genuinely
+    correspond and only the moved ones do not.
 
-    for key, src_neighbor in src_groups.items():
-        if src_neighbor in mapping:
+    Args:
+        source_graph: The graph whose edges are being classified.
+        target_graph: The graph they are looked for in.
+        mapping: Source node id -> target node id.
+
+    Returns:
+        The source edges with no corresponding target edge.
+
+    """
+    unmapped: list[tuple[int, int]] = []
+    for producer, consumer, data in source_graph.edges(data=True):
+        image_producer = mapping.get(producer)
+        image_consumer = mapping.get(consumer)
+        if image_producer is None or image_consumer is None:
+            unmapped.append((producer, consumer))
             continue
-        tgt_neighbor = tgt_groups.get(key)
-        if tgt_neighbor is None or tgt_neighbor in mapped_target:
+
+        if not target_graph.has_edge(image_producer, image_consumer):
+            unmapped.append((producer, consumer))
             continue
-        src_type = source_graph.nodes[src_neighbor].get("type")
-        tgt_type = target_graph.nodes[tgt_neighbor].get("type")
-        if src_type == tgt_type and src_type != "op":
-            mapping[src_neighbor] = tgt_neighbor
-            mapped_target.add(tgt_neighbor)
+
+        image = target_graph.edges[image_producer, image_consumer]
+        if _slot(image) != _slot(data):
+            unmapped.append((producer, consumer))
+
+    return unmapped
 
 
 # ---------------------------------------------------------------------------
@@ -353,120 +333,68 @@ def _match_neighbors(
 def compute_graph_diff(
     source_graph: nx.DiGraph,
     target_graph: nx.DiGraph,
+    *,
+    weights: WeightPolicy = WeightPolicy.IGNORE,
 ) -> GraphDiff:
     """
-    Compute structural differences using graph isomorphism.
+    Compute structural differences between two graphs.
 
-    Uses NetworkX's DiGraphMatcher to find structural correspondence
-    between graphs and identify differences. For non-isomorphic graphs,
-    uses a fast greedy topological matching instead of exponential
-    subgraph isomorphism enumeration.
+    Which node became which comes from `graph_match.align`, which labels each node
+    with what makes it that op, fingerprints bottom-up, anchors on those hashes,
+    propagates along dataflow and verifies every pair. Linear, and no search.
 
     Args:
         source_graph: Source (reference/expected) graph
         target_graph: Target (actual/test) graph
+        weights: Whether parameter *values* count towards a node's identity. Off by
+            default: converting a model twice re-initialises its parameters, so
+            comparing values reports every diff as a total rewrite. Shapes and
+            dtypes are compared either way.
 
     Returns:
-        GraphDiff object containing isomorphism-based structural comparison
+        GraphDiff object describing the correspondence and what it leaves over
 
     """
+    alignment = align(source_graph, target_graph, weights=weights)
 
-    # Define matching functions for isomorphism
-    def node_match(n1: dict[str, Any], n2: dict[str, Any]) -> bool:
-        """Check if two nodes match structurally."""
-        return n1.get("type") == n2.get("type") and n1.get("op_name") == n2.get(
-            "op_name",
-        )
+    # Every source node with a counterpart, identical or not. Modified pairs belong
+    # here: composite bodies are paired by walking this mapping, so leaving a
+    # rewired `coreai.invoke` out of it would leave its callee never paired and
+    # never reported. `modified_node_pairs` is what tells the two apart.
+    source_to_target = {**alignment.mapping, **dict(alignment.modified)}
+    target_to_source = {v: k for k, v in source_to_target.items()}
 
-    def edge_match(e1: dict[str, Any], e2: dict[str, Any]) -> bool:
-        """Check if two edges match structurally."""
-        return e1.get("edge_type") == e2.get("edge_type")
-
-    # Create matcher for directed graphs
-    matcher = isomorphism.DiGraphMatcher(
-        source_graph,
-        target_graph,
-        node_match=node_match,
-        edge_match=edge_match,
+    unmapped_source_edges = _unmapped_edges(
+        source_graph, target_graph, source_to_target
     )
-
-    is_isomorphic = matcher.is_isomorphic()
-
-    # Get node mapping if isomorphic
-    if is_isomorphic:
-        source_to_target = matcher.mapping
-        target_to_source = {v: k for k, v in source_to_target.items()}
-
-        summary = GraphDiffSummary(
-            source_node_count=source_graph.number_of_nodes(),
-            target_node_count=target_graph.number_of_nodes(),
-            source_edge_count=source_graph.number_of_edges(),
-            target_edge_count=target_graph.number_of_edges(),
-            mapped_node_count=len(source_to_target),
-            unmapped_source_node_count=0,
-            unmapped_target_node_count=0,
-            unmapped_source_edge_count=0,
-            unmapped_target_edge_count=0,
-        )
-
-        return GraphDiff(
-            is_isomorphic=True,
-            source_to_target_mapping=source_to_target,
-            target_to_source_mapping=target_to_source,
-            unmapped_source_nodes=[],
-            unmapped_target_nodes=[],
-            unmapped_source_edges=[],
-            unmapped_target_edges=[],
-            summary=summary,
-            source_graph=source_graph,
-            target_graph=target_graph,
-        )
-
-    # Not fully isomorphic — use greedy topological matching (fast)
-    best_mapping = _greedy_topological_match(
-        source_graph, target_graph, node_match, edge_match
+    unmapped_target_edges = _unmapped_edges(
+        target_graph, source_graph, target_to_source
     )
-
-    # Identify unmapped nodes and edges
-    mapped_source = set(best_mapping.keys())
-    mapped_target = set(best_mapping.values())
-
-    unmapped_source_nodes = [n for n in source_graph.nodes() if n not in mapped_source]
-    unmapped_target_nodes = [n for n in target_graph.nodes() if n not in mapped_target]
-
-    # Identify unmapped edges
-    def edge_is_mapped(edge: tuple[int, int], mapping: dict[int, int]) -> bool:
-        """Check if an edge is fully mapped."""
-        src, dst = edge
-        return src in mapping and dst in mapping
-
-    unmapped_source_edges = [
-        e for e in source_graph.edges() if not edge_is_mapped(e, best_mapping)
-    ]
-    unmapped_target_edges = [
-        e
-        for e in target_graph.edges()
-        if not edge_is_mapped(e, {v: k for k, v in best_mapping.items()})
-    ]
 
     summary = GraphDiffSummary(
         source_node_count=source_graph.number_of_nodes(),
         target_node_count=target_graph.number_of_nodes(),
         source_edge_count=source_graph.number_of_edges(),
         target_edge_count=target_graph.number_of_edges(),
-        mapped_node_count=len(best_mapping),
-        unmapped_source_node_count=len(unmapped_source_nodes),
-        unmapped_target_node_count=len(unmapped_target_nodes),
+        # Identically matched only, so that mapped + modified + unmapped adds up to
+        # the source node count and "common subgraph" does not count a rewired op as
+        # common. It is therefore smaller than `len(source_to_target_mapping)`
+        # whenever anything is modified.
+        mapped_node_count=len(alignment.mapping),
+        modified_node_count=len(alignment.modified),
+        unmapped_source_node_count=len(alignment.removed),
+        unmapped_target_node_count=len(alignment.added),
         unmapped_source_edge_count=len(unmapped_source_edges),
         unmapped_target_edge_count=len(unmapped_target_edges),
     )
 
     return GraphDiff(
-        is_isomorphic=False,
-        source_to_target_mapping=best_mapping,
-        target_to_source_mapping={v: k for k, v in best_mapping.items()},
-        unmapped_source_nodes=unmapped_source_nodes,
-        unmapped_target_nodes=unmapped_target_nodes,
+        is_isomorphic=alignment.identical,
+        source_to_target_mapping=source_to_target,
+        target_to_source_mapping=target_to_source,
+        modified_node_pairs=alignment.modified,
+        unmapped_source_nodes=alignment.removed,
+        unmapped_target_nodes=alignment.added,
         unmapped_source_edges=unmapped_source_edges,
         unmapped_target_edges=unmapped_target_edges,
         summary=summary,
@@ -630,188 +558,93 @@ def _format_summary(diff: GraphDiff) -> list[tuple[int, str]]:
     return lines
 
 
-def _count_edges_by_type(
-    graph: nx.DiGraph,
-    node_id: int,
-    edge_type: str,
-    direction: str = "out",
-) -> int:
-    """Count edges of a specific type for a node."""
-    edges = graph.out_edges(node_id) if direction == "out" else graph.in_edges(node_id)
-    return sum(1 for e in edges if graph[e[0]][e[1]].get("edge_type") == edge_type)
+def _incoming(graph: nx.DiGraph, node_id: int) -> set[tuple[str, int, int]]:
+    """This node's incoming edges as `(edge_type, index, producer)`."""
+    return {
+        (*_slot(data), producer)
+        for producer, _, data in graph.in_edges(node_id, data=True)
+    }
 
 
-def _compute_aiprogram_op_diff_details(
+def _describe_modification(
     src_id: int,
     tgt_id: int,
-    source_graph: nx.DiGraph,
-    target_graph: nx.DiGraph,
-) -> tuple[OpDiffType, str]:
-    """Compute diff details for AIProgram operations."""
-    # Count key structural elements
-    src_operands = _count_edges_by_type(source_graph, src_id, "operand", "in")
-    tgt_operands = _count_edges_by_type(target_graph, tgt_id, "operand", "in")
-    src_results = _count_edges_by_type(source_graph, src_id, "defines", "out")
-    tgt_results = _count_edges_by_type(target_graph, tgt_id, "defines", "out")
-    src_regions = _count_edges_by_type(source_graph, src_id, "contains_region", "out")
-    tgt_regions = _count_edges_by_type(target_graph, tgt_id, "contains_region", "out")
-
-    # Build details string
-    details_parts = []
-    if src_operands != tgt_operands:
-        details_parts.append(f"operands:{src_operands}\u2192{tgt_operands}")
-    if src_results != tgt_results:
-        details_parts.append(f"results:{src_results}\u2192{tgt_results}")
-    if src_regions != tgt_regions:
-        details_parts.append(f"regions:{src_regions}\u2192{tgt_regions}")
-
-    if details_parts:
-        return (OpDiffType.MODIFIED, ", ".join(details_parts))
-    return (OpDiffType.POSITION_ONLY, "")
-
-
-def _compute_torch_op_diff_details(
-    src_id: int,
-    tgt_id: int,
-    source_graph: nx.DiGraph,
-    target_graph: nx.DiGraph,
-) -> tuple[OpDiffType, str]:
-    """Compute diff details for torch.fx.Node operations."""
-    # Count data flow edges (inputs/outputs)
-    src_inputs = _count_edges_by_type(source_graph, src_id, "data_flow", "in")
-    tgt_inputs = _count_edges_by_type(target_graph, tgt_id, "data_flow", "in")
-    src_outputs = _count_edges_by_type(source_graph, src_id, "data_flow", "out")
-    tgt_outputs = _count_edges_by_type(target_graph, tgt_id, "data_flow", "out")
-
-    # Build details string
-    details_parts = []
-    if src_inputs != tgt_inputs:
-        details_parts.append(f"inputs:{src_inputs}\u2192{tgt_inputs}")
-    if src_outputs != tgt_outputs:
-        details_parts.append(f"outputs:{src_outputs}\u2192{tgt_outputs}")
-
-    if details_parts:
-        return (OpDiffType.MODIFIED, ", ".join(details_parts))
-    return (OpDiffType.POSITION_ONLY, "")
-
-
-def _compute_op_diff_details(
-    src_id: int,
-    tgt_id: int,
-    source_graph: nx.DiGraph,
-    target_graph: nx.DiGraph,
-) -> tuple[OpDiffType, str]:
+    labels: tuple[dict[int, Label], dict[int, Label]],
+    graphs: tuple[nx.DiGraph, nx.DiGraph],
+    mapping: dict[int, int],
+) -> str:
     """
-    Compute detailed description of what changed between two operations.
+    Why a corresponding pair is not identical, in the terms the comparison used.
 
-    Dispatches to either AIProgram or torch-specific diff computation.
+    Reports the first label field that differs, or the operand slots whose producer
+    moved -- which is exactly what verification rejected the pair on. This replaces
+    counting operand/result/region edges per graph flavour and reporting the deltas:
+    those counts are equal for a rewiring, which is the case most worth naming.
+
+    Args:
+        src_id: Source node of the pair.
+        tgt_id: Target node of the pair.
+        labels: Node labels for `(source, target)`, computed once by the caller.
+        graphs: The `(source, target)` graphs.
+        mapping: The full source-to-target correspondence.
 
     Returns:
-        Tuple of (diff_type, details_string)
+        A short description, empty if nothing can be pinned down.
 
     """
-    # Detect graph type by checking node attributes
-    src_node = source_graph.nodes[src_id]
-    is_torch_graph = "torch_object" in src_node
+    source_labels, target_labels = labels
+    source_graph, target_graph = graphs
 
-    if is_torch_graph:
-        return _compute_torch_op_diff_details(
-            src_id,
-            tgt_id,
-            source_graph,
-            target_graph,
-        )
-    return _compute_aiprogram_op_diff_details(
-        src_id, tgt_id, source_graph, target_graph
+    source_label = source_labels.get(src_id, Label())
+    target_label = target_labels.get(tgt_id, Label())
+    if source_label != target_label:
+        for field in fields(Label):
+            before = getattr(source_label, field.name)
+            after = getattr(target_label, field.name)
+            if before != after:
+                return f"{field.name}: {before or '-'}\u2192{after or '-'}"
+
+        return "label differs"
+
+    target_incoming = _incoming(target_graph, tgt_id)
+    moved = sorted(
+        index
+        for edge_type, index, producer in _incoming(source_graph, src_id)
+        if (edge_type, index, mapping.get(producer, -1)) not in target_incoming
     )
+    if moved:
+        return "rewired: " + ", ".join(f"operand {index}" for index in moved)
+
+    # Nothing else is left. Verification rejected this pair, and it rejects only on
+    # a label mismatch or an operand mismatch; the labels here are the ones with
+    # parameter values *left out*, and the operands correspond. So the values are
+    # what differ -- which is only reachable when the diff was computed under
+    # `WeightPolicy.DIGEST`, since that is the only policy that looks at them.
+    return "parameter values differ"
 
 
-def _group_ops_by_name(nodes: list[int], graph: nx.DiGraph) -> dict[str, list[int]]:
-    """Group operation nodes by their operation name."""
-    ops_by_name: dict[str, list[int]] = {}
-    for n in nodes:
-        if graph.nodes[n].get("type") == "op":
-            op_name = graph.nodes[n].get("op_name", "unknown")
-            ops_by_name.setdefault(op_name, []).append(n)
-    return ops_by_name
-
-
-def _add_aligned_ops(
-    diff: GraphDiff,
+def _is_one_op_changed(
     source_graph: nx.DiGraph,
     target_graph: nx.DiGraph,
-    rows: list[tuple[str, str, str, str, str, str]],
-) -> None:
-    """Add structurally aligned operations to rows."""
-    for src_id, tgt_id in sorted(diff.source_to_target_mapping.items()):
-        if source_graph.nodes[src_id].get("type") == "op":
-            src_op = source_graph.nodes[src_id].get("op_name", "unknown")
-            tgt_op = target_graph.nodes[tgt_id].get("op_name", "unknown")
-            rows.append(
-                (
-                    str(src_id),
-                    str(tgt_id),
-                    OpDiffType.ALIGNED.value,
-                    src_op,
-                    tgt_op,
-                    "",
-                ),
-            )
+    src_id: int,
+    tgt_id: int,
+) -> bool:
+    """
+    Whether a corresponding pair is one op that changed, rather than two ops.
 
+    `modified` means *the same operation*, wired or configured differently. A pair
+    whose operations do not even share a name is not that: it is one op gone and
+    another arrived, and reporting it as a modification hides what used to be there.
 
-def _add_matched_by_name_ops(
-    source_ids: list[int],
-    target_ids: list[int],
-    op_name: str,
-    graphs: tuple[nx.DiGraph, nx.DiGraph],
-    output: tuple[list[tuple[str, str, str, str, str, str]], set[int]],
-) -> None:
-    """Add operations matched by name to rows."""
-    source_graph, target_graph = graphs
-    rows, matched = output
-
-    # Pair up operations
-    for src_id, tgt_id in zip(source_ids, target_ids, strict=False):
-        diff_type, details = _compute_op_diff_details(
-            src_id,
-            tgt_id,
-            source_graph,
-            target_graph,
-        )
-        if diff_type != OpDiffType.POSITION_ONLY:
-            rows.append(
-                (str(src_id), str(tgt_id), diff_type.value, op_name, op_name, details),
-            )
-        matched.update([src_id, tgt_id])
-
-    # Handle count mismatches
-    count_diff = len(source_ids) - len(target_ids)
-    if count_diff > 0:
-        rows.extend(
-            (
-                str(src_id),
-                "-",
-                OpDiffType.REMOVED.value,
-                op_name,
-                "",
-                f"{count_diff} extra in source",
-            )
-            for src_id in source_ids[len(target_ids) :]
-        )
-        matched.update(source_ids[len(target_ids) :])
-    elif count_diff < 0:
-        rows.extend(
-            (
-                "-",
-                str(tgt_id),
-                OpDiffType.ADDED.value,
-                "",
-                op_name,
-                f"{-count_diff} extra in target",
-            )
-            for tgt_id in target_ids[len(source_ids) :]
-        )
-        matched.update(target_ids[len(source_ids) :])
+    The distinction matters because a difference often lands on a **value** node --
+    `relu`'s result pairs with `sigmoid`'s, since they have the same type and the same
+    consumer -- and resolving that pair to the operations behind it would otherwise
+    collapse a removal and an addition into "sigmoid was modified", with no mention of
+    the relu.
+    """
+    return source_graph.nodes[src_id].get("op_name") == target_graph.nodes[tgt_id].get(
+        "op_name"
+    )
 
 
 def _format_unified_ops_table(
@@ -819,94 +652,122 @@ def _format_unified_ops_table(
     source_graph: nx.DiGraph,
     target_graph: nx.DiGraph,
     max_items: int | None = None,
-) -> list[tuple[int, str]]:
-    """Format unified operations table with ANSI coloring for removed/added ops."""
-    lines: list[tuple[int, str]] = []
-    lines.append((0, "Operations Diff Table:"))
+) -> _TableSpec | None:
+    """
+    Build the unified operations table, styling removed/added ops.
 
+    Args:
+        diff: GraphDiff result to render.
+        source_graph: Source (reference) graph.
+        target_graph: Target (actual) graph.
+        max_items: Maximum number of rows to include, or None for all.
+
+    Returns:
+        The table, or None when there are no differing operations to show.
+
+    """
     rows: list[tuple[str, str, str, str, str, str]] = []
 
-    # Group unmapped ops by name
-    source_ops_by_name = _group_ops_by_name(diff.unmapped_source_nodes, source_graph)
-    target_ops_by_name = _group_ops_by_name(diff.unmapped_target_nodes, target_graph)
+    # A modification is one fact about one pair of ops, so it claims both sides:
+    # an op that still exists but computes something different is *modified*, and
+    # listing it as removed or added as well would say two contradictory things
+    # about one op.
+    claimed_source: set[int] = set()
+    claimed_target: set[int] = set()
+    labels = (node_labels(source_graph), node_labels(target_graph))
 
-    # Match and add operations by name
-    matched_by_name: set[int] = set()
-    common_names = set(source_ops_by_name.keys()) & set(target_ops_by_name.keys())
+    for src_node, tgt_node in diff.modified_node_pairs:
+        src_id = responsible_op(source_graph, src_node)
+        tgt_id = responsible_op(target_graph, tgt_node)
+        if src_id is None or tgt_id is None:
+            continue
+        if src_id in claimed_source or tgt_id in claimed_target:
+            continue
+        if not _is_one_op_changed(source_graph, target_graph, src_id, tgt_id):
+            # Two different ops. Leave them to the removed and added passes, which
+            # will name both.
+            continue
 
-    for op_name in sorted(common_names):
-        _add_matched_by_name_ops(
-            source_ops_by_name[op_name],
-            target_ops_by_name[op_name],
-            op_name,
-            (source_graph, target_graph),
-            (rows, matched_by_name),
+        claimed_source.add(src_id)
+        claimed_target.add(tgt_id)
+        rows.append(
+            (
+                str(src_id),
+                str(tgt_id),
+                OpDiffType.MODIFIED.value,
+                source_graph.nodes[src_id].get("op_name", "unknown"),
+                target_graph.nodes[tgt_id].get("op_name", "unknown"),
+                _describe_modification(
+                    src_node,
+                    tgt_node,
+                    labels,
+                    (source_graph, target_graph),
+                    diff.source_to_target_mapping,
+                ),
+            )
         )
 
-    # Add unique operations (no name match)
-    for op_name, src_ids in source_ops_by_name.items():
-        if op_name not in common_names:
-            rows.extend(
+    for nodes, graph, claimed, removed in (
+        (diff.unmapped_source_nodes, source_graph, claimed_source, True),
+        (diff.unmapped_target_nodes, target_graph, claimed_target, False),
+    ):
+        for node in nodes:
+            op_id = responsible_op(graph, node)
+            if op_id is None or op_id in claimed:
+                continue
+
+            claimed.add(op_id)
+            op_name = graph.nodes[op_id].get("op_name", "unknown")
+            rows.append(
                 (
-                    str(src_id),
+                    str(op_id),
                     "-",
                     OpDiffType.REMOVED.value,
                     op_name,
                     "",
                     "no match in target",
                 )
-                for src_id in src_ids
-            )
-
-    for op_name, tgt_ids in target_ops_by_name.items():
-        if op_name not in common_names:
-            rows.extend(
-                (
+                if removed
+                else (
                     "-",
-                    str(tgt_id),
+                    str(op_id),
                     OpDiffType.ADDED.value,
                     "",
                     op_name,
                     "no match in source",
                 )
-                for tgt_id in tgt_ids
             )
 
     if not rows:
-        return lines
+        return None
 
-    # Dynamic column widths
-    headers = ("src_id", "tgt_id", "status", "src_op", "tgt_op", "details")
     items_to_show = rows if max_items is None else rows[:max_items]
-    col_widths = list(len(h) for h in headers)
+    caption = None
+    if max_items is not None and len(rows) > max_items:
+        caption = f"... and {len(rows) - max_items} more operations"
+
+    spec = _TableSpec(
+        title="Operations Diff Table:",
+        columns=(
+            _Column("src_id", justify="right"),
+            _Column("tgt_id", justify="right"),
+            _Column("status"),
+            _Column("src_op"),
+            _Column("tgt_op"),
+            _Column("details"),
+        ),
+        caption=caption,
+    )
     for row in items_to_show:
-        for i, val in enumerate(row):
-            col_widths[i] = max(col_widths[i], len(val))
-
-    fmt = "  ".join(f"{{:<{w}}}" for w in col_widths)
-    sep = "  ".join("\u2500" * w for w in col_widths)
-
-    # ANSI color codes for terminal output
-    RED_BG = "\033[48;2;50;10;10m\033[97m"
-    GREEN_BG = "\033[48;2;10;40;10m\033[97m"
-    RESET = "\033[0m"
-
-    lines.append((1, fmt.format(*headers)))
-    lines.append((1, sep))
-
-    for row in items_to_show:
-        line = fmt.format(*row)
         status = row[2]
         if status == OpDiffType.REMOVED.value:
-            line = f"{RED_BG}{line}{RESET}"
+            style = "white on rgb(50,10,10)"
         elif status == OpDiffType.ADDED.value:
-            line = f"{GREEN_BG}{line}{RESET}"
-        lines.append((1, line))
-
-    if max_items is not None and len(rows) > max_items:
-        lines.append((1, f"... and {len(rows) - max_items} more operations"))
-
-    return lines
+            style = "white on rgb(10,40,10)"
+        else:
+            style = ""
+        spec.add(_Row(cells=row, style=style))
+    return spec
 
 
 def _apply_indentation(lines: list[tuple[int, str]], indent_size: int = 2) -> list[str]:
@@ -960,20 +821,18 @@ def write_diff(
     lines.extend(_format_summary(diff))
     lines.append((0, ""))
 
+    # Write everything above the operations table, then the table itself.
+    for line in _apply_indentation(lines, indent_size):
+        output.write(line + "\n")
+
     # Unified operations table (shows aligned, removed, and added ops)
     table_limit = None if max_items is None else max_items * 2
     ops_table = _format_unified_ops_table(diff, source_graph, target_graph, table_limit)
-    if ops_table:
-        lines.extend(ops_table)
-        lines.append((0, ""))
+    if ops_table is not None:
+        _write_table(ops_table, output)
+        output.write("\n")
 
-    # Footer
-    lines.append((0, "=" * 80))
-
-    # Apply indentation and write to output
-    formatted_lines = _apply_indentation(lines, indent_size)
-    for line in formatted_lines:
-        output.write(line + "\n")
+    output.write("=" * 80 + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -986,6 +845,7 @@ def compute_coreai_program_diff(
     target_program: AIProgram,
     *,
     entry_point: str | None = "main",
+    weights: WeightPolicy = WeightPolicy.IGNORE,
 ) -> GraphDiff:
     """
     Compute structural diff between two AIPrograms.
@@ -998,6 +858,19 @@ def compute_coreai_program_diff(
         target_program: Target (actual/test) AIProgram
         entry_point: Name of the entry point function to compare.
             Use None to compare all graphs in the module.
+        weights: Whether parameter *values* count towards a node's identity, so
+            that two builds differing only in their weights are reported as
+            modified rather than as identical. Off by default: converting a model
+            twice re-initialises its parameters, so comparing values would report
+            every layer as changed. Shapes and dtypes are compared either way.
+
+            Only meaningful when **this process** produced both programs. A
+            resource-backed parameter is compared by its blob name, which is
+            serialised into a `.aimodel` and not recomputed on load, so two assets
+            written by two runs carry different names for identical weights and
+            `DIGEST` reports them as modified. Nothing here can detect that; a
+            caller that loads assets from disk must not offer this option. See
+            `graph_match._weight_label`.
 
     Returns:
         GraphDiff object with source_graph and target_graph included
@@ -1008,7 +881,7 @@ def compute_coreai_program_diff(
     """
     source_graph = _build_module_graph(source_program._mlir_module, entry_point)
     target_graph = _build_module_graph(target_program._mlir_module, entry_point)
-    return compute_graph_diff(source_graph, target_graph)
+    return compute_graph_diff(source_graph, target_graph, weights=weights)
 
 
 # ---------------------------------------------------------------------------
@@ -1048,6 +921,7 @@ def _diff_matched_composites(
     target_eps: dict[str, Any],
     source_module: Any,
     target_module: Any,
+    weights: WeightPolicy = WeightPolicy.IGNORE,
 ) -> list[tuple[str, GraphDiff | None]]:
     """Diff each matched composite pair and return labeled results."""
     results: list[tuple[str, GraphDiff | None]] = []
@@ -1056,7 +930,7 @@ def _diff_matched_composites(
             continue
         src_graph = _build_module_graph(source_module, src_callee)
         tgt_graph = _build_module_graph(target_module, tgt_callee)
-        diff = compute_graph_diff(src_graph, tgt_graph)
+        diff = compute_graph_diff(src_graph, tgt_graph, weights=weights)
         label = _strip_uuid_suffix(src_callee)
         results.append(
             (f"{label} (source: @{src_callee}, target: @{tgt_callee})", diff)
@@ -1098,6 +972,7 @@ def _report_orphan_composites(
     matched_tgt_callees: set[str],
     source_module: Any,
     target_module: Any,
+    weights: WeightPolicy = WeightPolicy.IGNORE,
 ) -> list[tuple[str, GraphDiff | None]]:
     """Report composites not referenced by any invoke in main."""
     results: list[tuple[str, GraphDiff | None]] = []
@@ -1111,7 +986,7 @@ def _report_orphan_composites(
                 results.append(
                     (
                         f"{label} (unreferenced, @{sym_name})",
-                        compute_graph_diff(src_graph, tgt_graph),
+                        compute_graph_diff(src_graph, tgt_graph, weights=weights),
                     )
                 )
             else:
@@ -1132,6 +1007,8 @@ def _report_orphan_composites(
 def compute_per_graph_diff(
     source_program: AIProgram,
     target_program: AIProgram,
+    *,
+    weights: WeightPolicy = WeightPolicy.IGNORE,
 ) -> list[tuple[str, GraphDiff | None]]:
     """Compute per-graph diffs, matching composites via invoke call sites.
 
@@ -1142,6 +1019,9 @@ def compute_per_graph_diff(
     Args:
         source_program: Source (reference/expected) AIProgram
         target_program: Target (actual/test) AIProgram
+        weights: Whether parameter *values* count towards a node's identity; see
+            `compute_coreai_program_diff`. Under `DIGEST` each graph reaches its own
+            module's parameters, which costs a print of it per graph compared.
 
     Returns:
         List of (label, GraphDiff | None) tuples for each graph in the programs
@@ -1149,17 +1029,20 @@ def compute_per_graph_diff(
     """
     source_eps = _collect_entry_points(source_program._mlir_module)
     target_eps = _collect_entry_points(target_program._mlir_module)
-
     # Fallback when no main graph exists
     if "main" not in source_eps or "main" not in target_eps:
         source_graph = _build_module_graph(source_program._mlir_module)
         target_graph = _build_module_graph(target_program._mlir_module)
-        return [("all", compute_graph_diff(source_graph, target_graph))]
+        return [
+            ("all", compute_graph_diff(source_graph, target_graph, weights=weights))
+        ]
 
     # Diff main graphs
     source_main_graph = _build_module_graph(source_program._mlir_module, "main")
     target_main_graph = _build_module_graph(target_program._mlir_module, "main")
-    main_diff = compute_graph_diff(source_main_graph, target_main_graph)
+    main_diff = compute_graph_diff(
+        source_main_graph, target_main_graph, weights=weights
+    )
 
     results: list[tuple[str, GraphDiff | None]] = [("main", main_diff)]
 
@@ -1177,6 +1060,7 @@ def compute_per_graph_diff(
             target_eps,
             source_program._mlir_module,
             target_program._mlir_module,
+            weights,
         )
     )
 
@@ -1200,6 +1084,7 @@ def compute_per_graph_diff(
             matched_tgt_callees,
             source_program._mlir_module,
             target_program._mlir_module,
+            weights,
         )
     )
 
@@ -1233,6 +1118,7 @@ def format_multi_graph_diff(
         lines.append((0, "=" * 80))
         lines.append((0, ""))
 
+        ops_table: _TableSpec | None = None
         if diff is None:
             lines.append((0, "(no counterpart in the other program)"))
             all_isomorphic = False
@@ -1247,12 +1133,16 @@ def format_multi_graph_diff(
             ops_table = _format_unified_ops_table(
                 diff, diff.source_graph, diff.target_graph, table_limit
             )
-            if ops_table:
-                lines.extend(ops_table)
-                lines.append((0, ""))
 
         formatted = _apply_indentation(lines, indent_size)
-        sections.append("\n".join(formatted))
+        section = "\n".join(formatted)
+        if ops_table is not None:
+            # Render the table into a buffer so it can be embedded in the
+            # returned string alongside the prose sections.
+            buffer = StringIO()
+            _write_table(ops_table, buffer)
+            section = f"{section}\n{buffer.getvalue()}"
+        sections.append(section)
 
     # Overall verdict
     overall: list[tuple[int, str]] = []

@@ -7,11 +7,15 @@
 
 import torch
 import torch.nn as nn
+from coreai._compiler._mlir_libs._coreaiIR._bindings import mlir as _mlir
 from coreai._compiler.ir import Location
 from torch.export.exported_program import ExportedProgram
 
-from coreai_torch._debug_locations import _DebugInfoRecorder
+from coreai_torch import get_decomp_table
+from coreai_torch._debug_locations import _DebugInfoRecorder, _get_nested_operations
 from coreai_torch.converter import TorchConverter
+
+from .debugging.test_model import HierarchicalModel
 
 
 class SimpleModel(nn.Module):
@@ -124,3 +128,48 @@ def test_debug_locations_multiple_programs() -> None:
     converter.add_exported_program(exported_program2, entrypoint_name="model_2")
     # Verification happens automatically during conversion via _verify_debuginfo_locations
     _ = converter.to_coreai()
+
+
+def test_intermediate_ops_of_a_lowering_keep_their_attribution() -> None:
+    """Test that every op a multi-op lowering emits keeps its debug info.
+
+    Lowering one FX node can emit a chain of operations, of which only the last
+    produces a returned result. aten.addmm is such a case: it becomes a transpose
+    feeding a batch matmul feeding an add. The ops that only feed another op are
+    reachable from the returned result solely through operand edges, and when
+    those were not followed they received no file, no line and no module
+    hierarchy -- just an operation ID.
+
+    Uses HierarchicalModel because its Linear layers sit at two different depths,
+    so the recovered hierarchy has to be the right one rather than merely present.
+    """
+    model: HierarchicalModel = HierarchicalModel()
+    example_input: torch.Tensor = torch.randn(2, 4)
+
+    exported_program: ExportedProgram = torch.export.export(model, (example_input,))
+    exported_program = exported_program.run_decompositions(get_decomp_table())
+
+    converter: TorchConverter = TorchConverter()
+    converter.add_exported_program(exported_program)
+    program = converter.to_coreai()
+
+    matmuls = [
+        operation
+        for operation in _get_nested_operations(program._mlir_module.operation)
+        if "batch_matmul" in operation.name
+    ]
+    assert matmuls, "expected the linear layers to lower to batch matmuls"
+
+    for operation in matmuls:
+        stack_trace = _mlir.get_stack_trace(operation.location)  # type: ignore[attr-defined]
+        assert stack_trace, f"{operation.name} has no module hierarchy"
+        # The matmul belongs to the Linear that produced its weight, not to an
+        # enclosing module and not to nothing at all.
+        assert stack_trace[-1].startswith("Linear"), stack_trace
+
+        locations = _mlir.get_file_line_col_locations(operation.location)  # type: ignore[attr-defined]
+        assert locations, f"{operation.name} has no source location"
+        assert any(
+            location.filename.endswith(".py") and location.line >= 1
+            for location in locations
+        ), locations

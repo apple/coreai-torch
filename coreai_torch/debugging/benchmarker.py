@@ -19,7 +19,7 @@ Key components:
 import logging
 import threading
 from abc import ABC, abstractmethod
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -34,7 +34,10 @@ from coreai.authoring import AIProgram
 from coreai.runtime import AIModel, NDArray, Profiler, SpecializationOptions
 from typing_extensions import Self
 
+from .annotations import _ANNOTATION_STYLE, _write_line
 from .debug_info import DebugInfoRecord, parse_debug_infos
+from .source_annotator import _read_source_file, _should_exclude_location
+from .utils import LocationInfo, get_operation_locations
 
 logger = logging.getLogger(__name__)
 
@@ -182,100 +185,6 @@ class Measurement:
         )
 
 
-@dataclass(frozen=True)
-class _LocationInfo:
-    """Location information for an operation."""
-
-    filename: str
-    """Source filename."""
-
-    line: int
-    """Line number."""
-
-    col: int
-    """Column number."""
-
-
-def _get_operation_locations(operation: Operation) -> list[_LocationInfo]:
-    """
-    Extract file/line/col locations from an operation.
-
-    Args:
-        operation: Operation to extract locations from
-
-    Returns:
-        List of unique LocationInfo objects (duplicates filtered, order preserved)
-
-    """
-    file_line_cols = _mlir.get_file_line_col_locations(operation.location)  # type: ignore[attr-defined]
-
-    # Convert to LocationInfo
-    locations = [
-        _LocationInfo(
-            filename=loc.filename,
-            line=loc.line,
-            col=loc.col,
-        )
-        for loc in file_line_cols
-    ]
-
-    # Remove duplicates while preserving order using OrderedDict
-    return list(reversed(OrderedDict.fromkeys(locations)))
-
-
-def _default_location_exclude(location: _LocationInfo) -> bool:
-    """
-    Exclude locations based on default filtering rules.
-
-    Excludes files from known torch package roots (torch, torchaudio, torchvision, etc.),
-    exported_program.py, and "-".
-
-    Args:
-        location: LocationInfo to check
-
-    Returns:
-        True if location should be excluded, False otherwise
-
-    """
-    # Convert to Path for consistent comparison
-    file_path = Path(location.filename)
-
-    # Known torch package names that should be excluded
-    torch_packages = {"torch", "torchaudio", "torchvision", "torchtext", "torchdata"}
-
-    # Check for exact matches of known torch package roots
-    has_torch_package = any(part in torch_packages for part in file_path.parts)
-
-    return (
-        has_torch_package
-        or file_path.name == "exported_program.py"
-        or location.filename == "-"
-    )
-
-
-def _read_source_file(file_path: Path, output: TextIO) -> list[str] | None:
-    """
-    Read source file and return lines, or write error and return None.
-
-    Args:
-        file_path: Path to the source file to read
-        output: Text stream to write errors to
-
-    Returns:
-        List of source lines, or None if file couldn't be read
-
-    """
-    try:
-        with open(file_path) as f:
-            return f.readlines()
-    except FileNotFoundError:
-        output.write(f"# Error: File not found: {file_path}\n")
-        return None
-    except Exception as e:
-        output.write(f"# Error reading file: {e}\n")
-        return None
-
-
 def _group_operations_by_line(
     module_timing: "ModuleTiming",
     file_path: Path,
@@ -296,7 +205,7 @@ def _group_operations_by_line(
     )
 
     for operation, timing in module_timing.get_all_operations():
-        locations = _get_operation_locations(operation)
+        locations = get_operation_locations(operation)
 
         for loc in locations:
             # Match by filename (handle both absolute and relative paths)
@@ -316,8 +225,13 @@ def _annotate_source_file(
     """
     Annotate a source file with timing information from a module.
 
-    Reads the source file, finds operations from that file in the module,
-    and writes the annotated source with colored timing comments before each line.
+    Reads the source file, finds operations from that file in the module, and
+    writes the annotated source with a timing comment before each annotated line.
+
+    The comment is styled by name rather than by escape code, so colour is applied
+    for a terminal and dropped for a file or in-memory stream. Writing the escapes
+    unconditionally left them in the text of every saved listing, which a terminal
+    renders and an editor shows as noise.
 
     Args:
         module_timing: ModuleTiming to get operation timings from
@@ -326,10 +240,6 @@ def _annotate_source_file(
 
     """
     file_path = Path(file_path)
-
-    # ANSI color codes
-    green = "\033[92m"
-    reset = "\033[0m"
 
     # Read the source file
     source_lines = _read_source_file(file_path, output)
@@ -353,9 +263,11 @@ def _annotate_source_file(
                     )
 
             if timings_for_line:
-                # Write colored annotation comment on line before
-                annotation = "# " + ", ".join(timings_for_line)
-                output.write(f"{green}{annotation}{reset}\n")
+                # Indent the comment to match the line it describes, so the
+                # annotated listing stays readable as Python.
+                margin = line_content[: len(line_content) - len(line_content.lstrip())]
+                annotation = margin + "# " + ", ".join(timings_for_line)
+                _write_line(output, annotation, _ANNOTATION_STYLE)
 
         # Write the original source line
         output.write(line_content)
@@ -493,7 +405,7 @@ class ModuleTiming:
 
     def get_operations_at_location(
         self: Self,
-        location: _LocationInfo,
+        location: LocationInfo,
     ) -> list[tuple[Operation, OperationTiming]]:
         """
         Find operations at a specific source location.
@@ -512,7 +424,7 @@ class ModuleTiming:
 
         # Search all operations in this module and children
         for operation, timing in self.get_all_operations():
-            op_locations = _get_operation_locations(operation)
+            op_locations = get_operation_locations(operation)
 
             # Check if any of the operation's locations match
             for op_loc in op_locations:
@@ -529,7 +441,7 @@ class ModuleTiming:
     def annotate_dominant_source(
         self: Self,
         output: TextIO,
-        exclude: Callable[[_LocationInfo], bool] | None = None,
+        exclude: Callable[[LocationInfo], bool] | None = None,
     ) -> None:
         """
         Find the dominant source file and annotate it with timing information.
@@ -546,14 +458,14 @@ class ModuleTiming:
         """
         # Use default exclusion if not provided
         if exclude is None:
-            exclude = _default_location_exclude
+            exclude = _should_exclude_location
 
         # Count occurrences of each source file from locations
         file_counts: dict[str, int] = defaultdict(int)
         # Only use operations from this module, not children
         for operation, _ in self.operation_timings:
             # Get file/line/col locations
-            locations = _get_operation_locations(operation)
+            locations = get_operation_locations(operation)
 
             if locations:
                 # Take the last file (innermost)

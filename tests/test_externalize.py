@@ -22,7 +22,11 @@ from coreai_torch import ExternalizeSpec, TorchConverter, get_decomp_table
 from coreai_torch.composite_ops import SDPA, GatherMM, RMSNorm, RMSNormImpl
 from coreai_torch.externalize import (
     _derive_composite_io_names,
+    _find_marked_submodules,
+    _patch_model_for_externalization,
     _prepare_module,
+    _restore_externalized,
+    _subexport_and_restore,
 )
 
 from .utils import (
@@ -38,12 +42,13 @@ async def _validate_numerics(
     model: torch.nn.Module,
     sample: tuple[torch.Tensor, ...],
     input_names: tuple[str, ...] = ("x",),
+    function_name: str = "main",
 ) -> None:
     """Compile, run in Core AI runtime, and compare against PyTorch output."""
     with TemporaryDirectory(suffix=".aimodel") as tmp:
         asset = coreai_program.save_asset(Path(tmp))
         async with asset.executable() as ai_model:
-            rt_func = ai_model.load_function("main")
+            rt_func = ai_model.load_function(function_name)
             inputs = {
                 name: NDArray(tensor) for name, tensor in zip(input_names, sample)
             }
@@ -423,7 +428,7 @@ def test_wrap_module_invalid_submodule() -> None:
     model = Model().eval()
 
     with pytest.raises(ValueError, match="submodule not found in model"):
-        _prepare_module(model, nn.Linear(4, 4))
+        _prepare_module(model, nn.Linear(4, 4), "test")
 
 
 @pytest.mark.ir
@@ -2096,6 +2101,244 @@ async def test_externalize_partial_match_warns() -> None:
     await _validate_numerics(coreai_program, model, sample)
 
 
+def test_externalize_backward() -> None:
+    """Gradients flow through externalized submodules (register_autograd)."""
+
+    class Norm(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = nn.Parameter(torch.ones(8))
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return x * self.weight
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.norm = Norm()
+            self.fc = nn.Linear(8, 1)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.fc(self.norm(x))
+
+    torch.manual_seed(0)
+    model = Model().eval()
+    _patch_model_for_externalization(model, [Norm])
+
+    x = torch.randn(2, 8, requires_grad=True)
+    out = model(x)
+    out.sum().backward()
+
+    _restore_externalized(_find_marked_submodules(model))
+
+    assert x.grad is not None, "grad did not flow back to input"
+    assert model.norm.weight.grad is not None, "grad did not flow to norm.weight"
+    assert model.fc.weight.grad is not None, "grad did not flow to fc.weight"
+
+
+def test_externalize_no_call_sites_warns() -> None:
+    """EP exported from an unpatched model: warn and produce a flat conversion.
+
+    If the user exports the model before calling _patch_model_for_externalization,
+    the custom-op call sites are absent.  _subexport_and_restore should emit a
+    UserWarning and skip externalizing rather than raising.
+    """
+
+    class Norm(nn.Module):
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return x / x.norm()
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.norm = Norm()
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.norm(x)
+
+    torch.manual_seed(0)
+    model = Model().eval()
+    sample = (torch.randn(2, 4),)
+
+    # Export BEFORE patching — no custom-op nodes in the graph.
+    ep = torch.export.export(model, args=sample).run_decompositions(get_decomp_table())
+    _patch_model_for_externalization(model, [Norm])
+
+    with pytest.warns(
+        UserWarning, match="No call sites found for externalized submodule 'norm'"
+    ):
+        externalized_exported_programs = _subexport_and_restore(model, ep)
+
+    program = (
+        TorchConverter()
+        .add_exported_program(
+            ep, _externalized_exported_programs=externalized_exported_programs
+        )
+        .to_coreai()
+    )
+
+    # Conversion still succeeds; no submodule graphs emitted.
+    assert program is not None
+    assert externalized_exported_programs == []
+
+
+@pytest.mark.ir
+def test_externalize_manual_subexport_workflow_ir() -> None:
+    """The manual patch -> external-tool -> sub-export -> convert workflow.
+
+    Mirrors the documented advanced path where the user drives export
+    themselves (e.g. through a quantizer) instead of handing the model to
+    ``add_pytorch_module``:
+
+        _patch_model_for_externalization(model, [spec])
+        ep = <external tool that exports the patched model>
+        externalized = _subexport_and_restore(model, ep)
+        TorchConverter().add_exported_program(
+            ep, _externalized_exported_programs=externalized
+        ).to_coreai()
+
+    Here the "external tool" is a passthrough export, standing in for a
+    quantizer, so the test pins the workflow contract rather than any
+    quantizer behavior: the custom-op call sites survive the caller's own
+    export, the model is left unpatched afterwards, and the submodule is
+    emitted as a composite op.
+    """
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.norm = RMSNorm(dim=DIM)
+            self.fc = nn.Linear(DIM, DIM)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.fc(self.norm(x))
+
+    torch.manual_seed(42)
+    model = Model().eval()
+    sample = (torch.randn(2, DIM),)
+
+    # Phase 1: patch the marked submodules in place.
+    _patch_model_for_externalization(
+        model,
+        [
+            ExternalizeSpec(
+                target_class=RMSNormImpl,
+                composite_op_name="rms_norm",
+                composite_attrs=["axes", "eps", "version"],
+            )
+        ],
+    )
+
+    marked = _find_marked_submodules(model)
+    assert [mod._externalize_name for mod in marked] == ["norm.rmsnorm_impl"], (
+        "expected the nested RMSNormImpl to be the single marked submodule"
+    )
+    op_name = marked[0]._externalize_op_name
+
+    # Stand-in for `quantizer.prepare(model).calibrate(data).finalize()`: any
+    # caller-driven export of the still-patched model.
+    ep = torch.export.export(model, args=sample).run_decompositions(get_decomp_table())
+
+    # The custom-op call site survives the caller's export/transform passes,
+    # and the model is still patched at this point.
+    assert any(op_name in str(node.target) for node in ep.graph.nodes), (
+        f"custom op {op_name!r} did not survive the caller's export; "
+        f"targets were {[str(n.target) for n in ep.graph.nodes]}"
+    )
+    assert _find_marked_submodules(model), "model unpatched before sub-export"
+
+    # Phases 2-3: sub-export each marked submodule and restore the model.
+    externalized_exported_programs = _subexport_and_restore(model, ep)
+
+    assert len(externalized_exported_programs) == 1, (
+        f"expected one externalized submodule, got "
+        f"{len(externalized_exported_programs)}"
+    )
+    # _subexport_and_restore restores in a finally block, so the model is clean
+    # regardless of sub-export success.
+    assert _find_marked_submodules(model) == [], (
+        "model still patched after _subexport_and_restore"
+    )
+    assert isinstance(
+        model.norm.rmsnorm_impl(*(torch.randn(2, DIM),) * 2), torch.Tensor
+    )
+
+    coreai_program = (
+        TorchConverter()
+        .add_exported_program(
+            ep, _externalized_exported_programs=externalized_exported_programs
+        )
+        .to_coreai()
+    )
+
+    pattern = """
+    // CHECK: coreai.graph private noinline @norm.rmsnorm_impl_[[S:[a-f0-9]+]](
+    // CHECK-SAME: composite_decl = #coreai.composite_declaration<"rms_norm" =
+    // CHECK-SAME: input_names = ["input", "scale"]
+    // CHECK-SAME: op_attrs =
+    // CHECK-SAME: axes = -1 : si64
+    // CHECK-SAME: eps = 9.99999974E-6 : f32
+    // CHECK-SAME: version = 1 : si64
+    // CHECK-SAME: output_names = ["output"]
+    // CHECK: coreai.invoke @norm.rmsnorm_impl_[[S]](%{{.*}})
+    """
+    filecheck_pattern(str(coreai_program), check_file=pattern)
+
+
+async def test_externalize_manual_subexport_workflow() -> None:
+    """Numerics for the manual patch -> external-tool -> sub-export -> convert path.
+
+    Companion to :func:`test_externalize_manual_subexport_workflow_ir`: the IR
+    test pins the structure, this one compiles the result and checks the
+    externalized composite still computes the same values as the original
+    (restored) PyTorch model.
+    """
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.norm = RMSNorm(dim=DIM)
+            self.fc = nn.Linear(DIM, DIM)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.fc(self.norm(x))
+
+    torch.manual_seed(42)
+    model = Model().eval()
+    sample = (torch.randn(2, DIM),)
+
+    _patch_model_for_externalization(
+        model,
+        [
+            ExternalizeSpec(
+                target_class=RMSNormImpl,
+                composite_op_name="rms_norm",
+                composite_attrs=["axes", "eps", "version"],
+            )
+        ],
+    )
+
+    # Stand-in for the caller's quantizer/export tool.
+    ep = torch.export.export(model, args=sample).run_decompositions(get_decomp_table())
+    externalized_exported_programs = _subexport_and_restore(model, ep)
+
+    assert len(externalized_exported_programs) == 1, (
+        f"expected one externalized submodule, got "
+        f"{len(externalized_exported_programs)}"
+    )
+
+    coreai_program = (
+        TorchConverter()
+        .add_exported_program(
+            ep, _externalized_exported_programs=externalized_exported_programs
+        )
+        .to_coreai()
+    )
+
+    # `model` is restored by now, so this compares against the unpatched module.
+    await _validate_numerics(coreai_program, model, sample)
+
+
 @pytest.mark.ir
 def test_externalize_three_level_nesting_ir() -> None:
     """IR check: Externalize at three levels of depth: grandchild, child, and each gets its own graph."""
@@ -3718,7 +3961,9 @@ def test_externalize_unused_submodule_ir() -> None:
     model = OuterModel().eval()
     sample = (torch.randn(2, 4),)
 
-    with pytest.warns(UserWarning, match="skipping unused submodule"):
+    with pytest.warns(
+        UserWarning, match="No call sites found for externalized submodule 'unused'"
+    ):
         converter = TorchConverter().add_pytorch_module(
             model,
             export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
@@ -3777,7 +4022,9 @@ async def test_externalize_unused_submodule_numerics() -> None:
     model = OuterModel().eval()
     sample = (torch.randn(2, 4),)
 
-    with pytest.warns(UserWarning, match="skipping unused submodule"):
+    with pytest.warns(
+        UserWarning, match="No call sites found for externalized submodule 'unused'"
+    ):
         converter = TorchConverter().add_pytorch_module(
             model,
             export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
@@ -3788,3 +4035,71 @@ async def test_externalize_unused_submodule_numerics() -> None:
         coreai_program = converter.to_coreai()
 
     await _validate_numerics(coreai_program, model, sample)
+
+
+async def test_externalize_multiple_staged_entries_numerics() -> None:
+    """Two staged entries in one to_coreai(), only one using externalization.
+
+    ``TorchConverter._externalized_exported_programs`` is converter-level
+    state, but externalization is per-entry: only the entry that asked for it
+    may emit submodule graphs and ``coreai.invoke`` call sites. ``to_coreai``
+    resets that field per entry via ``_init_conversion_state()``, so the plain
+    ``add_exported_program`` entry must stay flat even though it is converted
+    in the same call as an externalized one.
+
+    Checking numerics on both entrypoints pins that invariant end to end: a
+    leak would duplicate the composite into ``plain`` and change its output.
+    """
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.norm = RMSNorm(dim=DIM)
+            self.fc = nn.Linear(DIM, DIM)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.fc(self.norm(x))
+
+    class Plain(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(DIM, DIM)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return torch.relu(self.fc(x))
+
+    torch.manual_seed(42)
+    model = Model().eval()
+    sample = (torch.randn(2, DIM),)
+
+    torch.manual_seed(7)
+    plain_model = Plain().eval()
+    plain_sample = (torch.randn(2, DIM),)
+    plain_ep = torch.export.export(plain_model, args=plain_sample).run_decompositions(
+        get_decomp_table()
+    )
+
+    coreai_program = (
+        TorchConverter()
+        .add_pytorch_module(
+            model,
+            export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+                get_decomp_table()
+            ),
+            externalize_modules=[
+                ExternalizeSpec(
+                    target_class=RMSNormImpl,
+                    composite_op_name="rms_norm",
+                    composite_attrs=["axes", "eps", "version"],
+                )
+            ],
+            entrypoint_name="with_ext",
+        )
+        .add_exported_program(plain_ep, entrypoint_name="plain")
+        .to_coreai()
+    )
+
+    await _validate_numerics(coreai_program, model, sample, function_name="with_ext")
+    await _validate_numerics(
+        coreai_program, plain_model, plain_sample, function_name="plain"
+    )

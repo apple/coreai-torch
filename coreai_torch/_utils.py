@@ -1122,7 +1122,7 @@ class _ModuleInstanceRegistry:
     def __init__(self) -> None:
         """Initialize empty module bookkeeping state."""
         self.module_type_to_next_count: dict[str, int] = {}
-        self.module_instance_to_count: dict[str, int] = {}
+        self.module_instance_to_count: dict[tuple[str, str], int] = {}
 
     def get_instance_count(
         self,
@@ -1134,6 +1134,12 @@ class _ModuleInstanceRegistry:
         If the instance was already seen, return its existing count. Otherwise,
         assign the next count for the given module type, store it, and return it.
 
+        Keyed on the instance name *and* its type. Keying on the name alone meant
+        one name reused for a different type inherited the other type's count:
+        when a submodule is converted standalone its root is ``L__self__`` of that
+        submodule's type, and the whole model's root is ``L__self__`` too, so the
+        model's root silently took the number assigned to the submodule.
+
         Args:
             module_instance_name: Unique module instance identifier.
             module_type: Module type name, for example "Linear".
@@ -1141,13 +1147,14 @@ class _ModuleInstanceRegistry:
         Returns:
             The stable per-type instance count for this module instance.
         """
-        existing_count = self.module_instance_to_count.get(module_instance_name)
+        key = (module_instance_name, module_type)
+        existing_count = self.module_instance_to_count.get(key)
         if existing_count is not None:
             return existing_count
 
         next_count = self.module_type_to_next_count.get(module_type, 0) + 1
         self.module_type_to_next_count[module_type] = next_count
-        self.module_instance_to_count[module_instance_name] = next_count
+        self.module_instance_to_count[key] = next_count
         return next_count
 
 

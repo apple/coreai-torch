@@ -1,0 +1,151 @@
+name: Release
+
+run-name: 'Release ${{ github.ref_name }} · @${{ github.actor }}'
+
+# Publishing to PyPI uses Trusted Publishing (OIDC) — no API token is stored.
+# A release manager pushes a `vMAJOR.MINOR.PATCH` tag; the `build` and
+# `smoke-test` jobs run automatically, then the `publish` job pauses on the
+# `pypi` GitHub environment until a reviewer approves it. That environment's
+# protection rules (required reviewers, prevent-self-review so the tag pusher
+# can't approve their own release, and a wait timer) live in the repo's
+# Environment settings, not in this file.
+#
+# One-time setup is documented in RELEASE.md ("Trusted Publishing setup").
+on:
+  push:
+    tags:
+      # Strictly vMAJOR.MINOR.PATCH with numeric parts (e.g. v0.4.1). This is a
+      # glob, not a regex: `.` is a literal dot and `[0-9]` a digit range. The
+      # filter must match the entire tag, so pre-releases (v1.2.3rc1 — the
+      # trailing `rc1` is left unmatched) and other non-release tags never start
+      # the release run. The `pypi` environment tag rule and approval gate are
+      # secondary controls; the version guard below is the final backstop.
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  # Manual dry run: builds and smoke-tests the current ref but never publishes
+  # (the publish job is gated to tag pushes). Trigger from the Actions tab
+  # ("Release" -> "Run workflow") or `gh workflow run release.yml --ref <branch>`.
+  workflow_dispatch:
+
+# Least privilege by default; the publish job opts into `id-token: write`.
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize releases per tag and never cancel an in-flight publish.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Build the exact wheel + sdist that will be smoke-tested and published. ──
+  build:
+    name: Build distributions
+    # PyPI Trusted Publishing only accepts OIDC tokens minted by github.com, so a
+    # run hosted anywhere else can never publish. Dry runs still work on any
+    # github.com clone, forks included.
+    if: github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: false
+      - name: Verify the tag matches the package version
+        # The published version comes from coreai_torch/__version__.py (via
+        # `[tool.setuptools.dynamic]`), not the tag. Fail early if they disagree
+        # so we never publish a mismatched or duplicate version — PyPI uploads
+        # are immutable and cannot be overwritten or replaced.
+        # Skipped on manual dry runs, where the ref is a branch, not a vX.Y.Z tag.
+        if: github.event_name == 'push'
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="$(sed -n 's/.*__version__[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' coreai_torch/__version__.py)"
+          echo "tag=${tag}  package version=${version}"
+          if [ -z "${version}" ]; then
+            echo "::error::Could not read __version__ from coreai_torch/__version__.py"
+            exit 1
+          fi
+          if [ "${tag}" != "v${version}" ]; then
+            echo "::error::Tag ${tag} does not match package version v${version} (coreai_torch/__version__.py). Bump __version__ to match the tag, or tag the right commit."
+            exit 1
+          fi
+      - name: Build wheel and sdist
+        run: uv build
+      - name: Rebuild the wheel from the sdist
+        # The sdist is published too, and only the wheel is installed and imported
+        # by smoke-test. Rebuilding from the sdist fails if MANIFEST.in omits a
+        # file the build needs. Built into a scratch dir so dist/ stays exactly
+        # what `uv build` produced.
+        run: uv build --wheel dist/coreai_torch-*.tar.gz --out-dir "${RUNNER_TEMP}/sdist-wheel"
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # ── Smoke test the exact built wheel via `scripts/smoke_test_wheel.sh`. ──
+  # `--no-build` installs the downloaded wheel instead of rebuilding, so the
+  # bytes we import are the ones we publish. The script installs runtime deps
+  # only, which is what catches missing dependency declarations. The sdist is
+  # covered by the rebuild step in `build`.
+  smoke-test:
+    name: Smoke test wheel (Python ${{ matrix.python }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with PYTHON_VERSIONS in scripts/smoke_test_wheel.sh and
+        # `requires-python` in pyproject.toml.
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: false
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - name: Smoke test the built wheel
+        run: ./scripts/smoke_test_wheel.sh --no-build --python ${{ matrix.python }}
+
+  # ── Publish to PyPI via Trusted Publishing. Only this job holds `id-token`. ──
+  # It builds nothing and runs no project code: it just downloads the vetted
+  # artifact and uploads it, keeping build/test dependencies out of the
+  # OIDC-privileged job.
+  publish:
+    name: Publish to PyPI
+    needs: [build, smoke-test]
+    # Publish only on a tag push (never on a manual dry run) and never from forks.
+    if: github.event_name == 'push' && github.repository == 'apple/coreai-torch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/p/coreai-torch
+    permissions:
+      id-token: write # mint the OIDC token PyPI validates for Trusted Publishing
+      contents: read
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        # Uploads everything in dist/ (the action's default `packages-dir`). No
+        # `password` is supplied, so the only way it can authenticate is the OIDC
+        # token above. PEP 740 attestations are on by default.
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
