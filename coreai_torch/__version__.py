@@ -5,4 +5,4 @@
 
 """Version information for coreai-torch."""
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
