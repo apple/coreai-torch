@@ -380,7 +380,7 @@ class SubbyteTensor(torch.Tensor):
         if func is torch.ops.aten.cat.default:
             self, dim = fill_defaults(args, 2, [0])
             unpacked = [x.unpack_func(x.elem, x.tensor_shape, x.nbits) for x in self]
-            return cls.from_unpacked(func(unpacked), self[0].nbits)
+            return cls.from_unpacked(func(unpacked, dim), self[0].nbits)
         if func is torch.ops.aten.min.default:
             (self,) = args
             unpacked = self.unpack_func(self.elem, self.tensor_shape, self.nbits)

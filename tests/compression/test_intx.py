@@ -85,6 +85,40 @@ def test_intx_scalar(nbits: int) -> None:
     assert intx_tensor.elem.numel() == 1
 
 
+@pytest.mark.parametrize(
+    "dim",
+    [0, 1, -1],
+)
+def test_uintx_cat(dim: int) -> None:
+    """Test uintx tensor concatenation along a given dimension."""
+    unpacked = [
+        torch.tensor([[3, 0, 14, 1], [0, 7, 15, 2]], dtype=torch.uint8),
+        torch.tensor([[1, 4, 5, 6], [2, 3, 6, 1]], dtype=torch.uint8),
+    ]
+    uintx_tensors = [UintxTensor.from_unpacked(x, 4) for x in unpacked]
+    concatenated = torch.cat(uintx_tensors, dim=dim)
+    expected = torch.cat(unpacked, dim=dim)
+    assert concatenated.shape == expected.shape
+    assert torch.equal(concatenated.to(torch.uint8), expected)
+
+
+@pytest.mark.parametrize(
+    "dim",
+    [0, 1, -1],
+)
+def test_intx_cat(dim: int) -> None:
+    """Test intx tensor concatenation along a given dimension."""
+    unpacked = [
+        torch.tensor([[3, 0, -2, 1], [0, 7, -8, 2]], dtype=torch.int8),
+        torch.tensor([[-1, 4, 5, -6], [2, -3, 6, 1]], dtype=torch.int8),
+    ]
+    intx_tensors = [IntxTensor.from_unpacked(x, 4) for x in unpacked]
+    concatenated = torch.cat(intx_tensors, dim=dim)
+    expected = torch.cat(unpacked, dim=dim)
+    assert concatenated.shape == expected.shape
+    assert torch.equal(concatenated.to(torch.int8), expected)
+
+
 def test_uint4_packed_value() -> None:
     """Test uint4 packed values."""
     unpacked = torch.tensor([3, 0, 2, 0, 9, 14, 15], dtype=torch.uint8)
