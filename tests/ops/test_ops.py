@@ -507,6 +507,33 @@ async def test_avg_pool3d(
 
 
 @pytest.mark.parametrize(
+    "pool_fn,input_shape",
+    [
+        (torch.nn.functional.avg_pool2d, (1, 3, 32, 32)),
+        (torch.nn.functional.avg_pool3d, (1, 3, 8, 8, 8)),
+    ],
+)
+async def test_avg_pool_defaults_count_include_pad_when_omitted(
+    pool_fn: Any,
+    input_shape: tuple[int, ...],
+) -> None:
+    """A five-argument pooling node defaults count_include_pad to True."""
+    x = torch.rand(input_shape)
+
+    class AvgPoolModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return pool_fn(
+                x,
+                kernel_size=2,
+                stride=2,
+                padding=1,
+                ceil_mode=True,
+            )
+
+    await validate_numerical_output(model=AvgPoolModel().eval(), x=x)
+
+
+@pytest.mark.parametrize(
     "input_shape,output_size,dtype",
     [
         # Divisible cases (input evenly divisible by output)
