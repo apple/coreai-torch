@@ -21,6 +21,7 @@ from coreai_torch.debugging.graph_diff import (
     op_id_alignment,
     write_diff,
 )
+from coreai_torch.debugging.graph_match import UNSTABLE_ATTRIBUTES, WeightPolicy
 
 from .test_model import (
     ExtraLayerModel,
@@ -157,7 +158,19 @@ async def test_extra_layer() -> None:
 
 @pytest.mark.asyncio
 async def test_diff_shows_common_subgraph() -> None:
-    """Test that diff shows aligned operations for common parts."""
+    """
+    Two models differing by one activation share nearly all of their graph.
+
+    `mapped_node_count > 0 or not is_isomorphic` was the assertion here and cannot
+    fail: an isomorphic diff maps every node, so the first disjunct holds, and a
+    non-isomorphic one satisfies the second whatever it mapped. It passed equally for
+    a diff that recognised the shared layers and one that matched nothing at all --
+    which is the failure worth catching, because a matcher that gives up reports the
+    whole model as rewritten rather than reporting an error.
+
+    Measured: 43 of 45 nodes map, one is modified, and one either side is left over --
+    the swapped activation and nothing else.
+    """
     example_inputs = get_example_inputs(ThreeLinearModel)
     args = tuple(example_inputs.values())
 
@@ -174,9 +187,25 @@ async def test_diff_shows_common_subgraph() -> None:
     target = await _create_coreai_program_from_model(exported_2)
 
     diff = compute_coreai_program_diff(source, target)
+    summary = diff.summary
 
-    # Should show mappings
-    assert diff.summary.mapped_node_count > 0 or not diff.is_isomorphic
+    assert not diff.is_isomorphic, (
+        "The activation differs, so this is not the same graph"
+    )
+    assert summary.mapped_node_count >= 0.9 * summary.source_node_count, (
+        f"Only {summary.mapped_node_count} of {summary.source_node_count} nodes "
+        "mapped; an edit to one activation should leave the rest recognised"
+    )
+    # The summary's own accounting: mapped, modified and unmapped partition the source.
+    assert (
+        summary.mapped_node_count
+        + summary.modified_node_count
+        + summary.unmapped_source_node_count
+        == summary.source_node_count
+    )
+    assert summary.unmapped_source_node_count == summary.unmapped_target_node_count, (
+        "One operation swapped for another leaves the same count over on both sides"
+    )
 
 
 @pytest.mark.asyncio
@@ -489,3 +518,238 @@ async def test_op_id_alignment_survives_an_added_layer() -> None:
     assert len(set(alignment.mapping.values())) == len(alignment.mapping)
     assert not set(alignment.mapping) & set(alignment.removed)
     assert not set(alignment.mapping.values()) & set(alignment.added)
+
+
+@pytest.mark.asyncio
+async def test_op_id_alignment_of_a_rebuild_reports_no_tie_break() -> None:
+    """
+    An unedited rebuild must carry no caution, or the caution means nothing.
+
+    Under the default `IGNORE` every parameter constant of one shape is
+    interchangeable, so this is the comparison with the most to choose between and
+    the least worth warning about: `identical` proves each choice harmless.
+    """
+    model = ThreeLinearModel().eval()
+    args = tuple(get_example_inputs(ThreeLinearModel).values())
+
+    exported = torch.export.export(model, args).run_decompositions()
+    before = await _create_coreai_program_from_model(exported)
+    after = await _create_coreai_program_from_model(
+        torch.export.export(model, args).run_decompositions()
+    )
+
+    alignment = op_id_alignment(before, after)
+
+    assert alignment.identical
+    assert not alignment.ambiguity, (
+        "Nothing was reported changed, so nothing can rest on a tie-break"
+    )
+
+
+@pytest.mark.asyncio
+async def test_op_id_alignment_names_the_removals_a_tie_break_produced() -> None:
+    """
+    Dropping a layer leaves interchangeable ops over, and the diff has to say which.
+
+    Otherwise `removed` reads as the list of operations an edit deleted when part of
+    it is only the leftover of a group the matcher took in topological order -- the
+    failure that blames an edit on the wrong layer.
+
+    The sets narrow the like-named fields rather than adding to them, so subtracting
+    one from the other cannot go negative.
+    """
+    args = tuple(get_example_inputs(ThreeLinearModel).values())
+    before = await _create_coreai_program_from_model(
+        torch.export.export(ThreeLinearModel().eval(), args).run_decompositions()
+    )
+    after = await _create_coreai_program_from_model(
+        torch.export.export(TwoLinearSkipModel().eval(), args).run_decompositions()
+    )
+
+    alignment = op_id_alignment(before, after)
+    ambiguity = alignment.ambiguity
+
+    assert ambiguity, "Two of three like layers survived; which two is a tie-break"
+    assert ambiguity.paired <= set(alignment.mapping)
+    assert ambiguity.removed <= set(alignment.removed)
+    assert ambiguity.added <= set(alignment.added)
+
+
+@pytest.mark.asyncio
+async def test_written_diff_says_when_a_tie_break_decided_it() -> None:
+    """
+    The caution has to reach the report, not just the object nobody prints.
+
+    Suppressed when nothing was arbitrary, so its presence carries information: an
+    unedited rebuild renders no such line.
+    """
+    args = tuple(get_example_inputs(ThreeLinearModel).values())
+    exported = torch.export.export(ThreeLinearModel().eval(), args).run_decompositions()
+    before = await _create_coreai_program_from_model(exported)
+    rebuilt = await _create_coreai_program_from_model(
+        torch.export.export(ThreeLinearModel().eval(), args).run_decompositions()
+    )
+    after = await _create_coreai_program_from_model(
+        torch.export.export(TwoLinearSkipModel().eval(), args).run_decompositions()
+    )
+
+    def rendered(source: AIProgram, target: AIProgram) -> str:
+        diff = compute_coreai_program_diff(source, target)
+        output = io.StringIO()
+        write_diff(diff, diff.source_graph, diff.target_graph, output=output)
+        return output.getvalue()
+
+    dropped_layer = rendered(before, after)
+    assert "Decided by tie-break" in dropped_layer
+    assert "WeightPolicy.DIGEST" in dropped_layer, "Name the remedy, not just the risk"
+
+    assert "Decided by tie-break" not in rendered(before, rebuilt)
+
+
+# ---------------------------------------------------------------------------
+# Weight policies and the identity a diff was computed under
+# ---------------------------------------------------------------------------
+
+
+async def _two_programs_with_different_weights() -> tuple[AIProgram, AIProgram]:
+    """
+    One model class exported twice, each instance independently initialised.
+
+    Structurally identical, numerically not -- a retrained model, which is the case
+    `IGNORE` cannot see and `DIGEST` exists for.
+    """
+    args = tuple(get_example_inputs(ThreeLinearModel).values())
+    return (
+        await _create_coreai_program_from_model(
+            torch.export.export(ThreeLinearModel().eval(), args).run_decompositions()
+        ),
+        await _create_coreai_program_from_model(
+            torch.export.export(ThreeLinearModel().eval(), args).run_decompositions()
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_digest_sees_a_retrained_model_that_ignore_calls_identical() -> None:
+    """
+    What the default costs, stated as a test: `IGNORE` cannot see a weight change.
+
+    Two independently initialised copies of one architecture come back `identical`
+    under the default -- a proof of sameness for two models that compute different
+    things. That is correct for the question `IGNORE` answers ("did the *structure*
+    change") and wrong for the one a reader is likely asking, which is why the
+    ambiguity warning points at `DIGEST`.
+    """
+    before, after = await _two_programs_with_different_weights()
+
+    assert op_id_alignment(before, after).identical, (
+        "IGNORE elides parameter values by design"
+    )
+
+    digested = op_id_alignment(before, after, weights=WeightPolicy.DIGEST)
+    assert not digested.identical
+    assert digested.modified, "The constants carrying the weights are what changed"
+    assert not digested.removed and not digested.added, (
+        "Nothing was added or deleted -- every operation still corresponds"
+    )
+
+
+@pytest.mark.asyncio
+async def test_portable_digest_agrees_with_digest_in_one_process() -> None:
+    """
+    `DIGEST_PORTABLE` costs a print of each module and must buy correctness with it.
+
+    Within one process the two policies have the same information, so they must reach
+    the same verdict; the difference only shows between assets loaded from disk, where
+    a resource handle is seeded per execution. Disagreeing here would mean the extra
+    work changed the answer rather than preserving it.
+    """
+    before, after = await _two_programs_with_different_weights()
+
+    digest = op_id_alignment(before, after, weights=WeightPolicy.DIGEST)
+    portable = op_id_alignment(before, after, weights=WeightPolicy.DIGEST_PORTABLE)
+
+    assert portable.identical == digest.identical
+    assert portable.modified == digest.modified
+    assert portable.mapping == digest.mapping
+
+
+@pytest.mark.asyncio
+async def test_ignore_attributes_reaches_align_from_the_program_entry_point() -> None:
+    """
+    The knob has to survive the trip from the public function down to the matcher.
+
+    Excluding the attribute that carries a constant's payload should make `DIGEST`
+    behave like `IGNORE` again: same structure, values no longer part of identity.
+    Landing anywhere short of `align` -- which is where it used to stop -- leaves the
+    diff computed under an identity the caller did not ask for.
+    """
+    before, after = await _two_programs_with_different_weights()
+    no_values = UNSTABLE_ATTRIBUTES | {"value"}
+
+    seen = compute_coreai_program_diff(before, after, weights=WeightPolicy.DIGEST)
+    assert not seen.is_isomorphic
+
+    elided = compute_coreai_program_diff(
+        before, after, weights=WeightPolicy.DIGEST, ignore_attributes=no_values
+    )
+    assert elided.is_isomorphic, "The attribute holding the values was excluded"
+    assert elided.ignore_attributes == frozenset(no_values), (
+        "Recorded on the result, so a reader can tell which identity produced it"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_modified_pair_is_explained_under_the_diffs_own_identity() -> None:
+    """
+    A reason computed under a wider identity than `align` used names the wrong field.
+
+    `write_diff` recomputes labels to say *why* a pair is not identical. Recomputed
+    with the default ignored set while the diff excluded `value`, it finds the payload
+    difference `align` had agreed to overlook and reports `attributes: ...` -- naming
+    an attribute the caller deliberately excluded, for a pair rejected over its result
+    types or its wiring.
+    """
+    args = tuple(get_example_inputs(ThreeLinearModel).values())
+    before = await _create_coreai_program_from_model(
+        torch.export.export(ThreeLinearModel().eval(), args).run_decompositions()
+    )
+    after = await _create_coreai_program_from_model(
+        torch.export.export(ExtraLayerModel().eval(), args).run_decompositions()
+    )
+
+    def reasons(**kwargs: object) -> str:
+        diff = compute_coreai_program_diff(
+            before, after, weights=WeightPolicy.DIGEST, **kwargs
+        )
+        assert diff.modified_node_pairs, "This pair of models has modified operations"
+        output = io.StringIO()
+        write_diff(diff, diff.source_graph, diff.target_graph, output=output)
+        return output.getvalue()
+
+    assert "attributes:" in reasons(), (
+        "Under DIGEST the payloads are part of identity, so they are a real reason"
+    )
+    assert "attributes:" not in reasons(
+        ignore_attributes=UNSTABLE_ATTRIBUTES | {"value"}
+    ), "No reason may name an attribute the diff was told to ignore"
+
+
+@pytest.mark.asyncio
+async def test_per_graph_diff_applies_one_identity_to_every_graph() -> None:
+    """
+    Main and composites have to be compared the same way, or the report contradicts
+    itself: one graph's operations judged on their payloads and another's not.
+    """
+    before, after = await _two_programs_with_different_weights()
+    no_values = UNSTABLE_ATTRIBUTES | {"value"}
+
+    results = compute_per_graph_diff(
+        before, after, weights=WeightPolicy.DIGEST, ignore_attributes=no_values
+    )
+
+    assert results, "There is always at least a main graph"
+    for _, diff in results:
+        if diff is not None:
+            assert diff.ignore_attributes == frozenset(no_values)
+            assert diff.weights is WeightPolicy.DIGEST

@@ -28,6 +28,7 @@ from .benchmarker import (
 from .graph_diff import OpIdAlignment, op_id_alignment
 from .graph_match import WeightPolicy
 from .table_writer import _Column, _Row, _TableSpec, _write_table
+from .utils import _plain
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,26 @@ class MatchedDispatch:
         if first is None or second is None:
             return None
         return second.median - first.median
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Return the pair as plain values.
+
+        :attr:`median_delta_ms` is included because it is the point of the pair and
+        is a property, so a caller reading only the fields would have to recompute
+        the comparison this class exists to make.
+
+        Returns:
+            Both dispatches, the delta between them, and whether the operation itself
+            changed.
+
+        """
+        return {
+            "before": self.before.to_dict(),
+            "after": self.after.to_dict(),
+            "modified": self.modified,
+            "median_delta_ms": _plain(self.median_delta_ms),
+        }
 
 
 class Resize(Enum):
@@ -126,6 +147,28 @@ class ResizedDispatch:
         if first is None or second is None:
             return None
         return second.median - first.median
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Return the pair as plain values.
+
+        :attr:`median_delta_ms` is included because it is the point of the pair and
+        is a property, so a caller reading only the fields would have to recompute
+        the comparison this class exists to make.
+
+        Returns:
+            Both dispatches, the delta between them, and whether the operation itself
+            changed.
+
+        """
+        return {
+            "before": self.before.to_dict(),
+            "after": self.after.to_dict(),
+            "modified": self.modified,
+            "median_delta_ms": _plain(self.median_delta_ms),
+            "extra_op_ids": _plain(self.extra_op_ids),
+            "resize": _plain(self.resize),
+        }
 
 
 @dataclass(frozen=True)
@@ -191,6 +234,29 @@ class TimingDiff:
             + [resized.after for resized in self.resized]
             + self.only_after
         )
+
+    def to_dict(self: Self) -> dict[str, Any]:
+        """
+        Return the comparison as plain values.
+
+        The dispatch *counts* per side are included because they are the denominator:
+        "10 only-before" means nothing without knowing whether the run had 12
+        dispatches or 200, and both sides are split across three of the lists.
+
+        Returns:
+            Every dispatch of both runs, classified, and the correspondence the
+            comparison was built on.
+
+        """
+        return {
+            "matched": [pair.to_dict() for pair in self.matched],
+            "resized": [entry.to_dict() for entry in self.resized],
+            "only_before": [timing.to_dict() for timing in self.only_before],
+            "only_after": [timing.to_dict() for timing in self.only_after],
+            "before_dispatch_count": len(self.before_dispatches),
+            "after_dispatch_count": len(self.after_dispatches),
+            "alignment": self.alignment.to_dict() if self.alignment else None,
+        }
 
     def write_to(self: Self, output: TextIO, *, width: int | None = None) -> None:
         """
@@ -328,6 +394,9 @@ def _unique_by_set(
         operations and pairing either with a counterpart would be an arbitrary
         choice. Absent and empty sets are dropped too -- otherwise every dispatch
         that mapped to nothing would match every other one.
+
+        The refusal is silent, which `TimingDiff.only_before`'s docstring warns
+        about: a dispatch dropped here is reported alongside genuinely absent ones.
 
     """
     by_set: dict[frozenset[int], list[int]] = defaultdict(list)
@@ -508,6 +577,42 @@ def compare_results(
     )
 
 
+def _no_dispatches_message(label: str, result: BenchmarkResult) -> str:
+    """
+    Say that a run attributed nothing, and what it measured instead.
+
+    Reports counts, not a cause. The message this replaced named one -- "per-operation
+    timing needs the GPU delegate" -- which was false and sent the caller to change a
+    setting that was not the problem. Nothing available here distinguishes the possible
+    causes, so nothing here claims to.
+
+    Args:
+        label: Which run it was, "before" or "after".
+        result: The run that attributed nothing.
+
+    Returns:
+        The message for the :class:`ValueError`.
+
+    """
+    if result.unattributed_samples:
+        measured = (
+            f"{result.unattributed_samples} sample(s) were measured but named no "
+            "operation in this program"
+        )
+    elif result.symbol_samples:
+        measured = (
+            f"{result.symbol_samples} sample(s) measured whole regions rather than "
+            "individual operations"
+        )
+    else:
+        measured = "no timing was reported at all"
+
+    return (
+        f"The {label} run attributed no dispatches, so there is nothing to compare: "
+        f"{measured}."
+    )
+
+
 async def compare_runs(
     before_program: AIProgram,
     after_program: AIProgram,
@@ -571,12 +676,7 @@ async def compare_runs(
 
     for label, result in zip(("before", "after"), results, strict=True):
         if not result.operation_timings:
-            msg = (
-                f"The {label} run attributed no dispatches, so there is nothing to "
-                "compare. Per-operation timing needs the GPU delegate: check that the "
-                "specialization options select it."
-            )
-            raise ValueError(msg)
+            raise ValueError(_no_dispatches_message(label, result))
 
     if alignment.identical:
         logger.info(

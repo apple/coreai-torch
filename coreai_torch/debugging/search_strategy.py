@@ -96,6 +96,62 @@ class SearchStrategy(ABC, Generic[TNode, TGraph]):
         return []
 
 
+class ExhaustiveStrategy(SearchStrategy[TNode, TGraph]):
+    """Check every operation, in a single batch.
+
+    Reports *every* divergence rather than searching for the first one, and costs one
+    model execution per side to do it.
+    """
+
+    def __init__(self, graph: ComputationGraph[TNode, TGraph]):
+        """
+        Args:
+            graph: Graph whose operations should all be checked.
+
+        """
+        self._graph = graph
+        self._yielded = False
+        self._failed: list[ComputationGraph.Node] = []
+        self._unknown: list[ComputationGraph.Node] = []
+
+    async def __anext__(self) -> list[ComputationGraph.Node]:
+        """Yield every node once, then stop."""
+        if self._yielded:
+            raise StopAsyncIteration
+        self._yielded = True
+        nodes = self._graph.get_nodes()
+        logger.info(
+            "exhaustive: %d operation(s) in one batch -- 1 source execution + "
+            "1 target execution",
+            len(nodes),
+        )
+        return nodes
+
+    async def update(
+        self,
+        results: list[tuple[ComputationGraph.Node, SearchStrategy.ValidationResult]],
+    ) -> None:
+        """Record every result. There is nothing to narrow, so nothing is discarded."""
+        for node, result in results:
+            if result == SearchStrategy.ValidationResult.FAIL:
+                self._failed.append(node)
+            elif result == SearchStrategy.ValidationResult.UNKNOWN:
+                self._unknown.append(node)
+        logger.info(
+            "exhaustive: %d failed, %d unknown of %d checked",
+            len(self._failed),
+            len(self._unknown),
+            len(results),
+        )
+
+    def get_problematic_operations(self) -> list[ComputationGraph.Node]:
+        """Every operation that failed, not just the first."""
+        return self._failed
+
+    def get_unknown_operations(self) -> list[ComputationGraph.Node]:
+        return self._unknown
+
+
 class LevelOrderStrategy(SearchStrategy[TNode, TGraph]):
     """
     Level-based search strategy with configurable level selection.

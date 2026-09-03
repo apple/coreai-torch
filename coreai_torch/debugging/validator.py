@@ -19,7 +19,7 @@ Key components:
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Generic, TypeVar
@@ -44,9 +44,10 @@ from .inspector import (
     TorchFXInspector,
 )
 from .search_strategy import (
-    LevelOrderStrategy,
+    ExhaustiveStrategy,
     SearchStrategy,
 )
+from .utils import _with_debug
 
 TNode = TypeVar("TNode")
 TGraph = TypeVar("TGraph")
@@ -75,7 +76,20 @@ class Validator(Generic[TNode, TGraph]):
         """Operations that failed validation, sorted by topological (execution) order."""
 
         unknown_nodes: list[Any]
-        """Operations with unknown results (couldn't retrieve outputs), sorted by topological order."""
+        """Operations whose values could not be retrieved, sorted by topological order.
+
+        Only genuine retrieval failures. Graph nodes that are not operations are reported
+        separately in :attr:`excluded_nodes`, because reporting them here says a value was
+        expected and missing when none was ever computed."""
+
+        excluded_nodes: list[Any] = field(default_factory=list)
+        """Graph nodes that are not operations: placeholders (inputs and weights),
+        `get_attr`, and the `output` node.
+
+        Split from `unknown_nodes` for the same reason the comparator separates them: on a
+        clean model these are the whole unknown count, so reporting them there reads as
+        failed retrievals when nothing went wrong. The `output` node is also not a failure
+        worth naming in a NaN check: it forwards a value rather than producing one."""
 
     def __init__(
         self,
@@ -90,16 +104,26 @@ class Validator(Generic[TNode, TGraph]):
         Args:
             graph: Computation graph to validate
             inspector: Inspector implementation for retrieving intermediate values
-            strategy: Search strategy to use. Defaults to bisection search strategy (batch_size=10)
+            strategy: Search strategy to use. Defaults to
+                :class:`~coreai_torch.debugging.search_strategy.ExhaustiveStrategy`,
+                which checks every operation in one batch.
+
+                Each batch a strategy yields costs a full model execution on *both*
+                sides, so narrowing only pays when a capture costs more than a run.
+                Level-order batches within a depth level, so over a chain -- one node per
+                level -- every batch comes back size 1 whatever the batch size, and
+                bisection costs an execution per node while reporting only the first
+                divergence.
+
+                Bisection remains the right choice when a capture is expensive: very
+                large intermediates, or an early exit that skips most of the graph.
+                Pass it explicitly for those.
             show_progress: Whether to show progress bar during validation (default: True)
 
         """
         self.graph = graph
         self.inspector = inspector
-        self.strategy = strategy or LevelOrderStrategy.bisection(
-            graph=graph,
-            batch_size=10,
-        )
+        self.strategy = strategy or ExhaustiveStrategy(graph=graph)
         self.show_progress = show_progress
         self._progress_bar: Any = None
 
@@ -149,6 +173,25 @@ class Validator(Generic[TNode, TGraph]):
         if self._progress_bar:
             self._progress_bar.close()
             self._progress_bar = None
+
+    @staticmethod
+    def _is_not_an_operation(node: ComputationGraph.Node) -> bool:
+        """Whether this graph node computes nothing.
+
+        A placeholder (a model input or weight), a `get_attr`, or the `output` node. They
+        carry values but perform no arithmetic, so a NaN check has nothing to say about
+        them -- and the `output` node in particular would otherwise be reported as
+        *producing* a NaN it merely forwards.
+
+        Args:
+            node: Graph node to test.
+
+        Returns:
+            True when the node performs no computation.
+
+        """
+        original = getattr(node, "original_node", None)
+        return getattr(original, "op", None) in ("placeholder", "output", "get_attr")
 
     def _evaluate_node(
         self,
@@ -222,6 +265,7 @@ class Validator(Generic[TNode, TGraph]):
 
         # Initialize progress tracking
         pass_count = 0
+        excluded: list[ComputationGraph.Node] = []
         fail_count = 0
         unknown_count = 0
 
@@ -240,6 +284,16 @@ class Validator(Generic[TNode, TGraph]):
                 # Check each node in the batch and collect results
                 batch_results = []
                 for node in batch:
+                    if self._is_not_an_operation(node):
+                        # Not a computation, so there is no value to validate. Recorded
+                        # apart from the unknowns rather than counted as a failed retrieval.
+                        excluded.append(node)
+                        batch_results.append(
+                            (node, SearchStrategy.ValidationResult.UNKNOWN),
+                        )
+                        unknown_count += 1
+                        continue
+
                     outputs = results.get(node.op_id)
                     result = self._evaluate_node(outputs, check_fn)
                     batch_results.append((node, result))
@@ -261,7 +315,11 @@ class Validator(Generic[TNode, TGraph]):
             # After search completes, get problematic operations
             failed_nodes = self.strategy.get_problematic_operations()
             unknown_nodes: list[ComputationGraph.Node] = []
-            unknown_nodes = self.strategy.get_unknown_operations()
+            unknown_nodes = [
+                node
+                for node in self.strategy.get_unknown_operations()
+                if not self._is_not_an_operation(node)
+            ]
 
             # Sort both lists by topological (execution) order and get original nodes
             sorted_failed = (
@@ -278,6 +336,9 @@ class Validator(Generic[TNode, TGraph]):
             return Validator.Result(
                 failed_nodes=sorted_failed,
                 unknown_nodes=sorted_unknown,
+                excluded_nodes=(
+                    self._sort_nodes_by_topo_order(excluded, op_ids) if excluded else []
+                ),
             )
         finally:
             # Notify validation completion
@@ -351,7 +412,9 @@ async def create_validator_for_coreai_program(
         program: AIProgram to validate
         entry_point: Name of the coreai.graph
         inspector_type: Type of inspector.
-        strategy: Search strategy to use. Defaults to bisection search strategy (batch_size=10)
+        strategy: Search strategy to use. Defaults to `ExhaustiveStrategy`, which
+            checks every operation in one batch and reports every divergence; see
+            :class:`Validator` for why that is the default rather than bisection.
         use_caching: Whether to wrap inspector with _CachingInspector (default: True)
         specialization_options: Options for configuring model specialization
 
@@ -365,11 +428,7 @@ async def create_validator_for_coreai_program(
 
     # Create asset from AIProgram and load model from asset
     asset = program.save_asset(asset_path)
-    specialization_options = (
-        specialization_options.with_debug(enabled=True)
-        if specialization_options is not None
-        else None
-    )
+    specialization_options = _with_debug(specialization_options)
     model = await AIModel.load(asset.path, specialization_options)
 
     inspector = CoreAIInspector(
@@ -403,7 +462,9 @@ def _create_validator_for_exported_program(
 
     Args:
         program: PyTorch ExportedProgram to validate
-        strategy: Search strategy to use. Defaults to bisection search strategy (batch_size=10)
+        strategy: Search strategy to use. Defaults to `ExhaustiveStrategy`, which
+            checks every operation in one batch and reports every divergence; see
+            :class:`Validator` for why that is the default rather than bisection.
         use_caching: Whether to wrap inspector with _CachingInspector (default: True)
 
     Returns:
@@ -441,7 +502,9 @@ def create_validator_for_exported_program(
 
     Args:
         program: PyTorch ExportedProgram to validate
-        strategy: Search strategy to use. Defaults to bisection search strategy (batch_size=10)
+        strategy: Search strategy to use. Defaults to `ExhaustiveStrategy`, which
+            checks every operation in one batch and reports every divergence; see
+            :class:`Validator` for why that is the default rather than bisection.
         use_caching: Whether to wrap inspector with CachingInspector (default: True)
 
     Returns:

@@ -477,10 +477,16 @@ async def test_operation_id_uniqueness(
 
     simple_coreai_program._mlir_module.operation.walk(collect_ids)
 
-    if len(coreai_ids) > 1:
-        assert len(coreai_ids) == len(set(coreai_ids)), (
-            "Core AI operation IDs should be unique"
-        )
+    # Guarded by `if len(coreai_ids) > 1` before, so a walk that found one id or none
+    # passed without comparing anything -- and "no operation carries an id" is the
+    # failure this test exists to notice. Measured: 16 ids on this model.
+    assert len(coreai_ids) > 1, (
+        f"Found {len(coreai_ids)} Core AI operation id(s); with fewer than two there "
+        "is no uniqueness to check and the walk itself is suspect"
+    )
+    assert len(coreai_ids) == len(set(coreai_ids)), (
+        "Core AI operation IDs should be unique"
+    )
 
 
 async def test_get_operation_id(simple_coreai_program: AIProgram) -> None:

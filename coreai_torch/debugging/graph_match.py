@@ -30,6 +30,11 @@ Five steps:
 Pairs are proposed on `structural_labels` (no result types, no payloads) and verified
 against `node_labels`, so an op whose shape changed still pairs and reads as modified.
 
+Steps 3 and 4 sometimes have to choose among nodes that nothing tells apart, and which
+one they take is then topological order rather than evidence. `Alignment.ambiguity`
+reports where that happened, so a tie-break is not mistaken for a finding -- see
+`Ambiguity`.
+
 **Lifetime.** Labels read `ir_object` lazily at `align` time, so a graph is only usable
 while its program is alive; dropping the `AIProgram` segfaults the interpreter.
 """
@@ -40,12 +45,14 @@ import hashlib
 import logging
 import re
 from collections import Counter, defaultdict, deque
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 import networkx as nx  # type: ignore[import-untyped]
+
+from .utils import _plain
 
 try:  # `scipy` is a declared dependency; the fallback is for a trimmed install.
     import numpy as _numpy
@@ -118,12 +125,116 @@ _DISPLAY_NAME_KEPT = "coreai.name"
 # graph is compared with which is already decided before a pair reaches here, composites
 # pairing through their invoke call sites. Nothing is lost -- the declared name is in
 # `composite_decl` and an invoke's callee is a reference.
-_UNSTABLE_ATTRS = frozenset({"sym_name"})
+UNSTABLE_ATTRIBUTES = frozenset({"sym_name"})
+"""Attributes left out of an op's identity by default.
+
+`sym_name` is regenerated per conversion, so including it reports every op of an unchanged
+model as changed. Pass a different set as `ignore_attributes` to tune this: union with this
+constant to keep the defaults, or pass an empty set to compare everything -- which is how to
+find out *why* two ops that should match do not.
+"""
 
 # A node that has no label: it belongs to neither graph, or was never labelled.
 # Distinct from every real label, since every real node has at least a kind.
 _MISSING = "?"
 _UNMAPPED = None
+
+
+@dataclass(frozen=True)
+class Ambiguity:
+    """
+    The part of an alignment that a tie-break decided, rather than the graphs.
+
+    Several nodes can share a fingerprint -- three identical blocks, or, under
+    `WeightPolicy.IGNORE`, every parameter constant of one shape, since eliding the
+    values is precisely what makes them alike. The passes that pair on a fingerprint
+    then take the group in topological order: deterministic, but arbitrary. Another
+    order would have produced a different mapping, and when the two sides hold
+    different numbers of them, a different set of removals.
+
+    That is how a diff blames an edit on the wrong layer. Promoting the middle of
+    three `Linear`s to fp32 paired the first block's ops with the third's and
+    reported the *second* block as removed -- three removals and three additions,
+    every one of them fiction, and none of them the layer that changed.
+
+    Each set is the subset of `Alignment` that rests on such a choice, in the same
+    terms: `paired` are source ids in `mapping` or `modified`, `removed` and `added`
+    are subsets of the like-named fields. Which set a node lands in is decided by how
+    the finished alignment classified it, not by what the pass that chose expected --
+    a pair made among equals that then fails verification is a *removal* a tie-break
+    produced, and reporting it as a pairing would hide the one case that matters most.
+
+    A non-empty `Ambiguity` does not mean the alignment is wrong. Choosing among
+    genuinely equivalent nodes is still a correct answer, and `identical` stays a
+    proof either way. It means the *reason* the diff reads as it does is a tie-break,
+    so an equally valid alignment could read differently. `WeightPolicy.DIGEST` is the
+    remedy, telling apart what ignoring parameter values made alike.
+
+    **These are the choice sites, not everything a choice displaced.** A node paired
+    wrongly among equals leaves its true partner with nothing to pair to, and that
+    node -- never ambiguous itself, so never recorded here -- is removed alongside.
+    So read a non-empty `Ambiguity` as "some of what follows is a tie-break", not as a
+    complete list of which parts. The remedy is the same either way: under `DIGEST` the
+    weights disambiguate and the comparison reports the change correctly.
+
+    Attributes:
+        paired: Source ids whose counterpart was chosen among equals.
+        removed: Source ids reported removed because of such a choice -- the leftover
+            member of an interchangeable group, or a node whose arbitrary pair failed
+            verification.
+        added: Target ids reported added for the same reasons.
+
+    """
+
+    paired: frozenset[int] = frozenset()
+    removed: frozenset[int] = frozenset()
+    added: frozenset[int] = frozenset()
+
+    @property
+    def count(self) -> int:
+        """How many nodes rest on an arbitrary choice, across all three sets."""
+        return len(self.paired) + len(self.removed) + len(self.added)
+
+    def __bool__(self) -> bool:
+        """Whether any choice at all was arbitrary."""
+        return bool(self.paired or self.removed or self.added)
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Return the ambiguity as plain values.
+
+        Returns:
+            The three id sets as sorted lists, and :attr:`count`, which is derived
+            and would otherwise have to be recomputed by every reader.
+
+        """
+        return {
+            "paired": _plain(self.paired),
+            "removed": _plain(self.removed),
+            "added": _plain(self.added),
+            "count": self.count,
+        }
+
+
+@dataclass
+class _Choices:
+    """
+    The nodes a tie-break touched, accumulated as the passes make them.
+
+    Mutable and threaded through the passes, because a tie-break is only visible
+    where it happens: by the time `align` has a mapping, a pair chosen among three
+    equals and a pair nothing else could have made look exactly alike.
+
+    One set per side rather than one per outcome, because the pass that makes the
+    choice does not get the last word on what becomes of it. Anchoring pairs a node
+    among equals; verification can still reject that pair and leave the node removed
+    -- which is the case most worth reporting, and was the one lost by recording the
+    outcome the pass expected instead of the one it got. `align` splits these by how
+    each node actually ended up.
+    """
+
+    sources: set[int] = field(default_factory=set)
+    targets: set[int] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -138,6 +249,8 @@ class Alignment:
         modified: Source ids whose counterpart is the same op wired or configured
             differently, as `(source id, target id)`.
         identical: Whether the two graphs are provably the same graph.
+        ambiguity: Which of the above a tie-break decided rather than the graphs.
+            Empty when every pairing followed from something in them.
 
     """
 
@@ -146,11 +259,31 @@ class Alignment:
     added: list[int] = field(default_factory=list)
     modified: list[tuple[int, int]] = field(default_factory=list)
     identical: bool = False
+    ambiguity: Ambiguity = field(default_factory=Ambiguity)
 
     @property
     def changed(self) -> bool:
         """Whether anything at all differs."""
         return bool(self.removed or self.added or self.modified)
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Return the alignment as plain values.
+
+        Returns:
+            The correspondence and what it leaves over, plus the derived
+            :attr:`changed` and the ambiguity qualifying all of it.
+
+        """
+        return {
+            "mapping": _plain(self.mapping),
+            "removed": _plain(self.removed),
+            "added": _plain(self.added),
+            "modified": [list(pair) for pair in self.modified],
+            "identical": self.identical,
+            "changed": self.changed,
+            "ambiguity": self.ambiguity.to_dict(),
+        }
 
 
 def _is_parameter(value: Any) -> Any | None:
@@ -293,9 +426,10 @@ def _attr_digest(
     policy: WeightPolicy,
     blobs: Mapping[str, str],
     types: bool = True,
+    ignore: Collection[str] = UNSTABLE_ATTRIBUTES,
 ) -> str:
     """
-    A digest of an op's own attributes.
+    A digest of an op's own attributes, less the ones named in `ignore`.
 
     Parameter payloads are left out by default and per-conversion symbol suffixes
     normalised away: both differ between two conversions of one unchanged model, so
@@ -311,7 +445,7 @@ def _attr_digest(
     parts: list[str] = []
     for attribute in attributes:
         name = str(attribute.name)
-        if name in _UNSTABLE_ATTRS:
+        if name in ignore:
             continue
 
         shaped = _is_parameter(attribute.attr)
@@ -452,6 +586,7 @@ def _labels(
     policy: WeightPolicy,
     blobs: Mapping[str, str],
     types: bool,
+    ignore: Collection[str],
 ) -> dict[int, Label]:
     """The shared body of `node_labels` and `structural_labels`."""
     return {
@@ -461,7 +596,7 @@ def _labels(
             index=str(attrs.get("index", "")),
             value_type=str(attrs.get("value_type", "")),
             ir_type=str(attrs.get("ir_type", "")) if types else "",
-            attributes=_attr_digest(attrs, policy, blobs, types),
+            attributes=_attr_digest(attrs, policy, blobs, types, ignore),
             results=_result_types(attrs) if types else "",
         )
         for node, attrs in graph.nodes(data=True)
@@ -472,6 +607,7 @@ def node_labels(
     graph: nx.DiGraph,
     policy: WeightPolicy = WeightPolicy.IGNORE,
     blobs: Mapping[str, str] | None = None,
+    ignore_attributes: Collection[str] = UNSTABLE_ATTRIBUTES,
 ) -> dict[int, Label]:
     """
     Everything that makes each node the node it is, as a comparable string.
@@ -490,15 +626,20 @@ def node_labels(
         policy: Whether parameter values count towards identity.
         blobs: Resource digests for this graph's module, from `resource_digests`.
             Read only under `WeightPolicy.DIGEST_PORTABLE`.
+        ignore_attributes: Attribute names left out of the label. Defaults to
+            `UNSTABLE_ATTRIBUTES`.
 
     Returns:
         A label per node id.
 
     """
-    return _labels(graph, policy, blobs or {}, types=True)
+    return _labels(graph, policy, blobs or {}, types=True, ignore=ignore_attributes)
 
 
-def structural_labels(graph: nx.DiGraph) -> dict[int, Label]:
+def structural_labels(
+    graph: nx.DiGraph,
+    ignore_attributes: Collection[str] = UNSTABLE_ATTRIBUTES,
+) -> dict[int, Label]:
     """
     What makes each node that node *apart from the data flowing through it*.
 
@@ -513,12 +654,21 @@ def structural_labels(graph: nx.DiGraph) -> dict[int, Label]:
 
     Args:
         graph: The graph to label.
+        ignore_attributes: Attribute names left out of the label. Defaults to
+            `UNSTABLE_ATTRIBUTES`. Widening this widens what may *pair*, so an
+            attribute named here is one an op can differ in and still be the same op.
 
     Returns:
         A label per node id.
 
     """
-    return _labels(graph, WeightPolicy.IGNORE, {}, types=False)
+    return _labels(
+        graph,
+        WeightPolicy.IGNORE,
+        {},
+        types=False,
+        ignore=ignore_attributes,
+    )
 
 
 # The edge from an operation to a value it produces, which is how a changed value
@@ -799,17 +949,21 @@ class _Side:
     hashes: dict[int, str]
 
 
-def _side(graph: nx.DiGraph, weights: WeightPolicy) -> _Side:
+def _side(
+    graph: nx.DiGraph,
+    weights: WeightPolicy,
+    ignore_attributes: Collection[str] = UNSTABLE_ATTRIBUTES,
+) -> _Side:
     """Everything `align` reads from one graph, derived once."""
     blobs = _graph_blobs(graph) if weights is WeightPolicy.DIGEST_PORTABLE else None
-    identity = node_labels(graph, weights, blobs)
+    identity = node_labels(graph, weights, blobs, ignore_attributes)
 
     return _Side(
         graph=graph,
         order=_ordered(graph),
         adjacency=_adjacency(graph),
         identity=identity,
-        structure=structural_labels(graph),
+        structure=structural_labels(graph, ignore_attributes),
         hashes=fingerprints(graph, identity),
     )
 
@@ -820,6 +974,7 @@ def _extend_anchor(
     target_hashes: dict[int, str],
     source_order: list[int],
     target_order: list[int],
+    choices: _Choices,
     unambiguous: bool = False,
 ) -> None:
     """
@@ -830,6 +985,10 @@ def _extend_anchor(
     deliberately ignores things", not "interchangeable", so choosing arbitrarily among
     them pushes correct pairs out. Pairing ambiguously on the structural key turned a
     clean 16-node block addition into 20 added and 4 removed.
+
+    `choices` records the tie-breaks for `Ambiguity`; see `_anchor` for what counts as
+    one. Under `unambiguous` there are none to record, every ambiguous group being
+    skipped outright.
     """
     taken = set(mapping.values())
     by_hash_target: dict[str, list[int]] = defaultdict(list)
@@ -837,24 +996,44 @@ def _extend_anchor(
         if node not in taken:
             by_hash_target[target_hashes[node]].append(node)
 
-    if unambiguous:
-        by_hash_source: dict[str, list[int]] = defaultdict(list)
-        for node in source_order:
-            if node not in mapping:
-                by_hash_source[source_hashes[node]].append(node)
+    by_hash_source: dict[str, list[int]] = defaultdict(list)
+    for node in source_order:
+        if node not in mapping:
+            by_hash_source[source_hashes[node]].append(node)
+
+    # Decided up front, because what makes a choice arbitrary is how many nodes shared
+    # the hash to begin with -- not how many are left by the time one is reached, the
+    # loop below popping from these very lists as it goes.
+    ambiguous = {
+        digest
+        for digest, sources in by_hash_source.items()
+        if by_hash_target.get(digest)
+        and (len(sources) > 1 or len(by_hash_target[digest]) > 1)
+    }
 
     for node in source_order:
         if node in mapping:
             continue
 
         digest = source_hashes[node]
+        arbitrary = digest in ambiguous
         candidates = by_hash_target.get(digest)
         if not candidates:
+            # The group was exhausted by an earlier source, so which one went
+            # unpaired is the tie-break. A hash with no target at all is not in
+            # `ambiguous`: nothing was chosen, the node is simply gone.
+            if arbitrary:
+                choices.sources.add(node)
             continue
         if unambiguous and (len(candidates) > 1 or len(by_hash_source[digest]) > 1):
             continue
 
-        mapping[node] = candidates.pop(0)
+        target = candidates.pop(0)
+        if arbitrary:
+            choices.sources.add(node)
+            choices.targets.add(target)
+
+        mapping[node] = target
 
 
 def _anchor(
@@ -862,6 +1041,7 @@ def _anchor(
     target_hashes: dict[int, str],
     source_order: list[int],
     target_order: list[int],
+    choices: _Choices,
 ) -> dict[int, int]:
     """
     Pair nodes that hash alike.
@@ -877,6 +1057,9 @@ def _anchor(
     anything downstream does. Both try to recover an identity the label threw away; the
     ambiguity is a consequence of eliding parameter values, which
     `WeightPolicy.DIGEST` does not do.
+
+    `choices` records which pairs that leaves resting on the order rather than on the
+    graphs, so `align` can report them instead of presenting a tie-break as a finding.
     """
     by_hash_source: dict[str, list[int]] = defaultdict(list)
     by_hash_target: dict[str, list[int]] = defaultdict(list)
@@ -893,6 +1076,16 @@ def _anchor(
 
         for source, target in zip(sources, targets):
             mapping[source] = target
+
+        if len(sources) == 1 and len(targets) == 1:
+            continue
+
+        # More than one member on either side: the zip above took them in
+        # topological order, and whatever the shorter side could not cover falls out
+        # of the mapping. Every node the group touched is the order's doing, paired
+        # or left over -- `align` sorts out which it turned into.
+        choices.sources.update(sources)
+        choices.targets.update(targets)
 
     return mapping
 
@@ -1058,6 +1251,7 @@ def _assign_residual(
     mapping: dict[int, int],
     source: _Side,
     target: _Side,
+    choices: _Choices,
 ) -> None:
     """
     Pair what is left over by best overall agreement, ignoring position entirely.
@@ -1078,6 +1272,11 @@ def _assign_residual(
 
     Falls back to `_greedy_assignment` if `scipy` is unavailable, costing optimality on
     the rare row with two plausible partners, not correctness.
+
+    A node whose best score is shared by several candidates is recorded in `choices`:
+    its company says the same about each of them, so which one it got is the
+    assignment's tie-break. Recorded when the pair it made actually scored that
+    shared best -- below it, the rest of the matrix is what decided.
     """
     unmatched_source = [node for node in source.order if node not in mapping]
     if not unmatched_source:
@@ -1097,12 +1296,14 @@ def _assign_residual(
     }
 
     scores: dict[tuple[int, int], float] = {}
+    tied_best: dict[int, float] = {}
     for source_node in unmatched_source:
         label = source.identity.get(source_node)
         known = company[source_node]
         if not known:
             continue
 
+        row: dict[int, float] = {}
         for target_node in unmatched_target:
             if target.identity.get(target_node) != label:
                 continue
@@ -1110,12 +1311,24 @@ def _assign_residual(
             context = target.adjacency.context[target_node]
             shared = known & context
             if shared:
-                scores[(source_node, target_node)] = len(shared) / len(known | context)
+                row[target_node] = len(shared) / len(known | context)
+
+        if not row:
+            continue
+
+        best = max(row.values())
+        if sum(1 for score in row.values() if score == best) > 1:
+            tied_best[source_node] = best
+        for target_node, score in row.items():
+            scores[(source_node, target_node)] = score
 
     for source_node, target_node in _best_assignment(
         scores, unmatched_source, unmatched_target
     ):
         mapping[source_node] = target_node
+        if scores[(source_node, target_node)] == tied_best.get(source_node):
+            choices.sources.add(source_node)
+            choices.targets.add(target_node)
 
 
 def _best_assignment(
@@ -1254,6 +1467,7 @@ def align(
     source_graph: nx.DiGraph,
     target_graph: nx.DiGraph,
     weights: WeightPolicy = WeightPolicy.IGNORE,
+    ignore_attributes: Collection[str] = UNSTABLE_ATTRIBUTES,
 ) -> Alignment:
     """
     Which node of `source_graph` became which node of `target_graph`.
@@ -1268,11 +1482,16 @@ def align(
             no meaningful cost, but only between programs this process produced;
             `DIGEST_PORTABLE` also works for programs loaded from disk, and pays a
             print of each graph's module for it -- see `resource_digests`.
+        ignore_attributes: Attribute names left out of an op's identity, defaulting to
+            `UNSTABLE_ATTRIBUTES`. These reach both labels, so a name added here lets
+            ops differing only in that attribute both pair *and* verify as identical.
 
     Returns:
         An `Alignment`. `identical` is a certificate rather than a guess: it holds
         only when the verified mapping is a complete bijection that accounts for
-        every edge, which is a proof the graphs are the same graph.
+        every edge, which is a proof the graphs are the same graph. `ambiguity` is
+        the opposite kind of statement: which of the findings a tie-break produced,
+        and so should not be read as evidence of an edit.
 
     """
     # Two labels per node, and the difference between them is the point. Pairs are
@@ -1281,19 +1500,24 @@ def align(
     # full label, so such a pair is reported as *modified* rather than accepted.
     # Proposing on the full label made a reshaped op read as an unrelated op removed
     # and another added, leaving nothing to say which one changed.
-    source = _side(source_graph, weights)
-    target = _side(target_graph, weights)
+    source = _side(source_graph, weights, ignore_attributes)
+    target = _side(target_graph, weights, ignore_attributes)
+
+    choices = _Choices()
 
     # Pass 1, the exact key: anchor equal fingerprints, from the producers up and
     # then from the uses inward, and grow both outward along dataflow. Every pair
     # made here is exact, which is what makes it safe to grow from.
-    candidate = _anchor(source.hashes, target.hashes, source.order, target.order)
+    candidate = _anchor(
+        source.hashes, target.hashes, source.order, target.order, choices
+    )
     _extend_anchor(
         candidate,
         co_fingerprints(source.graph, source.identity),
         co_fingerprints(target.graph, target.identity),
         source.order,
         target.order,
+        choices,
     )
 
     # Propagation runs *before* the weaker key, not after: growing from exact pairs
@@ -1313,6 +1537,7 @@ def align(
             weak(target.graph, target.structure),
             source.order,
             target.order,
+            choices,
             unambiguous=True,
         )
 
@@ -1324,22 +1549,113 @@ def align(
     # consumer claimed (a dead constant) lands where it would have before.
     released = _release_interchangeable(candidate, source, target)
     _propagate(candidate, source, target, source.identity, target.identity)
-    _extend_anchor(candidate, source.hashes, target.hashes, source.order, target.order)
+
+    # Whatever that propagation re-made was decided by the consumers -- the context
+    # the release exists to consult -- so it is no longer a tie-break. Checked here
+    # rather than at the end because `_restore_released` below puts back anchoring's
+    # arbitrary choice verbatim, and those pairs must stay recorded.
+    choices.sources.difference_update(
+        source_node for source_node, _ in released if source_node in candidate
+    )
+
+    _extend_anchor(
+        candidate,
+        source.hashes,
+        target.hashes,
+        source.order,
+        target.order,
+        choices,
+    )
     _restore_released(candidate, released)
 
     # Pass 4, the last resort: whatever is still unpaired, matched on the company it
     # keeps rather than on where it sits. This is what recognises a *move*.
-    _assign_residual(candidate, source, target)
+    _assign_residual(candidate, source, target, choices)
 
     verified, modified = _verify(candidate, source, target)
 
     matched_targets = set(verified.values()) | {target for _, target in modified}
     matched_sources = set(verified) | {source for source, _ in modified}
+    removed = [node for node in source.order if node not in matched_sources]
+    added = [node for node in target.order if node not in matched_targets]
+
+    # Split by how each node actually ended up, not by what the pass that recorded it
+    # expected: anchoring pairs a node among equals, and verification can still reject
+    # that pair and leave it removed -- a removal a tie-break produced, which is the
+    # case most worth reporting and the easiest to lose.
+    ambiguity = Ambiguity(
+        paired=frozenset(choices.sources & matched_sources),
+        removed=frozenset(choices.sources.intersection(removed)),
+        added=frozenset(choices.targets.intersection(added)),
+    )
+    identical = _is_isomorphism(verified, modified, source.graph, target.graph)
+    _warn_ambiguous(ambiguity, identical, weights, len(source.order))
 
     return Alignment(
         mapping=verified,
-        removed=[node for node in source.order if node not in matched_sources],
-        added=[node for node in target.order if node not in matched_targets],
+        removed=removed,
+        added=added,
         modified=modified,
-        identical=_is_isomorphism(verified, modified, source.graph, target.graph),
+        identical=identical,
+        ambiguity=ambiguity,
+    )
+
+
+def _warn_ambiguous(
+    ambiguity: Ambiguity,
+    identical: bool,
+    weights: WeightPolicy,
+    source_node_count: int,
+) -> None:
+    """
+    Say so when a tie-break, not the graphs, produced part of the answer.
+
+    Silence here is the failure this exists to stop: a diff that names three removed
+    ops reads as evidence whether or not the matcher picked which three by
+    topological order. The counts go to `WARNING` because nothing else in the output
+    distinguishes the two.
+
+    Not raised for a proven isomorphism. Two conversions of one unchanged model leave
+    every parameter constant of a shape interchangeable under `IGNORE` -- more than
+    half the nodes of a small model -- and every one of those choices is then
+    demonstrably harmless, `identical` holding only when the mapping is a complete
+    bijection that accounts for every edge.
+    """
+    if not ambiguity or identical:
+        return
+
+    # A tie-break that produced no removal or addition still misplaces the
+    # correspondence, which is what a caller joining on `mapping` reads -- but saying
+    # findings rest on it when none do would be its own overstatement.
+    detail = f"{len(ambiguity.paired)} paired among equals"
+    caution = (
+        "Which of them became which is arbitrary, though no reported difference "
+        "rests on it."
+    )
+    if ambiguity.removed or ambiguity.added:
+        detail += (
+            f", {len(ambiguity.removed)} reported removed and "
+            f"{len(ambiguity.added)} added as a consequence"
+        )
+        caution = (
+            "Those removals and additions are not evidence of an edit, and are a "
+            "lower bound: a node displaced by someone else's tie-break is not itself "
+            "ambiguous and is not counted here."
+        )
+
+    remedy = (
+        "Re-run with weights=WeightPolicy.DIGEST, which compares parameter values "
+        "and so tells apart what ignoring them made alike."
+        if weights is WeightPolicy.IGNORE
+        else f"Already under {weights.name}; the nodes it cannot tell apart are "
+        "equivalent as far as anything in the graph can say."
+    )
+    logger.warning(
+        "Alignment: at least %d of %d nodes were decided by a tie-break, not by the "
+        "graphs (%s). %s %s",
+        ambiguity.count,
+        source_node_count,
+        detail,
+        caution,
+        remedy,
     )

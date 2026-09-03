@@ -578,6 +578,53 @@ def _get_compile_unit_attr(
 # =============================================================================
 
 
+def _in_ir_order(
+    operations: list[Operation], graph_operation: Operation | None
+) -> list[Operation]:
+    """Sort *operations* into IR order, so ids are assigned in dataflow order.
+
+    IR order is used rather than reversing the walk. Reversal is only correct when every
+    path from a result to a producer has the same length; where an operation is reachable
+    by two paths of different lengths the backwards walk records it at the shorter one,
+    and reversing then places it after something it feeds. MLIR block order is already a
+    valid topological order -- a value is defined before it is used -- so sorting by it
+    needs no such assumption.
+
+    Args:
+        operations: Operations to order; may contain duplicates and nested operations.
+        graph_operation: The graph whose IR order to use. When ``None`` the input is
+            returned unchanged, since there is nothing to sort against.
+
+    Returns:
+        The operations, without duplicates, in IR order. Any operation not found in
+        *graph_operation* keeps its original relative position at the end.
+    """
+    if graph_operation is None:
+        return operations
+
+    position = {
+        _operation_key(op): index
+        for index, op in enumerate(_get_nested_operations(graph_operation))
+    }
+    # Stable sort, so operations absent from the graph keep their relative order rather
+    # than being reshuffled among themselves.
+    unseen = len(position)
+    ordered = sorted(
+        dict.fromkeys(operations, None),
+        key=lambda op: position.get(_operation_key(op), unseen),
+    )
+    return list(ordered)
+
+
+def _operation_key(operation: Operation) -> int:
+    """A stable identity for an MLIR operation.
+
+    ``id()`` is not usable: the bindings hand back a fresh Python wrapper on each access,
+    so two wrappers for one operation compare unequal and hash differently.
+    """
+    return hash(operation)
+
+
 def _get_nested_operations(operation: Operation) -> Iterator[Operation]:
     """Iteratively yield all nested operations from regions/blocks.
 
@@ -1233,7 +1280,7 @@ class _DebugInfoRecorder:
             for nested_op in _get_nested_operations(op):
                 added_operations.append(nested_op)
 
-        return added_operations
+        return _in_ir_order(added_operations, self._current_graph)
 
     def _assign_debug_info_to_operations(
         self: Self,

@@ -259,21 +259,18 @@ async def test_search_narrows_on_failure() -> None:
     # The strategy should focus on the area around the failure and unknowns
     assert failed_node is not None
 
-    # Try to get next batch - may complete if all nodes are checked
-    try:
-        batch2 = await strategy.__anext__()
+    # The next batch has to arrive, and it has to be narrowed. This was wrapped in
+    # `try: ... except StopAsyncIteration: pass`, which meant a strategy that gave up
+    # after one batch -- the failure worth catching, since bisection that stops
+    # searching finds nothing -- passed without the assertion ever running. Measured:
+    # batch2 arrives with 2 nodes at max depth 1, against a failure at depth 2.
+    batch2 = await strategy.__anext__()
 
-        # If there is a next batch, it should focus on depths at or before failure
-        max_depth_in_batch2 = max(n.depth for n in batch2)
-
-        # Should not search beyond the failure/unknown depth range
-        assert max_depth_in_batch2 <= failed_node.depth, (
-            f"After failure at depth {failed_node.depth}, batch2 has max depth "
-            f"{max_depth_in_batch2} which is too deep"
-        )
-    except StopAsyncIteration:
-        # It's valid for search to complete if all necessary nodes were checked
-        pass
+    max_depth_in_batch2 = max(n.depth for n in batch2)
+    assert max_depth_in_batch2 <= failed_node.depth, (
+        f"After failure at depth {failed_node.depth}, batch2 has max depth "
+        f"{max_depth_in_batch2} which is too deep"
+    )
 
 
 async def test_search_advances_on_pass() -> None:

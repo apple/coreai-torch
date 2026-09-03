@@ -22,7 +22,7 @@ import logging
 import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -42,7 +42,12 @@ from coreai.runtime import (
 )
 from typing_extensions import Self
 
-from .annotations import _Annotation, _AnnotationCallback, _AnnotationLine
+from .annotations import (
+    _DETAIL_STYLE,
+    _Annotation,
+    _AnnotationCallback,
+    _AnnotationLine,
+)
 from .debug_info import (
     DebugInfoRecord,
     _build_compile_id_to_coreai_map,
@@ -59,7 +64,13 @@ from .table_writer import (
     _write_table,
     _write_tree,
 )
-from .utils import LocationInfo, get_operation_locations, split_module_frame
+from .utils import (
+    LocationInfo,
+    _plain,
+    _with_debug,
+    get_operation_locations,
+    split_module_frame,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +171,23 @@ class Statistics:
             median=median,
         )
 
+    def to_dict(self: Self) -> dict[str, Any]:
+        """
+        Return these statistics as plain values.
+
+        Returns:
+            The five figures. A non-finite one becomes None rather than an
+            ``Infinity`` literal that is not valid JSON.
+
+        """
+        return {
+            "minimum": _plain(self.minimum),
+            "maximum": _plain(self.maximum),
+            "average": _plain(self.average),
+            "std_dev": _plain(self.std_dev),
+            "median": _plain(self.median),
+        }
+
 
 @dataclass(frozen=True)
 class Measurement:
@@ -188,6 +216,21 @@ class Measurement:
             samples=samples,
         )
 
+    def to_dict(self: Self) -> dict[str, Any]:
+        """
+        Return the measurement as plain values.
+
+        Returns:
+            The statistics and every raw sample. The samples are kept: a caller
+            checking whether a dispatch is stable needs the spread, and a count that
+            differs from the run count is how pooled dispatches are recognised.
+
+        """
+        return {
+            "statistics": self.statistics.to_dict() if self.statistics else None,
+            "samples": _plain(self.samples),
+        }
+
     @property
     def sort_key(self) -> tuple[bool, float | None]:
         """
@@ -204,61 +247,129 @@ class Measurement:
 
 
 @dataclass(frozen=True)
-class _TimingAnnotation:
-    """
-    A dispatch's timing as an :class:`_Annotation`.
+class _Dispatch:
+    """One dispatch's contribution to an operation's cost, as plain values."""
 
-    Carries the numbers rather than a formatted string, so a consumer that renders
-    its own output gets them from :meth:`data` instead of parsing text back.
-    """
-
+    odix_id: int | None
     op_ids: tuple[int, ...]
-    """Core AI operation IDs the dispatch covered."""
-
     op_names: tuple[str, ...]
-    """Names of those operations."""
-
     median_ms: float
-    """Median duration of the dispatch, in milliseconds."""
-
     average_ms: float
-    """Mean duration of the dispatch, in milliseconds."""
-
     samples: int
-    """How many measurements the statistics are over."""
 
-    def lines(self: Self) -> "tuple[_AnnotationLine, ...]":
-        """
-        Return this timing as a single line.
-
-        Returns:
-            One :class:`_AnnotationLine` naming the operations and their timing.
-
-        """
-        fused = "+".join(self.op_names) or "unknown"
-        return (
-            _AnnotationLine(
-                f"{fused}: {self.average_ms:.3f}ms (med: {self.median_ms:.3f}ms)",
-                style="",
-            ),
-        )
+    @property
+    def label(self: Self) -> str:
+        """The operations this dispatch covered, joined as they are rendered."""
+        return "+".join(self.op_names) or "unknown"
 
     def data(self: Self) -> dict[str, Any]:
-        """
-        Return the timing as plain values.
-
-        Returns:
-            The op ids and names the duration covers, and the duration itself. The
-            ids matter as much as the numbers: the duration belongs to the whole
-            dispatch, so a consumer must not add it up per operation.
-
-        """
+        """This dispatch as plain values, for a machine-readable report."""
         return {
+            "odix_id": self.odix_id,
             "op_ids": list(self.op_ids),
             "op_names": list(self.op_names),
             "median_ms": self.median_ms,
             "average_ms": self.average_ms,
             "samples": self.samples,
+        }
+
+
+@dataclass(frozen=True)
+class _TimingAnnotation:
+    """
+    Every dispatch that measured one operation, as an :class:`_Annotation`.
+
+    A tuple rather than a single dispatch, because one Core AI operation is regularly
+    measured by more than one: it lowers to several ODIX ops, each timed separately.
+    Keying an annotation on the representative operation therefore kept whichever
+    dispatch came last and dropped the rest -- on one model, 22 annotations from 34
+    dispatches, with no indication that a third of the measurements had been
+    discarded, and which one survived decided by dict insertion order.
+
+    Carries the numbers rather than a formatted string, so a consumer that renders
+    its own output gets them from :meth:`data` instead of parsing text back.
+    """
+
+    dispatches: tuple[_Dispatch, ...]
+    """The dispatches covering this operation, in the order they were measured."""
+
+    @property
+    def total_average_ms(self: Self) -> float:
+        """
+        What the operation cost, summed over the dispatches that measured it.
+
+        A sum because the dispatches are separate work, not repeats of one
+        measurement: two dispatches covering one operation report different
+        durations. It is the operation's
+        *participation*, not its exclusive cost: a dispatch covering several
+        operations contributes its whole duration here, exactly as
+        :attr:`OperationTiming.op_ids` warns.
+        """
+        return sum(dispatch.average_ms for dispatch in self.dispatches)
+
+    def lines(self: Self) -> "tuple[_AnnotationLine, ...]":
+        """
+        Return this operation's timing, one line per dispatch when there are several.
+
+        Returns:
+            One :class:`_AnnotationLine` for a single dispatch, or a total followed
+            by a line per dispatch.
+
+        """
+        if len(self.dispatches) == 1:
+            only = self.dispatches[0]
+            return (
+                _AnnotationLine(
+                    f"{only.label}: {only.average_ms:.3f}ms "
+                    f"(med: {only.median_ms:.3f}ms)",
+                    style="",
+                ),
+            )
+
+        return (
+            _AnnotationLine(
+                f"{self.dispatches[0].label}: {self.total_average_ms:.3f}ms total "
+                f"over {len(self.dispatches)} dispatches",
+                style="",
+            ),
+            *(
+                _AnnotationLine(
+                    f"  dispatch {dispatch.odix_id}: {dispatch.average_ms:.3f}ms "
+                    f"(med: {dispatch.median_ms:.3f}ms)",
+                    style=_DETAIL_STYLE,
+                )
+                for dispatch in self.dispatches
+            ),
+        )
+
+    def data(self: Self) -> dict[str, Any]:
+        """
+        Return this operation's timing as plain values.
+
+        ``op_ids`` and ``op_names`` are the union over the dispatches, since two
+        covering one operation need not cover the same *others*. The per-dispatch
+        numbers stay in ``dispatches`` rather than being flattened into one figure:
+        which of them a reader should sum depends on what they are asking, and
+        picking for them is how a dispatch's duration comes to be read as one
+        operation's.
+
+        Returns:
+            The operation's dispatches and their durations.
+
+        """
+        op_ids: list[int] = []
+        op_names: list[str] = []
+        for dispatch in self.dispatches:
+            for op_id, op_name in zip(dispatch.op_ids, dispatch.op_names):
+                if op_id not in op_ids:
+                    op_ids.append(op_id)
+                    op_names.append(op_name)
+
+        return {
+            "op_ids": op_ids,
+            "op_names": op_names,
+            "dispatches": [dispatch.data() for dispatch in self.dispatches],
+            "total_average_ms": self.total_average_ms,
         }
 
 
@@ -270,6 +381,12 @@ class OperationTiming:
     The runtime profiler measures a compile identifier -- a possibly-fused group of
     Core AI ops -- as a whole. The recorded ``measurement`` is the timing of that
     whole group, and ``op_ids`` lists every Core AI op it contains.
+
+    One Core AI operation is often measured by **several** dispatches: it lowers to
+    more than one ODIX op, each dispatched and timed separately. On one model, 12 of
+    23 operation sets were covered twice, for 35 dispatches in all. ``op_ids``
+    therefore does not identify a dispatch, and :attr:`odix_id` is what tells two such
+    rows apart.
     """
 
     op_ids: list[int]
@@ -284,9 +401,33 @@ class OperationTiming:
     measurement: Measurement
     """Measurement containing statistics and timing samples in milliseconds."""
 
+    odix_id: int | None = None
+    """The compile identifier the runtime reported for this dispatch, as
+    ``compile_ids.id``.
+
+    On the **fallback** path this is an ODIX operation index, and is what tells two
+    dispatches covering the same Core AI operations apart. On the **delegate** path it
+    is not: the delegate assigns the identifier at run time and reports ``-1``, so
+    every such dispatch carries ``-1`` and only the operation set distinguishes them.
+
+    ``-1`` is therefore a value the runtime really reports, and not free to use as a
+    sentinel -- hence ``None`` for a dispatch not built from a runtime measurement.
+
+    What *would* identify a delegate dispatch is its ``delegate_id``, and the timing
+    key drops it deliberately: it is a per-dispatch counter, so including it would
+    split one dispatch's samples across runs instead of accumulating them.
+
+    Meaningful only within the run that produced it."""
+
     @property
     def op_id(self) -> int:
-        """Representative (first) operation ID of the group."""
+        """
+        Representative (first) operation ID of the group.
+
+        Not unique across a run: several dispatches can share a representative, so
+        this identifies an *operation*, never a dispatch. Keying a dict on it drops
+        every dispatch but the last -- see :func:`_timing_annotation_callback`.
+        """
         return self.op_ids[0]
 
     @property
@@ -294,14 +435,42 @@ class OperationTiming:
         """Names of the Core AI operations in this group."""
         return [op.name for op in self.operations]
 
+    def to_dict(self: Self) -> dict[str, Any]:
+        """
+        Return the dispatch as plain values.
+
+        :attr:`operations` is replaced by :attr:`op_names` rather than dropped. It
+        holds live MLIR handles, which cannot be serialised and which tie the object
+        to the program's lifetime -- and the only part of them a report needs is the
+        names, which are reachable *only* through that property. So the serialisable
+        form is strictly more useful than the field: it outlives the program.
+
+        Returns:
+            The operations covered, which dispatch measured them, and the timing.
+
+        """
+        return {
+            "odix_id": self.odix_id,
+            "op_ids": _plain(self.op_ids),
+            "op_names": _plain(self.op_names),
+            "representative_op_id": self.op_id,
+            "measurement": self.measurement.to_dict(),
+        }
+
     def to_row(self: Self) -> _Row:
         """
         Return this dispatch's cells for the summary table.
 
-        Every Core AI op id it covers is listed, not a representative: those
-        collide -- four rows read "121" on one model -- leaving rows that measured
-        different work indistinguishable. The ids and names fold within their
-        columns, so a wide fused group stays fully described.
+        Every Core AI op id it covers is listed, not a representative: representatives
+        collide, leaving rows that measured different work indistinguishable. The ids and
+        names fold within their columns, so a wide fused group stays fully described.
+
+        :attr:`odix_id` leads for the same reason. Listing the op ids is not enough
+        on its own: one operation is regularly measured by several dispatches, and
+        without the dispatch those rows are identical but for their numbers, which
+        reads as the same work measured twice rather than as two pieces of it. On the
+        delegate path the column reads ``-1`` for every row, which is what the runtime
+        reports there -- see :attr:`odix_id`.
 
         Returns:
             The :class:`_Row` describing this dispatch.
@@ -321,6 +490,7 @@ class OperationTiming:
         )
         return _Row(
             cells=(
+                "-" if self.odix_id is None else str(self.odix_id),
                 ", ".join(str(op_id) for op_id in self.op_ids),
                 "\n".join(self.op_names) or "unknown",
                 *numbers,
@@ -338,6 +508,63 @@ class OperationTiming:
             f"{fused}: med {statistics.median:.6f}ms, avg {statistics.average:.6f}ms, "
             f"min {statistics.minimum:.6f}ms, max {statistics.maximum:.6f}ms"
         )
+
+
+def _timing_annotation_callback(
+    timings: Iterable[OperationTiming],
+) -> _AnnotationCallback:
+    """
+    Build the callback describing each operation's timing.
+
+    An operation's dispatches are reported together, on its representative -- the
+    first operation each dispatch covers. Other members return ``None`` and are
+    skipped: the runtime measured the dispatch as a whole, so there is no per-member
+    figure to give, and annotating each one repeated a single measurement as many
+    times as the dispatch had members.
+
+    Grouped rather than indexed, because a representative is not unique. Two
+    dispatches regularly cover the same operation, and ``{timing.op_id: timing}``
+    kept only the last -- 22 annotations from 34 dispatches on one model, silently,
+    with the survivor chosen by insertion order.
+
+    Args:
+        timings: The dispatches to report.
+
+    Returns:
+        A callback mapping an operation to its annotation, or ``None`` for an
+        operation that was not timed, or that another dispatch already covers.
+
+    """
+    by_representative: dict[int, list[_Dispatch]] = defaultdict(list)
+    for timing in timings:
+        statistics = timing.measurement.statistics
+        if statistics is None:
+            continue
+        by_representative[timing.op_id].append(
+            _Dispatch(
+                odix_id=timing.odix_id,
+                op_ids=tuple(timing.op_ids),
+                op_names=tuple(timing.op_names),
+                median_ms=statistics.median,
+                average_ms=statistics.average,
+                samples=len(timing.measurement.samples),
+            )
+        )
+
+    def annotate(operation: Operation) -> _Annotation | None:
+        operation_id = get_operation_id(operation)
+        if operation_id is None:
+            return None
+
+        # Only the representative carries its dispatches' timings; other members of
+        # the same dispatch are covered by it and skipped.
+        dispatches = by_representative.get(operation_id)
+        if not dispatches:
+            return None
+
+        return _TimingAnnotation(dispatches=tuple(dispatches))
+
+    return annotate
 
 
 @dataclass
@@ -371,6 +598,29 @@ class ModuleTiming:
         """
         return split_module_frame(self.name)[0]
 
+    def to_dict(self: Self) -> dict[str, Any]:
+        """
+        Return this module and its subtree as plain values.
+
+        Recursive, because the nesting is the information: a dispatch is filed
+        against the deepest module wholly containing it, so a flat list would lose
+        which module a cost belongs to.
+
+        Returns:
+            The module's name, its split into type and instance, its dispatches and
+            its children.
+
+        """
+        return {
+            "name": self.name,
+            "type_name": self.type_name,
+            "instance": self.instance,
+            "operation_timings": [
+                timing.to_dict() for timing in self.operation_timings
+            ],
+            "children": [child.to_dict() for child in self.children],
+        }
+
     @property
     def instance(self: Self) -> int | None:
         """
@@ -382,16 +632,6 @@ class ModuleTiming:
 
         """
         return split_module_frame(self.name)[1]
-
-    # A module deliberately reports no total. Fusion crosses module boundaries --
-    # 86% of dispatches in a 3-layer MLP and 93% in a transformer block cover more
-    # than one module -- and a dispatch is attributed whole to the module of its
-    # first member, so a total charges one module for a sibling's work and leaves
-    # the sibling reading 0.000ms. A LayerNorm fused into its neighbour is not free,
-    # and saying so was worse than saying nothing.
-    #
-    # :meth:`get_all_operations` still exposes the dispatches, so a caller that
-    # knows a group spans modules can aggregate on its own terms.
 
     def get_all_operations(self: Self) -> list[OperationTiming]:
         """
@@ -458,47 +698,14 @@ class ModuleTiming:
 
     def _annotation_callback(self: Self) -> _AnnotationCallback:
         """
-        Build the callback describing each operation's timing.
-
-        A group's timing is reported once, on its representative operation. Other
-        members return ``None`` and are skipped: the runtime measured the group as a
-        whole, so there is no per-member figure to give, and annotating each one
-        repeated a single measurement as many times as the group had members --
-        several identical comments stacked above one source line.
+        Build the callback describing each operation's timing in this module.
 
         Returns:
             A callback mapping an operation to its annotation, or ``None`` for an
-            operation this module did not time, or that a group already covers.
+            operation this module did not time, or that a dispatch already covers.
 
         """
-        timing_by_representative: dict[int, OperationTiming] = {
-            timing.op_id: timing for timing in self.get_all_operations()
-        }
-
-        def annotate(operation: Operation) -> _Annotation | None:
-            operation_id = get_operation_id(operation)
-            if operation_id is None:
-                return None
-
-            # Only the representative carries the group's timing; other members of
-            # the same group are covered by it and skipped.
-            timing = timing_by_representative.get(operation_id)
-            if timing is None:
-                return None
-
-            statistics = timing.measurement.statistics
-            if statistics is None:
-                return None
-
-            return _TimingAnnotation(
-                op_ids=tuple(timing.op_ids),
-                op_names=tuple(timing.op_names),
-                median_ms=statistics.median,
-                average_ms=statistics.average,
-                samples=len(timing.measurement.samples),
-            )
-
-        return annotate
+        return _timing_annotation_callback(self.get_all_operations())
 
     def annotate_dominant_source(
         self: Self,
@@ -604,26 +811,49 @@ class BenchmarkResult:
     """
     Every Core AI operation in the benchmarked function, by id -- including those no
     dispatch reported.
-
-    The denominator for coverage, and which operations count is the caller's
-    judgement: constants and layout operations such as ``pad`` or ``broadcast_to``
-    fold into a consumer's addressing and never become GPU work, so counting them
-    understates coverage badly. An operation absent from every
-    :attr:`OperationTiming.op_ids` was not timed, and its location says where in the
-    source it came from.
     """
 
-    # No per-operation lookup is offered. A dispatch's duration belongs to every
-    # operation in it, so returning that duration for one op id -- which
-    # `get_average_timing` and `get_measurement` used to do -- reads as the cost of
-    # that operation, and summing over ops then multiplies the real cost by each
-    # group's width. A caller who wants the dispatch an operation landed in can find
-    # it, and sees `op_ids` when they do:
-    #
-    #     op_id = get_operation_id(operation)
-    #     timing = next(
-    #         (t for t in result.operation_timings if op_id in t.op_ids), None
-    #     )
+    unattributed_samples: int = 0
+    """How many timing samples the runtime reported under a compile identifier that
+    names nothing in this program's debug info.
+    """
+
+    unattributed_compile_ids: int = 0
+    """How many distinct compile identifiers those samples arrived under."""
+
+    symbol_samples: int = 0
+    """How many timing samples measured a whole function or delegate region rather
+    than an operation -- a "symbol" in the debug info.
+
+    Excluded from per-operation timing by design, not a failure. But when
+    :attr:`operation_timings` is empty and this is not, the run did produce timing and
+    the profiler did work: the runtime simply never emitted a per-dispatch interval."""
+
+    symbol_intervals: int = 0
+    """How many distinct symbols those samples measured."""
+
+    def to_dict(self: Self) -> dict[str, Any]:
+        """
+        Return the whole result as plain values.
+
+        Returns:
+            Every dispatch, the operations the program held, and the counts that say
+            what was measured but attributed to nothing.
+
+        """
+        return {
+            "operation_timings": [
+                timing.to_dict() for timing in self.operation_timings
+            ],
+            "operation_names": {
+                op_id: operation.name
+                for op_id, operation in self.operations_by_id.items()
+            },
+            "unattributed_samples": self.unattributed_samples,
+            "unattributed_compile_ids": self.unattributed_compile_ids,
+            "symbol_samples": self.symbol_samples,
+            "symbol_intervals": self.symbol_intervals,
+        }
 
     def get_operation_summary(self: Self) -> list[OperationTiming]:
         """
@@ -708,6 +938,50 @@ class BenchmarkResult:
 
         return root_modules
 
+    def annotate_source(
+        self: Self,
+        output: TextIO | None = None,
+        *,
+        annotate_all_files: bool = False,
+        exclude: Callable[[LocationInfo], bool] | None = None,
+    ) -> None:
+        """
+        Annotate the model's source with each dispatch's timing.
+
+        Writes every measured dispatch as a comment above the source line it was
+        attributed to, over the whole model. The program is not needed as an argument
+        and not re-walked: the operations come from this result, so the ids cannot
+        drift out of step with the timings the way they can when a caller passes a
+        program that was rebuilt.
+
+        A dispatch is reported once, on its representative operation. The runtime
+        measured the dispatch as a whole, so the annotation names every operation it
+        covered and the duration must not be read as any single one's -- see
+        :meth:`_TimingAnnotation.data`.
+
+        Use :meth:`get_module_timings` and
+        :meth:`ModuleTiming.annotate_dominant_source` instead to annotate one module
+        subtree rather than the whole model.
+
+        Args:
+            output: Text stream to write annotated source to. Defaults to
+                ``sys.stdout`` when None.
+            annotate_all_files: When True, annotate every attributed source file
+                (ordered by attribution count, descending). When False (default),
+                only the single dominant file is annotated.
+            exclude: Optional predicate filtering out locations. When None, the
+                annotator's default applies, which drops torch internals,
+                ``exported_program.py`` and ``"-"``.
+
+        """
+        _annotate_operations(
+            self.operations_by_id.values(),
+            _timing_annotation_callback(self.operation_timings),
+            output,
+            exclude=exclude,
+            annotate_all_files=annotate_all_files,
+        )
+
     def write_summary(
         self: Self,
         output: TextIO,
@@ -735,6 +1009,7 @@ class BenchmarkResult:
         spec = _TableSpec(
             title="Benchmark Results",
             columns=(
+                _Column("Dispatch"),
                 _Column("Core AI op ids"),
                 _Column("Operations"),
                 _Column("Median (ms)", justify="right"),
@@ -743,10 +1018,7 @@ class BenchmarkResult:
                 _Column("Max (ms)", justify="right"),
                 _Column("StdDev (ms)", justify="right"),
             ),
-            caption=(
-                f"{len(self.operation_timings)} dispatches profiled. A row's duration "
-                f"covers every operation listed in it."
-            ),
+            caption=self._summary_caption(),
             # Ids and names fold within their columns, so rule between rows to keep
             # it clear where a wide fused group ends.
             show_lines=True,
@@ -755,6 +1027,36 @@ class BenchmarkResult:
             spec.add(timing)
 
         _write_table(spec, output, width=width)
+
+    def _summary_caption(self: Self) -> str:
+        """
+        Describe what the rows are, and say when an operation spans several.
+
+        Without the second sentence a reader totals the median column and gets a
+        number that counts a multi-dispatch operation once per dispatch -- which is
+        right for "time spent" and wrong for "how many operations are listed", and
+        nothing on the table said which it was.
+
+        Returns:
+            The caption.
+
+        """
+        per_op_set: dict[tuple[int, ...], int] = defaultdict(int)
+        for timing in self.operation_timings:
+            per_op_set[tuple(timing.op_ids)] += 1
+        split = sum(1 for count in per_op_set.values() if count > 1)
+
+        caption = (
+            f"{len(self.operation_timings)} dispatches profiled. A row's duration "
+            f"covers every operation listed in it."
+        )
+        if split:
+            caption += (
+                f" {split} of {len(per_op_set)} operation sets were measured by more "
+                f"than one dispatch, so they appear on several rows -- separate work, "
+                f"not one measurement repeated."
+            )
+        return caption
 
 
 @dataclass(frozen=True)
@@ -898,12 +1200,6 @@ def _is_hardware_timestamped(event: LogEvent) -> bool:
     """
     Whether a GPU interval was measured by the GPU's own counters.
 
-    Every encoder is reported twice, once from the GPU counters and once from the host
-    clock. The host figure includes queueing and does not answer how long the operation
-    took on the GPU, and both carry the same compile identifiers -- so recording both
-    pools two different measurements into one sample list, where a median falls between
-    them and a dispatch's samples run from near zero to the real duration.
-
     Args:
         event: LogEvent from the profiler.
 
@@ -914,17 +1210,25 @@ def _is_hardware_timestamped(event: LogEvent) -> bool:
     return _HARDWARE_MARKER in event.event_id
 
 
+def _is_measurable_interval(event: LogEvent) -> bool:
+    """
+    Whether this event's interval is a per-operation duration worth recording.
+
+    Args:
+        event: LogEvent from the profiler.
+
+    Returns:
+        True when the event times one operation on some backend.
+
+    """
+    if _is_gpu_interval(event):
+        return _is_hardware_timestamped(event)
+    return True
+
+
 def _parse_event_data(event_data: bytes | str | None) -> EventData:
     """
     Parse a log event's encoded data into a structured EventData object.
-
-    The runtime hands this field over in more than one shape: JSON, as bytes or as
-    str, and a placeholder such as ``"empty()"`` for an event carrying no payload.
-    Anything unrecognised yields an EventData with no interval, so a caller simply
-    finds nothing to attribute.
-
-    Never raises. It runs inside a profiler callback invoked from a runtime thread,
-    where an exception has nowhere to go and can take the process down with it.
 
     Args:
         event_data: The event's ``data`` field.
@@ -1240,9 +1544,7 @@ class Benchmarker(ABC):
         if event_data.interval is None:
             return
 
-        # A GPU encoder first, then which clock measured it. Only the hardware
-        # measurement answers how long the operation took on the GPU.
-        if not (_is_gpu_interval(event) and _is_hardware_timestamped(event)):
+        if not _is_measurable_interval(event):
             return
 
         with self._lock:
@@ -1340,7 +1642,7 @@ class Benchmarker(ABC):
             # Convert raw timings to a list of OperationTiming, one per set of Core
             # AI ops measured together as a single dispatch.
             operation_timings_list = []
-            for (_odix_id, group_ids), samples in self._timings.items():
+            for (odix_id, group_ids), samples in self._timings.items():
                 # Resolve each group member to its MLIR operation, dropping
                 # excluded ops (e.g. coreai.graph / coreai.constant).
                 group_ops: list[Operation] = []
@@ -1361,6 +1663,7 @@ class Benchmarker(ABC):
                         op_ids=group_op_ids,
                         operations=group_ops,
                         measurement=Measurement.from_samples(samples),
+                        odix_id=odix_id,
                     )
                 )
 
@@ -1368,6 +1671,8 @@ class Benchmarker(ABC):
             # function or delegate region -- a "symbol" in the debug info -- and are
             # excluded from per-op timing by design. The rest name no dispatch at
             # all, because an interval does not always carry a delegate_id.
+            unnamed: dict[tuple[int, int | None], list[float]] = {}
+            symbols: dict[tuple[int, int | None], list[float]] = {}
             if self._pending_durations:
                 symbol_odix_ids = {
                     operation.odix_id
@@ -1405,6 +1710,10 @@ class Benchmarker(ABC):
             return BenchmarkResult(
                 operation_timings=operation_timings_list,
                 operations_by_id=dict(self._coreai_operations),
+                unattributed_samples=sum(len(d) for d in unnamed.values()),
+                unattributed_compile_ids=len(unnamed),
+                symbol_samples=sum(len(d) for d in symbols.values()),
+                symbol_intervals=len(symbols),
             )
 
     @abstractmethod
@@ -1459,11 +1768,7 @@ class CoreAIBenchmarker(Benchmarker):
 
             # Create asset from AIProgram and load model from asset
             asset = self.coreai_program.save_asset(asset_path)
-            specialization_options = (
-                self.specialization_options.with_debug(enabled=True)
-                if self.specialization_options is not None
-                else None
-            )
+            specialization_options = _with_debug(self.specialization_options)
             model = await AIModel.load(asset.path, specialization_options)
             # Load and parse debug_infos
             debug_infos_bytes = model._debug_infos

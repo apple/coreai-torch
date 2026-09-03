@@ -13,6 +13,7 @@ import pytest
 import torch
 from coreai._compiler.dialects import coreai
 from coreai._compiler.ir import InsertionPoint, WalkResult
+from coreai.runtime import SpecializationOptions
 from numpy.typing import NDArray
 
 from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
@@ -580,12 +581,24 @@ def _modify_nth_operation(
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="Test only runs on macOS")
-async def test_comparator_catches_modified_ops_at_different_positions() -> None:
+async def test_comparator_catches_modified_ops_at_different_positions(
+    specialization_options: SpecializationOptions | None,
+) -> None:
     """Test that comparator correctly identifies modified operations at different positions."""
     model = SimpleSequentialModel()
     model.eval()
     example_inputs = get_example_inputs(SimpleSequentialModel)
     example_input = tuple(example_inputs.values())
+
+    # Swapping a mul for a divide is only observable where the value reaching it is
+    # non-zero -- `0 * 2` and `0 / 2` agree -- and the leading relu zeroes every
+    # negative element. An all-negative draw therefore makes the assertions below test
+    # nothing, and they fail confusingly, as if the comparator had missed a real
+    # change. Say so here instead. See `conftest.seed_example_inputs`.
+    assert (example_input[0] > 0).any(), (
+        "Degenerate input: the relu zeroes it entirely, so mul and divide agree and "
+        "the substitution below cannot be detected by anything"
+    )
 
     # Export and create base coreai_program
     exported_program = torch.export.export(model, example_input)
@@ -605,6 +618,7 @@ async def test_comparator_catches_modified_ops_at_different_positions() -> None:
         source_program=exported_program,
         target_program=coreai_program_1,
         target_entry_point="main",
+        specialization_options=specialization_options,
     )
     result_1 = await comparator_1.compare_with_tolerance(
         inputs=example_inputs,
@@ -628,6 +642,7 @@ async def test_comparator_catches_modified_ops_at_different_positions() -> None:
         source_program=exported_program,
         target_program=coreai_program_2,
         target_entry_point="main",
+        specialization_options=specialization_options,
     )
     result_2 = await comparator_2.compare_with_tolerance(
         inputs=example_inputs,
