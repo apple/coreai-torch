@@ -61,6 +61,16 @@ from ._utils import (
 INT32_MAX: int = 2147483647
 
 
+def _pool_stride(stride: Any, kernel_size: list[int]) -> Any:
+    """Resolve the ``stride`` argument of a pooling node, which defaults to ``kernel_size``.
+
+    The ATen pooling schemas spell that default as ``stride=[]``, so an omitted
+    or explicit ``None`` stride can reach the graph either as a missing
+    argument or as an empty list. Both mean "stride by the kernel size".
+    """
+    return kernel_size if not stride else stride
+
+
 def replace_abs(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     return coreai.abs_(_get_operand(values_map, node, 0))
 
@@ -130,9 +140,7 @@ def replace_avg_pool2d(
     """
     x = _get_operand(values_map, node, 0)
     kernel_size = node.args[1]
-    stride = (
-        node.args[2] if len(node.args) > 2 and node.args[2] is not None else kernel_size
-    )
+    stride = _pool_stride(node.args[2] if len(node.args) > 2 else None, kernel_size)
     padding = (
         node.args[3] if len(node.args) > 3 and node.args[3] is not None else [0, 0]
     )
@@ -466,9 +474,7 @@ def replace_avg_pool3d(
     """
     x = _get_operand(values_map, node, 0)
     kernel_size = node.args[1]
-    stride = (
-        node.args[2] if len(node.args) > 2 and node.args[2] is not None else kernel_size
-    )
+    stride = _pool_stride(node.args[2] if len(node.args) > 2 else None, kernel_size)
     padding = (
         node.args[3] if len(node.args) > 3 and node.args[3] is not None else [0, 0, 0]
     )
@@ -2215,7 +2221,7 @@ def replace_maxpool2d_with_indices(
         raise ValueError(
             f"Encountered dynamic stride at maxpool2d: node: {node}, name: {node.name}"
         )
-    stride = args[2] if len(args) >= 3 else kernel_size
+    stride = _pool_stride(args[2] if len(args) >= 3 else None, kernel_size)
     padding = args[3] if len(args) >= 4 else [0, 0]
     dilation = args[4] if len(args) >= 5 else [1, 1]
     ceil_mode = args[5] if len(args) >= 6 else False

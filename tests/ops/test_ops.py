@@ -391,6 +391,11 @@ class TestArange:
         ((3, 3), (2, 2), (1, 1), 4),
         ((2, 2), (2, 2), (0, 0), 3),
         ((2, 4), (2, 2), (0, 0), 6),
+        # stride=None defaults to kernel_size. The ATen schema spells that
+        # default `stride=[]`, so it reaches the graph as an empty list
+        # whenever a later argument is non-default.
+        ((2, 2), None, (1, 1), None),
+        ((3, 3), None, (0, 0), 5),
     ],
 )
 @pytest.mark.parametrize(
@@ -409,7 +414,7 @@ class TestArange:
 )
 async def test_avg_pool2d(
     kernel_size: tuple[int, int],
-    stride: tuple[int, int],
+    stride: tuple[int, int] | None,
     padding: tuple[int, int],
     divisor_override: int | None,
     input_shape: tuple[int, int, int, int],
@@ -456,6 +461,8 @@ async def test_avg_pool2d(
         ((3, 3, 3), (2, 2, 2), (1, 1, 1), None),
         # Non-cube kernel
         ((2, 3, 2), (2, 3, 2), (0, 0, 0), None),
+        # stride=None defaults to kernel_size (reaches the graph as `[]`)
+        ((2, 2, 2), None, (1, 1, 1), None),
     ],
 )
 @pytest.mark.parametrize(
@@ -467,7 +474,7 @@ async def test_avg_pool2d(
 )
 async def test_avg_pool3d(
     kernel_size: tuple[int, int, int],
-    stride: tuple[int, int, int],
+    stride: tuple[int, int, int] | None,
     padding: tuple[int, int, int],
     divisor_override: int | None,
     input_shape: tuple[int, int, int, int, int],
@@ -2907,6 +2914,10 @@ async def test_maximum(x: Tensor, y: Tensor, dynamic: bool) -> None:
     [
         # Default parameters
         ((2, 4, 16, 16), torch.float32, 3, None, 0, 1, False, tuple()),
+        # stride=None alongside a non-default later argument, which forces the
+        # ATen schema default `stride=[]` into the graph
+        ((2, 4, 16, 16), torch.float32, 3, None, 1, 1, False, tuple()),
+        ((2, 4, 16, 16), torch.float32, 3, None, 0, 2, False, tuple()),
         # Static — all pool configs, multiple shapes and dtypes
         ((2, 4, 16, 16), torch.float32, 3, 2, 1, 1, False, tuple()),
         ((2, 4, 16, 16), torch.float32, 3, 2, 0, 1, True, tuple()),
@@ -2952,7 +2963,7 @@ async def test_maxpool2d(
     input_shape: tuple[int, int, int, int],
     dtype: torch.dtype,
     kernel_size: int,
-    stride: int,
+    stride: int | None,
     padding: int,
     dilation: int,
     ceil_mode: bool,
