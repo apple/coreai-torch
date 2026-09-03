@@ -2743,6 +2743,15 @@ async def test_log_ops(x: Tensor, log_op: Any, dynamic_dims: tuple[int]) -> None
         # Large order (treated as infinity norm)
         (torch.rand(5), None, 15.0, False),
         (torch.rand(2, 3, 4), 2, -3.0, False),
+        # Integer `ord`: the ATen schema types it as a Scalar, so `ord=3` stays
+        # an int and the p-norm exponent constant must not be built from it
+        # verbatim.
+        (torch.rand(2, 3, 4) + 0.5, 2, 3, False),
+        (torch.rand(3, 4) + 0.5, 1, -1, True),
+        (torch.rand(5) + 0.5, 0, -2, False),
+        # fp16 operand through the general p-norm branch
+        (torch.rand(3, 4, dtype=torch.float16) + 0.5, 1, 3.0, False),
+        (torch.rand(2, 3, 4, dtype=torch.float16) + 0.5, 2, 3, True),
     ],
 )
 @pytest.mark.parametrize(
@@ -2751,7 +2760,7 @@ async def test_log_ops(x: Tensor, log_op: Any, dynamic_dims: tuple[int]) -> None
 async def test_linalg_vector_norm(
     x: Tensor,
     dim: int | list[int] | None,
-    ord: float,
+    ord: int | float,
     keepdim: bool,
     dynamic_dims: tuple[int],
 ) -> None:
