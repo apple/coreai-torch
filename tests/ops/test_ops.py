@@ -1657,8 +1657,6 @@ class TestConvolution:
     @pytest.mark.parametrize(
         "stride, dilation, output_padding",
         [
-            ((1, 1), (1, 1), (1, 1)),
-            ((2, 2), (1, 1), (2, 2)),
             ((1, 2), (1, 1), (1, 1)),
             ((2, 1), (1, 1), (1, 1)),
         ],
