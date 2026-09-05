@@ -343,3 +343,112 @@ async def test_get_problematic_operations() -> None:
         assert failed_node.op_id in problematic_ids, (
             f"Failed node {failed_node.op_id} not in problematic operations"
         )
+
+
+async def _drain(
+    strategy: LevelOrderStrategy,
+    result: SearchStrategy.ValidationResult,
+) -> list[ComputationGraph.Node]:
+    """Run *strategy* to completion, reporting *result* for everything it yields."""
+    seen: list[ComputationGraph.Node] = []
+    while True:
+        try:
+            batch = await strategy.__anext__()
+        except StopAsyncIteration:
+            return seen
+        seen.extend(batch)
+        await strategy.update([(node, result) for node in batch])
+
+
+async def test_narrowing_actually_stops_deeper_nodes_being_offered() -> None:
+    """A narrowed range must prune, not merely be recorded.
+
+    `_depth_range` was computed and logged but never consulted when choosing what to
+    yield -- only for the `min_depth >= max_depth` exit -- so every level was offered
+    whatever the results said. Bisection therefore visited the whole graph at one model
+    execution per side per batch: the most expensive way to check everything, and not
+    what it claims to do.
+
+    The fault has to leave something *unverified* at its own depth for this to be
+    visible. When a level comes back wholly clean the lower bound marches up to meet the
+    narrowed upper bound and the search ends anyway, which is why a simpler version of
+    this test passed against the unenforced range.
+    """
+    graph = create_hierarchical_graph_with_dependencies()
+    strategy = LevelOrderStrategy.top_down(graph)
+
+    # Depth 0 is clean.
+    batch = await strategy.__anext__()
+    assert {node.depth for node in batch} == {0}
+    await strategy.update(
+        [(node, SearchStrategy.ValidationResult.PASS) for node in batch]
+    )
+
+    # Depth 1 holds the fault, and its sibling could not be verified -- so the lower
+    # bound cannot advance and only the upper bound moves.
+    batch = await strategy.__anext__()
+    assert {node.depth for node in batch} == {1}
+    assert len(batch) == 2
+    await strategy.update(
+        [
+            (batch[0], SearchStrategy.ValidationResult.FAIL),
+            (batch[1], SearchStrategy.ValidationResult.UNKNOWN),
+        ]
+    )
+
+    remaining = await _drain(strategy, SearchStrategy.ValidationResult.PASS)
+    assert all(node.depth <= 1 for node in remaining), (
+        "After a failure at depth 1 the search still offered depths "
+        f"{sorted({node.depth for node in remaining})}"
+    )
+    assert {node.op_id for node in strategy.get_problematic_operations()} == {
+        batch[0].op_id
+    }
+
+
+async def test_a_level_is_finished_before_the_lower_bound_advances() -> None:
+    """A level larger than the batch must not be left half-checked.
+
+    The bound says "everything up to and including this depth has been checked", but the
+    guard tested only strictly shallower depths, so the first batch of a split level
+    advanced it past its own unchecked siblings. Harmless while the range was never
+    consulted; once it prunes, those siblings are dropped and the validator reports a
+    clean result over a graph it did not finish.
+    """
+    graph = create_hierarchical_graph_with_dependencies()
+    # Depth 0 holds two nodes, so a batch of one splits it.
+    strategy = LevelOrderStrategy.top_down(graph, batch_size=1)
+
+    seen = await _drain(strategy, SearchStrategy.ValidationResult.PASS)
+
+    checked = {node.op_id for node in seen}
+    top_level = {node.op_id for node in graph.get_nodes_in_scope((None, 0))}
+    assert top_level <= checked, (
+        f"Never checked {sorted(top_level - checked)}, which a clean run must cover"
+    )
+
+
+async def test_skipped_nodes_do_not_narrow_the_search() -> None:
+    """A node that computes nothing is not evidence, and must not end the search.
+
+    Placeholders sit at depth 0 of every FX graph and the validator reports them as
+    SKIPPED. Reported as UNKNOWN they narrowed the upper bound to depth 0 on the very
+    first batch, so a level-order search finished having verified nothing -- and said
+    so only as an empty failure list, which reads exactly like a clean model.
+    """
+    graph = create_hierarchical_graph_with_dependencies()
+    strategy = LevelOrderStrategy.top_down(graph)
+
+    batch = await strategy.__anext__()
+    assert {node.depth for node in batch} == {0}
+    await strategy.update(
+        [(node, SearchStrategy.ValidationResult.SKIPPED) for node in batch]
+    )
+
+    remaining = await _drain(strategy, SearchStrategy.ValidationResult.PASS)
+    depths = {node.depth for node in remaining}
+    assert depths == {1, 2, 3}, f"Search stopped early, only reaching depths {depths}"
+    assert not strategy.get_problematic_operations()
+    assert not strategy.get_unknown_operations(), (
+        "A skipped node is not an unknown one: it was never a candidate"
+    )

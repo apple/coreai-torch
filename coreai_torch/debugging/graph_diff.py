@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 import sys
-from collections.abc import Collection
+from collections.abc import Collection, Iterator
 from dataclasses import dataclass, field, fields
 from enum import Enum
 from io import StringIO
@@ -1546,6 +1546,123 @@ def format_multi_graph_diff(
 # ---------------------------------------------------------------------------
 
 
+def _fx_nodes_in(value: Any) -> Iterator[torch.fx.Node]:
+    """
+    Every FX node reachable inside an argument, in a stable order.
+
+    An FX argument is not always a node: `aten.cat` takes its inputs as a *list*, and a
+    dict or a nested tuple is equally legal. Only top-level `fx.Node` args used to be
+    followed, so a concatenation, a stack or a `_native_batch_norm` tuple contributed no
+    edges at all, and the nodes feeding them looked unused to the comparison.
+
+    Args:
+        value: An FX argument, of any shape.
+
+    Yields:
+        The nodes inside it, outer to inner, left to right.
+
+    """
+    if isinstance(value, torch.fx.Node):
+        yield value
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _fx_nodes_in(item)
+    elif isinstance(value, dict):
+        for _, item in sorted(value.items(), key=lambda entry: str(entry[0])):
+            yield from _fx_nodes_in(item)
+
+
+def _fx_constant(value: Any) -> Any:
+    """
+    An FX argument with its node references replaced, for the attribute digest.
+
+    Nodes are edges, not configuration, so they are collapsed to a placeholder: their
+    identity is carried by the graph, and their *names* shift whenever anything upstream
+    changes. A tensor is reduced to its shape and dtype for the reason
+    `WeightPolicy.IGNORE` exists -- a rebuild re-initialises parameters, so comparing
+    values reports every weight of an unchanged model as changed.
+
+    Args:
+        value: An FX argument, of any shape.
+
+    Returns:
+        The same argument as plain, comparable values.
+
+    """
+    if isinstance(value, torch.fx.Node):
+        return "<node>"
+    if isinstance(value, (list, tuple)):
+        return [_fx_constant(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _fx_constant(item) for key, item in sorted(value.items())}
+    if isinstance(value, torch.Tensor):
+        return f"tensor<{tuple(value.shape)}x{value.dtype}>"
+    return repr(value)
+
+
+def _fx_attributes(fx_node: Any) -> str:
+    """
+    An FX node's configuration: the parts of its arguments that are not nodes.
+
+    The counterpart of `_attr_digest` for a graph with no MLIR behind it. Without it
+    `aten.mean(x, dim=-1)` and `aten.mean(x, dim=0)` share an identity, as do two
+    `aten.to` calls to different dtypes.
+
+    Args:
+        fx_node: The FX node to describe.
+
+    Returns:
+        The node's constant arguments and keyword arguments, as a comparable string.
+
+    """
+    parts = [repr(_fx_constant(arg)) for arg in fx_node.args]
+    parts.extend(
+        f"{name}={_fx_constant(value)!r}"
+        for name, value in sorted(fx_node.kwargs.items())
+    )
+    return "|".join(parts)
+
+
+def _fx_result_type(fx_node: Any) -> str:
+    """
+    The shape and dtype an FX node produces, when export recorded them.
+
+    Where a torch graph keeps what MLIR keeps in a result type. An FX graph is not
+    bipartite -- a node *is* its result -- so this goes in the node's own `ir_type`,
+    which `structural_labels` drops and `node_labels` keeps. That split is what lets a
+    node whose shape changed still pair, and then read as modified.
+
+    Args:
+        fx_node: The FX node to describe.
+
+    Returns:
+        The type as text, or an empty string when export recorded none.
+
+    """
+    value = fx_node.meta.get("val")
+    if isinstance(value, (list, tuple)):
+        return ",".join(_fx_result_type_of(item) for item in value)
+    return _fx_result_type_of(value)
+
+
+def _fx_result_type_of(value: Any) -> str:
+    """
+    One tensor's shape and dtype.
+
+    Args:
+        value: A fake tensor from `node.meta["val"]`, or any other metadata value.
+
+    Returns:
+        The type as text, or an empty string when it is not a tensor.
+
+    """
+    shape = getattr(value, "shape", None)
+    dtype = getattr(value, "dtype", None)
+    if shape is None or dtype is None:
+        return "" if value is None else type(value).__name__
+    return f"tensor<{'x'.join(str(dimension) for dimension in shape)}x{dtype}>"
+
+
 class _TorchFXGraphBuilder:
     """Helper class to build NetworkX graph from PyTorch FX graphs."""
 
@@ -1564,19 +1681,44 @@ class _TorchFXGraphBuilder:
         # Add edges based on node inputs
         for node in fx_graph.nodes:
             if node in self.fx_node_to_id:
-                node_id = self.fx_node_to_id[node]
-                for i, arg in enumerate(node.args):
-                    # Check if arg is an FX node (has 'op' attribute and is in our mapping)
-                    if hasattr(arg, "op") and arg in self.fx_node_to_id:
-                        arg_id = self.fx_node_to_id[arg]
-                        self.graph.add_edge(
-                            arg_id,
-                            node_id,
-                            edge_type="data_flow",
-                            index=i,
-                        )
+                self._add_edges(node)
 
         return self.graph
+
+    def _add_edges(self, fx_node: Any) -> None:
+        """
+        Add one edge per node this node consumes, positional args then keywords.
+
+        The slot an edge occupies is `(edge_type, index)`, and operand order is
+        semantic, so positional inputs are numbered across the *flattened* arguments:
+        `cat([a, b])` gives `a` slot 0 and `b` slot 1, where before it gave neither an
+        edge. Keyword inputs are keyed by name instead of position, since that is what
+        identifies them -- reordering kwargs is not a change.
+
+        Args:
+            fx_node: The FX node whose inputs are being wired up.
+
+        """
+        node_id = self.fx_node_to_id[fx_node]
+
+        for index, argument in enumerate(_fx_nodes_in(fx_node.args)):
+            if argument in self.fx_node_to_id:
+                self.graph.add_edge(
+                    self.fx_node_to_id[argument],
+                    node_id,
+                    edge_type="data_flow",
+                    index=index,
+                )
+
+        for name, value in sorted(fx_node.kwargs.items()):
+            for index, argument in enumerate(_fx_nodes_in(value)):
+                if argument in self.fx_node_to_id:
+                    self.graph.add_edge(
+                        self.fx_node_to_id[argument],
+                        node_id,
+                        edge_type=f"kwarg:{name}",
+                        index=index,
+                    )
 
     def _get_next_id(self) -> int:
         """Generate a unique node ID."""
@@ -1593,13 +1735,17 @@ class _TorchFXGraphBuilder:
         op_type = str(fx_node.op)
         target = str(fx_node.target) if fx_node.target else "unknown"
 
-        # Add node to graph
+        # Add node to graph. `attributes` and `ir_type` are precomputed here rather
+        # than read from an `ir_object`, which an FX node does not have: see
+        # `graph_match._attr_digest` for the fallback they feed.
         self.graph.add_node(
             node_id,
             type="op",
             op_name=f"{op_type}:{target}",
             op_type=op_type,
             target=target,
+            attributes=_fx_attributes(fx_node),
+            ir_type=_fx_result_type(fx_node),
             torch_object=fx_node,
         )
 
@@ -1622,16 +1768,36 @@ def _build_torch_fx_graph(exported_program: torch.export.ExportedProgram) -> nx.
 def compute_exported_program_diff(
     source_program: torch.export.ExportedProgram,
     target_program: torch.export.ExportedProgram,
+    *,
+    ignore_attributes: Collection[str] = UNSTABLE_ATTRIBUTES,
 ) -> GraphDiff:
     """
     Compute structural diff between two PyTorch ExportedPrograms.
 
-    Extracts the FX graphs, builds NetworkX graphs, and computes structural diff
-    using graph isomorphism.
+    Extracts the FX graphs, builds NetworkX graphs, and compares them with the same
+    `graph_match.align` the Core AI diff uses.
+
+    A node's identity is its op and target, its constant arguments and keyword
+    arguments, and the shape and dtype export recorded for it. Its edges are every FX
+    node reachable inside its arguments, so an input passed in a list -- `aten.cat`,
+    `aten.stack` -- is followed like any other.
+
+    Two differences from :func:`compute_coreai_program_diff` are worth knowing:
+
+    * **An FX graph is not bipartite.** A node is its own result, so there are no value
+      nodes and `responsible_op` is the identity. Node counts are therefore much smaller
+      than the Core AI ones for the same model, and not comparable with them.
+    * **There is no `WeightPolicy`.** Parameters live in the module's state dict rather
+      than in the graph, so the graph carries no values to compare; a parameter appears
+      only as a `placeholder` named after it. A retrained model diffs as unchanged here.
+      Use :func:`compute_coreai_program_diff` with `DIGEST` to compare weights.
 
     Args:
         source_program: Source (reference/expected) ExportedProgram
         target_program: Target (actual/test) ExportedProgram
+        ignore_attributes: Attribute names left out of a node's identity. Accepted for
+            symmetry with the Core AI entry points; an FX node carries no named MLIR
+            attributes, so this reaches only the labelling of nodes that have them.
 
     Returns:
         GraphDiff object with source_graph and target_graph included
@@ -1642,4 +1808,8 @@ def compute_exported_program_diff(
     target_graph = _build_torch_fx_graph(target_program)
 
     # Compute and return diff
-    return compute_graph_diff(source_graph, target_graph)
+    return compute_graph_diff(
+        source_graph,
+        target_graph,
+        ignore_attributes=ignore_attributes,
+    )

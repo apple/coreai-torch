@@ -435,12 +435,18 @@ def _attr_digest(
     normalised away: both differ between two conversions of one unchanged model, so
     including either reports a change that did not happen. Read through the bindings,
     never by parsing printed IR.
+
+    A graph with no MLIR behind it -- a torch FX graph -- has no attributes to read, so
+    a builder for one precomputes the digest and stores it under `attributes`. Without
+    that fallback every such node's digest was the empty string, and an op's whole
+    configuration (`dim`, `dtype`, a scalar operand) was absent from its identity.
     """
     ir_object = attrs.get("ir_object")
     operation = getattr(ir_object, "operation", ir_object)
     attributes = getattr(operation, "attributes", None)
     if attributes is None:
-        return ""
+        precomputed = attrs.get("attributes")
+        return "" if precomputed is None else str(precomputed)
 
     parts: list[str] = []
     for attribute in attributes:

@@ -13,7 +13,7 @@ be used with the Validator to efficiently locate failing operations.
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Generic, TypeVar
 
@@ -39,6 +39,18 @@ class SearchStrategy(ABC, Generic[TNode, TGraph]):
         PASS = auto()
         FAIL = auto()
         UNKNOWN = auto()
+        SKIPPED = auto()
+        """This node was never a candidate, so nothing was checked.
+
+        A placeholder, a `get_attr`, the `output` node, or an operation an exclusion
+        policy removed. Distinct from UNKNOWN, which means a value was expected and
+        could not be obtained: a strategy narrows on UNKNOWN because unverified work
+        might hide the fault, and doing that for a node that computes nothing collapsed
+        the search on its first batch -- every FX graph starts with placeholders at
+        depth 0, so `LevelOrderStrategy` narrowed to depth 0 before checking anything.
+
+        Recorded as a result rather than withheld: a strategy tracks which nodes are
+        still unchecked, so a node it is never told about is one it offers forever."""
 
     @dataclass
     class CategorizedResults:
@@ -47,6 +59,10 @@ class SearchStrategy(ABC, Generic[TNode, TGraph]):
         failed: list[ComputationGraph.Node]
         passed: list[ComputationGraph.Node]
         unknown: list[ComputationGraph.Node]
+        skipped: list[ComputationGraph.Node] = field(default_factory=list)
+        """Nodes that were never candidates; see `ValidationResult.SKIPPED`. Neither
+        evidence of a fault nor evidence against one, so no pass counts them and no
+        narrowing acts on them."""
 
     def __aiter__(self) -> AsyncIterator[list[ComputationGraph.Node]]:
         return self
@@ -357,11 +373,33 @@ class LevelOrderStrategy(SearchStrategy[TNode, TGraph]):
 
         self._initialized = True
 
+    def _in_depth_range(self, node: ComputationGraph.Node) -> bool:
+        """
+        Whether *node* still falls inside the depth range the search has narrowed to.
+
+        Args:
+            node: Node to test.
+
+        Returns:
+            True when the node is still a candidate.
+
+        """
+        if self._depth_range is None:
+            return True
+        min_depth, max_depth = self._depth_range
+        return min_depth <= node.depth < max_depth
+
     def _group_unchecked_nodes_by_depth(
         self,
     ) -> dict[int, list[ComputationGraph.Node]]:
         """
-        Group unchecked nodes by their depth level.
+        Group the still-eligible unchecked nodes by their depth level.
+
+        Filtered by :attr:`_depth_range`, which is what makes narrowing mean anything.
+        Without the filter the range was computed, logged and never consulted except
+        for the `min_depth >= max_depth` exit, so every level was offered whatever the
+        results said and bisection reordered the graph instead of pruning it -- at one
+        model execution per side per batch, the most expensive way to check everything.
 
         Returns:
             Dictionary mapping depth -> list of unchecked nodes at that depth
@@ -370,10 +408,11 @@ class LevelOrderStrategy(SearchStrategy[TNode, TGraph]):
         level_dict: dict[int, list[ComputationGraph.Node]] = {}
 
         for node in self._scope_nodes:
-            if node.op_id not in self._node_results:
-                if node.depth not in level_dict:
-                    level_dict[node.depth] = []
-                level_dict[node.depth].append(node)
+            if node.op_id in self._node_results:
+                continue
+            if not self._in_depth_range(node):
+                continue
+            level_dict.setdefault(node.depth, []).append(node)
 
         return level_dict
 
@@ -422,18 +461,24 @@ class LevelOrderStrategy(SearchStrategy[TNode, TGraph]):
         """
         Get the next batch of nodes from the currently selected level.
 
+        Nodes narrowed out since the level was selected are stepped over rather than
+        yielded: a failure narrows the range mid-level, and the remainder of that level
+        was still being handed out because only level *selection* consulted the range.
+
         Returns:
-            Next batch_size nodes from current position, or empty list if exhausted
+            Next batch of eligible nodes from the current position, or an empty list
+            when the level is exhausted.
 
         """
-        if self._current_level_index >= len(self._current_level_nodes):
-            return []
-
-        # Get batch_size nodes from current position
-        batch = self._current_level_nodes[
-            self._current_level_index : self._current_level_index + self.batch_size
-        ]
-        self._current_level_index += self.batch_size
+        batch: list[ComputationGraph.Node] = []
+        while (
+            self._current_level_index < len(self._current_level_nodes)
+            and len(batch) < self.batch_size
+        ):
+            node = self._current_level_nodes[self._current_level_index]
+            self._current_level_index += 1
+            if self._in_depth_range(node):
+                batch.append(node)
 
         return batch
 
@@ -544,12 +589,15 @@ class LevelOrderStrategy(SearchStrategy[TNode, TGraph]):
         failed_nodes = []
         passed_nodes = []
         unknown_nodes = []
+        skipped_nodes = []
 
         for node, result in results:
             if result == SearchStrategy.ValidationResult.FAIL:
                 failed_nodes.append(node)
             elif result == SearchStrategy.ValidationResult.PASS:
                 passed_nodes.append(node)
+            elif result == SearchStrategy.ValidationResult.SKIPPED:
+                skipped_nodes.append(node)
             else:
                 unknown_nodes.append(node)
 
@@ -557,6 +605,7 @@ class LevelOrderStrategy(SearchStrategy[TNode, TGraph]):
             failed=failed_nodes,
             passed=passed_nodes,
             unknown=unknown_nodes,
+            skipped=skipped_nodes,
         )
 
     def _track_failed_parent_nodes_for_descent(
@@ -656,6 +705,15 @@ class LevelOrderStrategy(SearchStrategy[TNode, TGraph]):
           searching for failures. Don't narrow when everything passes, as we need
           to ensure all nodes eventually get checked.
 
+        SKIPPED results are ignored on both counts. They are neither evidence of a
+        fault nor evidence against one, so they must not pull the upper bound down --
+        and they must not let the lower bound advance past depths that were never
+        actually verified.
+
+        The range is enforced by :meth:`_group_unchecked_nodes_by_depth` and
+        :meth:`_get_next_batch_from_current_level`, so narrowing here genuinely stops
+        deeper nodes being offered.
+
         Args:
             categorized: Categorized validation results from the last batch
 
@@ -675,21 +733,25 @@ class LevelOrderStrategy(SearchStrategy[TNode, TGraph]):
             # This focuses search on finding the root cause at or before the issue
             max_depth = min(max_depth, min_problematic_depth + 1)
             self._depth_range = (min_depth, max_depth)
-        # If all nodes passed, check if there are unchecked nodes at shallower depths
-        # Only narrow the lower bound if all shallower depths have been checked
+        # If all nodes passed, check if there are unchecked nodes at this depth or
+        # shallower. Only narrow the lower bound once they have all been checked.
         elif categorized.passed:
             # Find the maximum depth among passed nodes
             max_passed_depth = max(node.depth for node in categorized.passed)
 
-            # Check if there are any unchecked nodes at depths < max_passed_depth
-            unchecked_at_shallower_depths = any(
-                node.depth < max_passed_depth and node.op_id not in self._node_results
+            # `<=`, not `<`: the bound about to be set claims everything up to *and
+            # including* `max_passed_depth` has been checked, so the level itself has to
+            # be finished. A level larger than `batch_size` arrives in several batches,
+            # and testing only strictly shallower depths let the first batch advance the
+            # bound past its own unchecked siblings. Inert while the range was never
+            # consulted; now that it prunes, those siblings would simply never be
+            # checked, and a validator would report a clean result having skipped them.
+            unchecked_at_or_above = any(
+                node.depth <= max_passed_depth and node.op_id not in self._node_results
                 for node in self._scope_nodes
             )
 
-            # Only narrow if no unchecked nodes exist at shallower depths
-            # This ensures we eventually check all nodes when everything passes
-            if not unchecked_at_shallower_depths:
+            if not unchecked_at_or_above:
                 # Narrow the lower bound to just after the passed depth
                 # We know we've checked everything up to and including this depth
                 min_depth = max(min_depth, max_passed_depth + 1)

@@ -123,6 +123,10 @@ class _BenchmarkerState(Enum):
     """Benchmark completed."""
 
 
+_NO_INTERVAL = 0
+"""Interval id standing for "this begin event opened nothing"."""
+
+
 @dataclass(frozen=True)
 class Statistics:
     """Statistical summary of measurements."""
@@ -521,11 +525,6 @@ def _timing_annotation_callback(
     skipped: the runtime measured the dispatch as a whole, so there is no per-member
     figure to give, and annotating each one repeated a single measurement as many
     times as the dispatch had members.
-
-    Grouped rather than indexed, because a representative is not unique. Two
-    dispatches regularly cover the same operation, and ``{timing.op_id: timing}``
-    kept only the last -- 22 annotations from 34 dispatches on one model, silently,
-    with the survivor chosen by insertion order.
 
     Args:
         timings: The dispatches to report.
@@ -1302,7 +1301,7 @@ class Benchmarker(ABC):
         self._timings: dict[tuple[int, tuple[int, ...]], list[float]] = defaultdict(
             list
         )
-        self._interval_counter = 0
+        self._interval_counter = _NO_INTERVAL + 1
         self._debug_info_records: list[DebugInfoRecord] = []
         # Maps a compiled op identifier (odix_id, delegate_id) to the list of
         # coreai op IDs fused into it. Keyed on the same pair carried by a runtime
@@ -1386,7 +1385,7 @@ class Benchmarker(ABC):
             self._intervals.clear()
             self._timings.clear()
             self._pending_durations.clear()
-            self._interval_counter = 0
+            self._interval_counter = _NO_INTERVAL + 1
 
     def _wait_for_intervals_to_complete(self: Self, timeout_s: float = 10.0) -> None:
         """
@@ -1563,23 +1562,24 @@ class Benchmarker(ABC):
             event: LogEvent from the profiler
 
         Returns:
-            Interval ID for tracking this event
+            Interval ID for tracking this event, or :data:`_NO_INTERVAL` when this
+            event is not being timed.
 
         """
         # Only process events when actively running benchmark
         if self._state != _BenchmarkerState.RUNNING:
-            return 0  # Return dummy interval_id
+            return _NO_INTERVAL
 
         # Only process inference phase events
         phase = _LogEventPhase(event.phase)
         if phase != _LogEventPhase.INFERENCE:
-            return 0  # Return dummy interval_id for non-inference events
+            return _NO_INTERVAL
 
         # Opening an interval for the host-timestamped twin would pool it with the
         # hardware measurement of the same encoder; its end event then finds no open
         # interval and is ignored.
         if _is_gpu_interval(event) and not _is_hardware_timestamped(event):
-            return 0
+            return _NO_INTERVAL
 
         with self._lock:
             interval_id = self._interval_counter
@@ -1602,6 +1602,12 @@ class Benchmarker(ABC):
             interval_id: Interval ID from the begin callback
 
         """
+        # Nothing was opened for this event, so there is nothing to close. Checked
+        # before the lookup: the sentinel must never reach `self._intervals`, where it
+        # would find whichever interval happened to be open under that id.
+        if interval_id == _NO_INTERVAL:
+            return
+
         # Only process events when actively running benchmark
         if self._state != _BenchmarkerState.RUNNING:
             return
@@ -1819,8 +1825,11 @@ class CoreAIBenchmarker(Benchmarker):
             logger.debug("Warmup run (untimed)")
             await function(nd_inputs)
 
-            # Transition to RUNNING state to start collecting timing data
-            self._state = _BenchmarkerState.RUNNING
+            # Transition to RUNNING state to start collecting timing data. Written
+            # under the lock the callbacks take, so the transition is ordered against
+            # their reads rather than racing them.
+            with self._lock:
+                self._state = _BenchmarkerState.RUNNING
 
             for i in range(num_runs):
                 logger.debug("Benchmark run %d/%d", i + 1, num_runs)
@@ -1833,7 +1842,8 @@ class CoreAIBenchmarker(Benchmarker):
             await asyncio.to_thread(self._wait_for_intervals_to_complete)
 
             # All intervals have closed; stop collecting and build the result.
-            self._state = _BenchmarkerState.COMPLETED
+            with self._lock:
+                self._state = _BenchmarkerState.COMPLETED
 
             result = self._create_result()
             logger.info(

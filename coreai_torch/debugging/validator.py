@@ -289,9 +289,8 @@ class Validator(Generic[TNode, TGraph]):
                         # apart from the unknowns rather than counted as a failed retrieval.
                         excluded.append(node)
                         batch_results.append(
-                            (node, SearchStrategy.ValidationResult.UNKNOWN),
+                            (node, SearchStrategy.ValidationResult.SKIPPED),
                         )
-                        unknown_count += 1
                         continue
 
                     outputs = results.get(node.op_id)

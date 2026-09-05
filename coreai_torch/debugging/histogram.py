@@ -283,7 +283,12 @@ def _body_counts(
                     counts[operation.name] += 1
                     continue
                 callee = _invoke_callee(operation)
-                if callee is None:
+                # A callee this module defines no `coreai.graph` for has no body to
+                # describe, so it is counted as a plain invoke. Counting it as a call
+                # meant `_histogram` looked the symbol up in `bodies` and raised
+                # KeyError -- an invoke naming a `func.func`, or an external symbol,
+                # crashed the whole histogram rather than being reported as itself.
+                if callee is None or callee not in entry_points:
                     counts[operation.name] += 1
                     continue
                 calls[callee] += 1
@@ -302,6 +307,9 @@ def _histogram(
 
     Recurses without a depth or cycle guard: a `coreai.invoke` names a symbol the
     module defines, and the graphs form a DAG, so the walk terminates.
+
+    Every symbol in *calls* has an entry in *bodies*: `_body_counts` records a call
+    only for a callee `entry_points` holds, and *bodies* is keyed by exactly those.
 
     Args:
         counts: The body's own operation counts.

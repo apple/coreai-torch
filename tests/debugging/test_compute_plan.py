@@ -67,7 +67,7 @@ async def test_compute_plan_from_program(
     )
 
     # An entry the planner made must name a device it chose. `<= set(ComputeDevice)`
-    # was the assertion here and cannot fail: `ComputeDevice.__missing__` maps any
+    # was the assertion here and cannot fail: `ComputeDevice._missing_` maps any
     # string at all to `UNKNOWN`, and `UNKNOWN` is itself a member, so a plan that
     # resolved nothing passed exactly as one that resolved everything. Measured on
     # this model: 31 entries all CPU under the bundled runtime, 10 all GPU under the
@@ -184,3 +184,12 @@ async def test_compute_plan_annotate_source(
     assert any(device.value in output for device in ComputeDevice), (
         "Expected at least one compute device label in the annotated output"
     )
+
+
+def test_known_residencies_still_parse() -> None:
+    """The names the enum does carry keep resolving, case- and alias-insensitively."""
+    assert ComputeDevice.from_string("cpu") is ComputeDevice.CPU
+    assert ComputeDevice.from_string(" GPU ") is ComputeDevice.GPU
+    # "ANE" is the runtime's spelling of the Neural Engine.
+    assert ComputeDevice.from_string("ane") is ComputeDevice.NEURAL_ENGINE
+    assert ComputeDevice.from_string("NEURAL_ENGINE") is ComputeDevice.NEURAL_ENGINE

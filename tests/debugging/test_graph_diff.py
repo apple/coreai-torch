@@ -14,6 +14,7 @@ from coreai.authoring import AIProgram
 
 from coreai_torch.converter import TorchConverter
 from coreai_torch.debugging.graph_diff import (
+    _build_torch_fx_graph,
     compute_coreai_program_diff,
     compute_exported_program_diff,
     compute_per_graph_diff,
@@ -753,3 +754,71 @@ async def test_per_graph_diff_applies_one_identity_to_every_graph() -> None:
         if diff is not None:
             assert diff.ignore_attributes == frozenset(no_values)
             assert diff.weights is WeightPolicy.DIGEST
+
+
+class _ConcatModel(torch.nn.Module):
+    """A model whose inputs reach an operation inside a *list* argument."""
+
+    def __init__(self, dim: int) -> None:
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        """Concatenate along the configured dimension."""
+        return torch.cat([x, y], dim=self.dim).sum()
+
+
+def _concat_program(dim: int) -> torch.export.ExportedProgram:
+    """Export `_ConcatModel` at *dim*."""
+    args = (torch.randn(2, 4), torch.randn(2, 4))
+    return torch.export.export(_ConcatModel(dim), args).run_decompositions()
+
+
+def test_exported_program_follows_nodes_inside_list_arguments() -> None:
+    """An input passed in a list is still an operand.
+
+    Only top-level `fx.Node` args were followed, so `aten.cat` -- which takes its inputs
+    as a list -- got no incoming edges at all, and the tensors feeding it looked unused.
+    Measured on this two-input model: 1 edge across 5 nodes, against 4 now.
+    """
+    graph = _build_torch_fx_graph(_concat_program(0))
+
+    concat = [
+        node
+        for node, data in graph.nodes(data=True)
+        if "cat" in data.get("op_name", "")
+    ]
+    assert len(concat) == 1, "Expected exactly one concatenation in the graph"
+
+    operands = sorted(
+        (data["index"], producer)
+        for producer, _, data in graph.in_edges(concat[0], data=True)
+    )
+    assert [index for index, _ in operands] == [0, 1], (
+        f"Both list members should be wired as operands, got {operands}"
+    )
+
+
+def test_exported_program_diff_detects_a_changed_constant_argument() -> None:
+    """Two graphs differing only in a keyword argument are not the same graph.
+
+    An FX node's label was its op and target alone -- `_attr_digest` reads an
+    `ir_object`, which an FX node does not have -- so its whole configuration was
+    outside its identity. `cat(dim=0)` and `cat(dim=1)` hashed identically and the diff
+    reported them isomorphic: a silent false negative, the worst answer a diff can give.
+    """
+    diff = compute_exported_program_diff(_concat_program(0), _concat_program(1))
+
+    assert not diff.is_isomorphic, "A changed `dim` must not read as the same graph"
+    assert diff.summary.modified_node_count > 0, (
+        "The concatenation is still the same operation, so it should be reported as "
+        "modified rather than removed and added"
+    )
+
+
+def test_exported_program_diff_still_matches_identical_programs() -> None:
+    """The stronger identity must not make two exports of one model differ."""
+    diff = compute_exported_program_diff(_concat_program(0), _concat_program(0))
+
+    assert diff.is_isomorphic
+    assert diff.summary.modified_node_count == 0

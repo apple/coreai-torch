@@ -162,7 +162,7 @@ class ComputeDevice(Enum):
     """Unknown compute device."""
 
     @classmethod
-    def __missing__(cls, value: object) -> "ComputeDevice":
+    def _missing_(cls, value: object) -> "ComputeDevice":
         """Return UNKNOWN for unrecognized device values."""
         return cls.UNKNOWN
 

@@ -417,8 +417,13 @@ class Comparator(
             source: Source debug graph containing computation graph and inspector
             target: Target debug graph containing computation graph and inspector
             id_map: Mapping from source node IDs to target node IDs
-            strategy: Search strategy to use on source graph. Defaults to bisection (batch_size=10)
+            strategy: Search strategy to use on source graph. Defaults to
+                :class:`~coreai_torch.debugging.search_strategy.ExhaustiveStrategy`,
+                which checks every operation in one batch; see the note below for why
+                that rather than bisection.
             show_progress: Whether to show progress bar during comparison (default: True)
+            exclude_ops: Torch operation names treated as deliberate exclusions when
+                explaining what the id_map dropped.
 
         """
         self.source = source
@@ -890,11 +895,23 @@ class Comparator(
     def _status_to_validation_result(
         status: Status,
     ) -> SearchStrategy.ValidationResult:
-        """Convert Status to ValidationResult."""
+        """Project a Status onto what a search strategy acts on.
+
+        Lossy by design, but the loss has to preserve one distinction: whether the
+        operation was ever a candidate. EXCLUDED was projected to UNKNOWN along with
+        everything else, and a strategy narrows on UNKNOWN -- so a graph opening with
+        placeholders and `aten.view`s, both EXCLUDED, narrowed a level-order search to
+        depth 0 before a single value was compared.
+        """
         if status == Comparator.Status.PASS:
             return SearchStrategy.ValidationResult.PASS
         elif status == Comparator.Status.FAIL:
             return SearchStrategy.ValidationResult.FAIL
+        elif status == Comparator.Status.EXCLUDED:
+            # Never a candidate: a policy exclusion, or a node that computes nothing.
+            # Reporting it as unverified would have the search hunt for a fault in an
+            # operation there was never anything to check.
+            return SearchStrategy.ValidationResult.SKIPPED
         elif status == Comparator.Status.SHAPE_AMBIGUOUS:
             # Unverified, not clean: the values were never compared. Reporting it as PASS
             # would let a search prune a subgraph on the strength of a comparison that
@@ -1513,7 +1530,9 @@ async def create_comparator_for_programs(
         target_program: AIProgram (target compiled model)
         target_entry_point: Name of the coreai.graph in target program
         inspector_type: Type of inspector for the target program
-        strategy: Search strategy for source graph (defaults to bisection)
+        strategy: Search strategy for source graph. Defaults to `ExhaustiveStrategy`,
+                  which checks every operation in one batch and reports every
+                  divergence; see :class:`Comparator` for why that rather than bisection.
         use_caching: Whether to use caching inspectors (default: True)
         exclude_ops: Frozenset of torch operation names to exclude from comparison.
                      Defaults to _DEFAULT_EXCLUDED_OPS which includes view/reshape

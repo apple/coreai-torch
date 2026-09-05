@@ -207,9 +207,15 @@ result = await validator.check(check_large_values, inputs=example_input)
 Choose how to search through operations:
 
 ```python
-from coreai_torch.debugging.search_strategy import LevelOrderStrategy
+from coreai_torch.debugging.search_strategy import (
+    ExhaustiveStrategy,
+    LevelOrderStrategy,
+)
 
-# Binary search (default - fastest for finding first issue)
+# Exhaustive (default) - one batch, one model execution per side, reports every issue
+strategy = ExhaustiveStrategy(graph)
+
+# Bisection - narrows by depth to the first failing level
 strategy = LevelOrderStrategy.bisection(graph, batch_size=10)
 
 # Top-down (systematic from inputs to outputs)
@@ -218,6 +224,11 @@ strategy = LevelOrderStrategy.top_down(graph)
 # Adaptive (automatically selects best approach)
 strategy = LevelOrderStrategy.auto(graph)
 ```
+
+Every batch a strategy yields costs a full model execution on *both* sides, so
+narrowing only pays when capturing a value is more expensive than a run — very large
+intermediates, or an early exit that skips most of the graph. Otherwise the default
+`ExhaustiveStrategy` is both cheaper and more complete.
 
 ### Batch size
 ```python
