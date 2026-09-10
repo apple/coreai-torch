@@ -646,8 +646,8 @@ def op_id_alignment(
         The correspondence, and what it leaves over.
 
     """
-    before_graph = _build_module_graph(before._mlir_module, entry_point)
-    after_graph = _build_module_graph(after._mlir_module, entry_point)
+    before_graph = _build_module_graph(before._module._mlir_module, entry_point)
+    after_graph = _build_module_graph(after._module._mlir_module, entry_point)
     alignment = align(
         before_graph,
         after_graph,
@@ -1225,8 +1225,8 @@ def compute_coreai_program_diff(
         ValueError: If entry point is not found in either program
 
     """
-    source_graph = _build_module_graph(source_program._mlir_module, entry_point)
-    target_graph = _build_module_graph(target_program._mlir_module, entry_point)
+    source_graph = _build_module_graph(source_program._module._mlir_module, entry_point)
+    target_graph = _build_module_graph(target_program._module._mlir_module, entry_point)
     return compute_graph_diff(
         source_graph,
         target_graph,

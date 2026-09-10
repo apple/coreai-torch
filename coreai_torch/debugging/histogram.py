@@ -235,7 +235,7 @@ def operation_histogram(program: AIProgram) -> OperationHistogram:
         :class:`OperationHistogram`.
 
     """
-    module = program._mlir_module  # noqa: SLF001
+    module = program._module._mlir_module  # noqa: SLF001
     entry_points = _collect_entry_points(module)
 
     invoked: set[str] = set()

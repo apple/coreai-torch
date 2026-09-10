@@ -215,7 +215,7 @@ def test_operation_ids_increase_in_ir_order() -> None:
 
     body_ids = [
         get_operation_id(operation)
-        for operation in _get_nested_operations(program._mlir_module.operation)
+        for operation in _get_nested_operations(program._module._mlir_module.operation)
         if operation.name != "coreai.graph"
     ]
 
@@ -268,6 +268,6 @@ def test_output_maps_survive_deferred_operation_ids() -> None:
     """
     program = _convert(DeepChainModel(3), torch.randn(1, 8))
 
-    asm = program._mlir_module.operation.get_asm(enable_debug_info=True)
+    asm = program._module._mlir_module.operation.get_asm(enable_debug_info=True)
 
     assert "output_maps" in asm, "no output maps were recorded"
