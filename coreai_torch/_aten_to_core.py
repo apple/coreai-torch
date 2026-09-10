@@ -1241,6 +1241,14 @@ def replace_conv(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
             raise ValueError(
                 f"Transposed conv3d is not yet supported, at node: {node}, name: {node.name}"
             )
+        if any(
+            op >= s and op >= d for op, s, d in zip(output_padding, stride, dilation)
+        ):
+            raise ValueError(
+                f"output padding must be smaller than either stride or dilation, got "
+                f"output_padding={output_padding}, stride={stride}, dilation={dilation}, "
+                f"at node: {node}, name: {node.name}"
+            )
         return _conv_transpose(
             x, weight, bias, stride, padding, dilation, output_padding, groups, loc
         )

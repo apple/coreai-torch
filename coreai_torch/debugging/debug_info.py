@@ -443,6 +443,35 @@ class DebugInfo:
         symbol_names = self.get_symbol_names(symbol_type=symbol_type)
         return symbol_names[0] if len(symbol_names) > 0 else None
 
+    def get_residency(self) -> str | None:
+        """
+        Get the residency of the kernel this entry is scheduled as.
+
+        An entry describes a single scheduled kernel and records at most one
+        residency for it, so the first residency found is the placement and no
+        ordering or precedence between values applies.
+
+        An entry may name several ``coreai`` IDs when operations are fused. They
+        all became the one kernel this entry stands for and so share its
+        residency.
+
+        Returns:
+            The kernel's residency string, or ``None`` if the entry records no
+            residency.
+
+        """
+        for metadata in self.metadatas:
+            if metadata.key != "residency":
+                continue
+            if metadata.value.value_type != "string" or not isinstance(
+                metadata.value.value,
+                str,
+            ):
+                continue
+            return metadata.value.value
+
+        return None
+
     def is_symbol(self) -> bool:
         """
         Whether this operation represents a symbol rather than a real op.

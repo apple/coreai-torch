@@ -10,6 +10,8 @@ from collections import OrderedDict
 
 import torch
 
+from coreai_torch.composite_ops import RMSNorm as CompositeRMSNorm
+
 from .test_submodel import SubModel
 
 
@@ -447,6 +449,38 @@ class TwoLayerMLPModel(torch.nn.Module):
         return x
 
 
+class NormBlock(torch.nn.Module):
+    """A composite-op norm and a projection, for externalizing both together.
+
+    Uses the ``composite_ops`` RMSNorm rather than the plain one above, so externalizing
+    this block *and* the norm inside it emits a `coreai.graph` that invokes another --
+    the only shape in this file that produces a nested composite.
+    """
+
+    def __init__(self, dim: int = 16) -> None:
+        """Initialize the block."""
+        super().__init__()
+        self.norm = CompositeRMSNorm(dim)
+        self.proj = torch.nn.Linear(dim, dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the block."""
+        return self.proj(self.norm(x))
+
+
+class TwoNormModel(torch.nn.Module):
+    """One `NormBlock` called twice, so its norm is reached through two invocations."""
+
+    def __init__(self) -> None:
+        """Initialize the model."""
+        super().__init__()
+        self.block = NormBlock()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the model."""
+        return self.block(self.block(x))
+
+
 EXAMPLE_INPUTS = {
     HierarchicalModel: lambda: OrderedDict(
         x=torch.randn(1, 2, 4),
@@ -514,6 +548,9 @@ EXAMPLE_INPUTS = {
     ),
     TwoLayerMLPModel: lambda: OrderedDict(
         x=torch.randn(1, 4),
+    ),
+    TwoNormModel: lambda: OrderedDict(
+        x=torch.randn(2, 8, 16),
     ),
 }
 

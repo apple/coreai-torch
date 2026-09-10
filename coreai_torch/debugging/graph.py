@@ -504,18 +504,27 @@ def create_graph_from_exported_program(
         nesting_depth=0,
     )
 
-    # Build nodes with predecessors
-    nodes = []
-    for idx, fx_node in enumerate(fx_nodes):
-        # Extract predecessor node names
+    # Predecessors per node, and the inverse relation.
+    predecessors_by_name: dict[str, list[str]] = {}
+    successors_by_name: dict[str, list[str]] = {}
+    for fx_node in fx_nodes:
         pred_names = [
             node_to_name[arg] for arg in fx_node.all_input_nodes if arg in node_to_name
         ]
+        predecessors_by_name[fx_node.name] = pred_names
+        for pred_name in pred_names:
+            # An operation can appear twice in another's inputs (`x + x`); record it once.
+            consumers = successors_by_name.setdefault(pred_name, [])
+            if fx_node.name not in consumers:
+                consumers.append(fx_node.name)
 
+    nodes = []
+    for idx, fx_node in enumerate(fx_nodes):
         node = ComputationGraph.Node(
             op_id=fx_node.name,
             original_node=fx_node,
-            predecessors=pred_names,
+            predecessors=predecessors_by_name[fx_node.name],
+            successors=successors_by_name.get(fx_node.name, []),
             scope=top_level_scope,
             sequence_index=idx,
         )

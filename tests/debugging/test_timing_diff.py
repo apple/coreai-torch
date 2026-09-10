@@ -23,7 +23,11 @@ from coreai_torch.debugging.benchmarker import (
     OperationTiming,
 )
 from coreai_torch.debugging.graph_diff import OpIdAlignment
-from coreai_torch.debugging.timing_diff import Resize, compare_results
+from coreai_torch.debugging.timing_diff import (
+    Resize,
+    _no_dispatches_message,
+    compare_results,
+)
 
 
 def _dispatch(op_ids: list[int], median_ms: float) -> OperationTiming:
@@ -292,3 +296,37 @@ def test_write_to_reports_every_dispatch() -> None:
     assert "only before" in written
     assert "only after" in written
     assert "1 comparable" in written
+
+
+def test_an_empty_run_is_explained_by_what_it_measured() -> None:
+    """
+    Three ways to attribute nothing, and the message says which without guessing why.
+
+    The message this replaced named a cause -- "per-operation timing needs the GPU
+    delegate" -- which is false, since the bundled runtime attributes dispatches with
+    no specialization options at all, and which told a caller already on the GPU
+    delegate to select it. Nothing at this point distinguishes the causes, so the
+    message reports what was measured and stops.
+    """
+    named_nothing = _no_dispatches_message(
+        "before",
+        BenchmarkResult(
+            operation_timings=[],
+            unattributed_samples=9,
+            unattributed_compile_ids=3,
+        ),
+    )
+    assert "9 sample(s) were measured but named no operation" in named_nothing
+
+    whole_regions = _no_dispatches_message(
+        "after",
+        BenchmarkResult(operation_timings=[], symbol_samples=9, symbol_intervals=3),
+    )
+    assert "measured whole regions rather than individual operations" in whole_regions
+
+    nothing = _no_dispatches_message("before", BenchmarkResult(operation_timings=[]))
+    assert "no timing was reported at all" in nothing
+
+    for message in (named_nothing, whole_regions, nothing):
+        assert "attributed no dispatches" in message
+        assert "GPU delegate" not in message, "It must not name a cause it cannot know"

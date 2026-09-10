@@ -834,6 +834,10 @@ class TorchConverter:
                 with graph_op.block:
                     self._get_operation(node)
 
+            # Operation IDs and debug locations for everything just lowered, in one
+            # IR-order pass, now that the graph body is complete.
+            self._debug_info_recorder.finalize_node_operations()
+
             # Assemble outputs with resolved names
             outputs_name_value: list[tuple[str, Value]] = [
                 (resolved_name, self._values_map[fx_name])

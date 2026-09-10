@@ -13,7 +13,14 @@ import torch
 from coreai.authoring import AIProgram
 
 from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
-from coreai_torch.debugging.benchmarker import benchmark_coreai_program
+from coreai_torch.debugging.benchmarker import (
+    BenchmarkResult,
+    Measurement,
+    OperationTiming,
+    _timing_annotation_callback,
+    benchmark_coreai_program,
+)
+from coreai_torch.debugging.debug_info import _build_coreai_op_map
 
 from .test_model import HierarchicalModel, get_example_inputs
 
@@ -178,3 +185,152 @@ async def test_annotate_dominant_source(
         # This tests that the method works with terminal output and hierarchies
         module.annotate_dominant_source(sys.stdout)
         sys.stdout.write(2 * "\n")  # Add blank line between modules
+
+
+def _timing(op_ids: list[int], odix_id: int, ms: float) -> OperationTiming:
+    """A dispatch of *op_ids*, measured by ODIX op *odix_id* at *ms* every sample."""
+    return OperationTiming(
+        op_ids=op_ids,
+        operations=[],
+        measurement=Measurement.from_samples([ms] * 3),
+        odix_id=odix_id,
+    )
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Test only runs on macOS")
+async def test_every_dispatch_of_an_operation_reaches_its_annotation(
+    hierarchical_coreai_program: AIProgram,
+) -> None:
+    """
+    Two dispatches of one operation must both be reported, not silently deduplicated.
+    """
+    operations = _build_coreai_op_map(hierarchical_coreai_program)
+    twice, once = sorted(operations)[:2]
+
+    callback = _timing_annotation_callback(
+        [
+            _timing([twice], odix_id=125, ms=0.5),
+            _timing([twice], odix_id=126, ms=0.25),
+            _timing([once], odix_id=128, ms=0.1),
+        ]
+    )
+
+    annotation = callback(operations[twice])
+    assert annotation is not None
+    assert len(annotation.dispatches) == 2, "Neither dispatch may be dropped"
+    assert {dispatch.odix_id for dispatch in annotation.dispatches} == {125, 126}
+    assert annotation.total_average_ms == pytest.approx(0.75), (
+        "Separate work, so the operation's cost is the sum of its dispatches"
+    )
+
+    single = callback(operations[once])
+    assert single is not None and len(single.dispatches) == 1
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Test only runs on macOS")
+async def test_an_annotation_names_each_dispatch_when_there_are_several(
+    hierarchical_coreai_program: AIProgram,
+) -> None:
+    """
+    A total with no breakdown hides that it is a sum, and a bare line hides the rest.
+
+    One dispatch renders exactly as before; several render a total and then one line
+    each, so a reader can see where the number came from.
+    """
+    operations = _build_coreai_op_map(hierarchical_coreai_program)
+    twice = sorted(operations)[0]
+
+    callback = _timing_annotation_callback(
+        [_timing([twice], odix_id=125, ms=0.5), _timing([twice], odix_id=126, ms=0.25)]
+    )
+    lines = callback(operations[twice]).lines()
+
+    assert len(lines) == 3, "A total, then one line per dispatch"
+    assert "2 dispatches" in lines[0].text
+    assert "125" in lines[1].text and "126" in lines[2].text
+
+    only = _timing_annotation_callback([_timing([twice], odix_id=125, ms=0.5)])
+    assert len(only(operations[twice]).lines()) == 1
+
+
+def test_a_dispatch_row_names_which_dispatch_it_is() -> None:
+    """
+    Otherwise two dispatches of one operation are identical rows but for the numbers,
+    which reads as the same work measured twice rather than as two pieces of it.
+
+    ``-1`` is included because the runtime really reports it, so it is not free to
+    use as a "no dispatch" sentinel: on the delegate path the identifier is assigned
+    at run time and ``compile_ids.id`` comes back ``-1`` for every GPU dispatch. A
+    numeric sentinel would print those measurements as though they were hand-made,
+    which is why the field is ``None`` when absent.
+    """
+    first = _timing([1], odix_id=125, ms=0.5).to_row()
+    second = _timing([1], odix_id=126, ms=0.25).to_row()
+    from_gpu = _timing([1], odix_id=-1, ms=0.1).to_row()
+    hand_made = OperationTiming(
+        op_ids=[1], operations=[], measurement=Measurement.from_samples([0.1])
+    ).to_row()
+
+    assert first.cells[0] == "125"
+    assert second.cells[0] == "126"
+    assert from_gpu.cells[0] == "-1", "A real dispatch, not a missing one"
+    assert hand_made.cells[0] == "-", "Only an absent dispatch renders as absent"
+    assert first.cells[1] == second.cells[1] == "1", "Same operation, either way"
+
+
+def test_the_summary_says_when_an_operation_spans_several_rows() -> None:
+    """
+    A reader totalling the median column needs to know the rows are separate work.
+
+    Suppressed when nothing is split, so its presence carries information.
+    """
+    split = BenchmarkResult(
+        operation_timings=[
+            _timing([1], odix_id=125, ms=0.5),
+            _timing([1], odix_id=126, ms=0.25),
+            _timing([2], odix_id=128, ms=0.1),
+        ]
+    )
+    output = StringIO()
+    split.write_summary(output)
+    assert "1 of 2 operation sets were measured by more than one dispatch" in (
+        output.getvalue().replace("\n", " ")
+    )
+
+    plain = BenchmarkResult(operation_timings=[_timing([2], odix_id=128, ms=0.1)])
+    output = StringIO()
+    plain.write_summary(output)
+    assert "more than one dispatch" not in output.getvalue()
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Test only runs on macOS")
+async def test_a_benchmark_that_times_nothing_says_what_it_measured(
+    hierarchical_coreai_program: AIProgram,
+) -> None:
+    """An empty result must account for itself, so it cannot read as "the model is free".
+
+    Some runtimes report one interval per delegate region rather than one per kernel. The
+    benchmarker then has nothing to attribute and returns no operation timings -- a result
+    indistinguishable, to a caller that only looks at `operation_timings`, from a model
+    that cost nothing. The sample counters are what tell the two apart, so an empty result
+    with all of them at zero is the failure this pins: it would mean samples arrived and
+    were dropped without record, or none arrived and nothing said so.
+    """
+    result = await benchmark_coreai_program(
+        coreai_program=hierarchical_coreai_program,
+        inputs=get_example_inputs(HierarchicalModel),
+        entry_point="main",
+        num_runs=5,
+    )
+
+    if result.operation_timings:
+        # Per-operation attribution worked; there is nothing to account for.
+        return
+
+    accounted = result.symbol_samples + result.unattributed_samples
+    assert accounted > 0, (
+        "no operation was timed and no sample was accounted for either: "
+        f"symbol_samples={result.symbol_samples}, "
+        f"unattributed_samples={result.unattributed_samples}. An empty benchmark with "
+        "no explanation cannot be distinguished from a model that cost nothing."
+    )

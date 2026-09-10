@@ -1054,11 +1054,9 @@ class _DebugInfoRecorder:
                 continue
 
             target_debug_info = self._debug_info_map.get(target_op)
-            target_op_id = (
-                target_debug_info.operation_id.value if target_debug_info else None
-            )
-
-            if target_op_id is None:
+            # Presence of debug info, not of an ID: IDs are assigned later, in IR order, by
+            # `finalize_node_operations`.
+            if target_debug_info is None:
                 continue
 
             output_map = OutputMap.create_torch_mapping(
@@ -1233,7 +1231,10 @@ class _DebugInfoRecorder:
             for nested_op in _get_nested_operations(op):
                 added_operations.append(nested_op)
 
-        return added_operations
+        # Deduplicated but NOT sorted into IR order: doing that here meant walking every
+        # operation converted so far, once per FX node, which made conversion quadratic in
+        # graph size. `finalize_node_operations` orders them in a single pass instead.
+        return list(dict.fromkeys(added_operations))
 
     def _assign_debug_info_to_operations(
         self: Self,
@@ -1242,21 +1243,22 @@ class _DebugInfoRecorder:
     ) -> None:
         """Assign debug information to a list of operations.
 
+        The operation ID is left unset: it is assigned in IR order by
+        :meth:`finalize_node_operations` once the graph body is complete.
+
         Args:
             operations: List of operations to assign debug info to
             base_debug_info: Base debug information to copy and modify
         """
         for operation in operations:
-            operation_id = self._operation_id
             op_debug_info = DebugInfo(
-                operation_id=OperationID(type="coreai", value=operation_id),
+                operation_id=None,
                 source=base_debug_info.source,
                 file_locations=base_debug_info.file_locations,
                 output_maps=[],
                 call_stack=base_debug_info.call_stack,
             )
             self._debug_info_map[operation] = op_debug_info
-            self._operation_id += 1
 
     def _process_terminating_operations(self: Self, source_operation_id: int) -> None:
         """Process terminating operations and update output maps.
@@ -1316,28 +1318,52 @@ class _DebugInfoRecorder:
             # Process terminating operations and update output maps
             self._process_terminating_operations(source_op_id)
 
-            for operation in added_operations:
-                debug_info = self._debug_info_map[operation]
-                context = operation.context
-
-                if not self.config.include_stack_trace:
-                    # Create unknown location with metadata if locations are disabled
-                    location = self._get_unknown_location_with_operation_id(
-                        debug_info, context
-                    )
-                else:
-                    # Create location based on the specified mode
-                    scope = _get_parent_scope(operation)
-                    location = self._create_operation_location(
-                        debug_info, context, scope
-                    )
-
-                set_op_location(operation, location)
-
-                # Set block argument locations using the operation's location
-                self._set_block_argument_locations(operation)
-
         self._op_results = None
+
+    def finalize_node_operations(self: Self) -> None:
+        """Assign operation IDs and materialize locations for the current graph, in IR order.
+
+        Done once per graph rather than once per lowered node. Resolving IR order per node
+        meant walking every operation converted so far, making conversion quadratic in graph
+        size -- and each block walk ends in a binding-level C++ exception, so the constant
+        factor is large.
+
+        One pass over the finished graph also makes the IDs match IR order, which per-node
+        ordering did not: a constant is inserted at the top of the block rather than
+        appended, so numbering as nodes were lowered left the IDs out of order in the IR.
+
+        Call this after the graph body is complete but *before* any pass that moves
+        operations out of the graph: an operation that has been outlined elsewhere is no
+        longer reachable from this graph and would never get its location.
+        """
+        if self._current_graph is None:
+            return
+
+        for operation in _get_nested_operations(self._current_graph):
+            debug_info = self._debug_info_map.get(operation)
+            if debug_info is None or debug_info.operation_id is not None:
+                continue
+
+            debug_info.operation_id = OperationID(
+                type="coreai", value=self._operation_id
+            )
+            self._operation_id += 1
+
+            context = operation.context
+            if not self.config.include_stack_trace:
+                # Create unknown location with metadata if locations are disabled
+                location = self._get_unknown_location_with_operation_id(
+                    debug_info, context
+                )
+            else:
+                # Create location based on the specified mode
+                scope = _get_parent_scope(operation)
+                location = self._create_operation_location(debug_info, context, scope)
+
+            set_op_location(operation, location)
+
+            # Set block argument locations using the operation's location
+            self._set_block_argument_locations(operation)
 
     def _ensure_all_operations_have_debug_locations(
         self: Self, graph_operation: Operation

@@ -1569,6 +1569,8 @@ class TestConvolution:
             (2, 4, 3, (1, 1), (2, 2), (2, 2), (0, 0), 1, False),
             # ConvTranspose2d: With output_padding
             (1, 1, 3, (2, 2), (1, 1), (1, 1), (1, 1), 1, False),
+            # ConvTranspose2d: output_padding permitted by dilation, not stride
+            (2, 4, 3, (1, 1), (0, 0), (3, 3), (2, 2), 1, False),
             # ConvTranspose2d: Grouped convolution
             (4, 4, 3, (2, 2), (1, 1), (1, 1), (0, 0), 2, False),
             # ConvTranspose1d: Basic case
@@ -1651,6 +1653,26 @@ class TestConvolution:
         else:
             dynamic_shapes = None
         await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+    @pytest.mark.parametrize(
+        "stride, dilation, output_padding",
+        [
+            ((1, 2), (1, 1), (1, 1)),
+            ((2, 1), (1, 1), (1, 1)),
+        ],
+    )
+    def test_conv_transpose_invalid_output_padding(
+        self, stride: Any, dilation: Any, output_padding: Any
+    ) -> None:
+        """output_padding must be < stride or < dilation in every spatial dim."""
+        model = nn.ConvTranspose2d(
+            2, 2, 3, stride=stride, dilation=dilation, output_padding=output_padding
+        ).eval()
+        ep = torch.export.export(
+            model, args=(torch.rand(2, 2, 8, 8),)
+        ).run_decompositions()
+        with pytest.raises(ValueError, match="output padding must be smaller"):
+            TorchConverter().add_exported_program(ep).to_coreai()
 
     @pytest.mark.parametrize(
         "is_1d, output_padding",

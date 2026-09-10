@@ -37,7 +37,19 @@ _ANNOTATION_STYLE = "green"
 """Default style for an annotation comment."""
 
 _DETAIL_STYLE = "yellow"
-"""Style for a secondary line under an annotation (e.g. a validation message)."""
+"""Style for an annotation carrying a caveat, or a secondary line beneath one.
+
+Colour separates "this placement has something to say about it" from the ordinary case,
+which is the distinction worth scanning for. An 800-line listing where 88 operations
+landed as asked and 8 did not is unreadable if all 96 are the same colour.
+"""
+
+_HEADING_STYLE = "bold cyan"
+"""Style for a heading that groups annotations, such as a module instance path.
+
+Distinct from the annotations beneath it so the grouping is visible at a glance;
+indentation alone does not survive a quick scan down a long file.
+"""
 
 # Rendering one line at a time would build a console per call, so consoles are
 # kept per output stream. The cache stays tiny: an annotator writes to one stream.
