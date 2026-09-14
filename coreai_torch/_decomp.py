@@ -26,6 +26,10 @@ _COMPOSITE_OPS: list = [
     torch.ops.aten.replication_pad3d.default,
     torch.ops.aten.scaled_dot_product_attention.default,
     torch.ops.aten.silu.default,
+    torch.ops.aten.glu.default,
+    torch.ops.aten.softplus.default,
+    torch.ops.aten.mish.default,
+    torch.ops.aten.elu.default,
 ]
 
 

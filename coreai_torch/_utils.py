@@ -1203,8 +1203,17 @@ def parse_traceback(traceback_str: str) -> list[_TracebackEntry]:
     ]
 
 
-def preprocess_graph(graph_module: fx.GraphModule) -> fx.GraphModule:
-    """Remove assertion nodes from graph_module and eliminate dead code."""
+def preprocess_graph(
+    graph_module: fx.GraphModule,
+    enable_fusion: bool = False,
+) -> fx.GraphModule:
+    """Remove assertion nodes from graph_module and eliminate dead code.
+
+    Args:
+        graph_module: The input FX GraphModule.
+        enable_fusion: If True, executes registered graph fusion passes (e.g.
+            LayerNorm + GELU fusion into single Metal GPU kernels).
+    """
     assert_ops = {
         torch.ops.aten._assert_async.msg,
         torch.ops.aten._assert_scalar.default,
@@ -1217,6 +1226,12 @@ def preprocess_graph(graph_module: fx.GraphModule) -> fx.GraphModule:
             graph_module.graph.erase_node(node)
     graph_module.recompile()
     graph_module.graph.eliminate_dead_code()
+
+    if enable_fusion:
+        from coreai_torch.passes.fusion import run_graph_fusion_passes
+
+        graph_module = run_graph_fusion_passes(graph_module)
+
     return graph_module
 
 

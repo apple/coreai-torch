@@ -12,6 +12,7 @@ from coreai.authoring import MetalParameter
 from packaging.version import Version as _Version
 from torch import __version__ as _torch_version
 
+from . import composite_ops, kernels, passes
 from .__version__ import __version__
 from ._composite_declaration import generate_composite_decl
 from ._decomp import get_decomp_table
@@ -33,6 +34,9 @@ __all__ = [
     "generate_composite_decl",
     "_patch_model_for_externalization",
     "_subexport_and_restore",
+    "composite_ops",
+    "kernels",
+    "passes",
 ]
 
 _TORCH_MAX_VERSION = "2.13.0"

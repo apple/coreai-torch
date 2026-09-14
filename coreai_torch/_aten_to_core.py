@@ -1667,6 +1667,74 @@ def replace_gelu(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
     return coreai.gelu(x, approximate=node.kwargs.get("approximate", "none"))
 
 
+def replace_glu(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
+    """Converts aten.glu to coreai.split along dim followed by sigmoid and mul."""
+    x = _get_operand(values_map, node, 0)
+    dim = node.args[1] if len(node.args) > 1 else node.kwargs.get("dim", -1)
+    rank = x.type.rank
+    dim = dim + rank if dim < 0 else dim
+
+    dim_size = x.type.shape[dim]
+    half_size = dim_size // 2 if dim_size > 0 else -1
+    split_sizes = np.array([half_size, half_size], dtype=np.uint32)
+    parts = coreai.split(x, split_sizes, np.int32(dim))
+    a, b = parts[0], parts[1]
+    sig_b = coreai.sigmoid(b)
+    return coreai.broadcasting_mul(a, sig_b)
+
+
+def replace_softplus(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """Converts aten.softplus to 1/beta * log(1 + exp(beta * x))."""
+    x = _get_operand(values_map, node, 0)
+    beta = node.args[1] if len(node.args) > 1 else node.kwargs.get("beta", 1.0)
+    ele_type = x.type.element_type
+
+    if beta != 1.0:
+        beta_val = coreai.cast(beta, ele_type)
+        x_scaled = coreai.broadcasting_mul(x, beta_val)
+    else:
+        x_scaled = x
+
+    exp_val = coreai.exp(x_scaled)
+    one_val = coreai.cast(1.0, ele_type)
+    plus_one = coreai.broadcasting_add(exp_val, one_val)
+    log_val = coreai.log(plus_one)
+
+    if beta != 1.0:
+        return coreai.broadcasting_divide(log_val, beta_val)
+    return log_val
+
+
+def replace_mish(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
+    """Converts aten.mish to x * tanh(softplus(x))."""
+    x = _get_operand(values_map, node, 0)
+    ele_type = x.type.element_type
+    exp_val = coreai.exp(x)
+    one_val = coreai.cast(1.0, ele_type)
+    sp = coreai.log(coreai.broadcasting_add(exp_val, one_val))
+    tanh_sp = coreai.tanh(sp)
+    return coreai.broadcasting_mul(x, tanh_sp)
+
+
+def replace_elu(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
+    """Converts aten.elu to relu(x) + min(0, alpha * (exp(x) - 1))."""
+    x = _get_operand(values_map, node, 0)
+    alpha = node.args[1] if len(node.args) > 1 else node.kwargs.get("alpha", 1.0)
+    ele_type = x.type.element_type
+
+    relu_x = coreai.relu(x)
+    exp_x = coreai.exp(x)
+    one_val = coreai.cast(1.0, ele_type)
+    sub_one = coreai.broadcasting_sub(exp_x, one_val)
+    alpha_val = coreai.cast(alpha, ele_type)
+    scaled = coreai.broadcasting_mul(sub_one, alpha_val)
+    zero_val = coreai.cast(0.0, ele_type)
+    neg_part = coreai.broadcasting_minimum(scaled, zero_val)
+    return coreai.broadcasting_add(relu_x, neg_part)
+
+
 def replace_getitem(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
@@ -3609,6 +3677,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "div.Scalar": replace_truediv,
     "div.Tensor": replace_truediv,
     "div.Tensor_mode": replace_div_tensor_mode,
+    "elu.default": replace_elu,
     "embedding.default": replace_embedding,
     "empty.default": replace_empty,
     "empty.memory_format": replace_empty,
@@ -3632,6 +3701,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "ge.Scalar": replace_binary_comparision_ops,
     "ge.Tensor": replace_binary_comparision_ops,
     "gelu.default": replace_gelu,
+    "glu.default": replace_glu,
     "gather.default": replace_gather,
     "getitem": replace_getitem,
     "gt.Scalar": replace_binary_comparision_ops,
@@ -3670,6 +3740,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "min.dim": replace_min_dim,
     "minimum.default": replace_binary_ops,
     "mm.default": replace_mm,
+    "mish.default": replace_mish,
     "mod.Scalar": replace_binary_ops,
     "mod.Tensor": replace_binary_ops,
     "mod": replace_binary_ops,
@@ -3721,6 +3792,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "sinh.default": replace_unary_ops,
     "slice.Tensor": replace_slice,
     "slice_scatter.default": replace_slice_scatter,
+    "softplus.default": replace_softplus,
     "split_with_sizes.default": replace_split_with_sizes,
     "squeeze.dims": replace_squeeze_dims,
     "sqrt.default": replace_unary_ops,
