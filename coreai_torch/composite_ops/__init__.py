@@ -8,6 +8,7 @@ from ._gather_mm import GatherMM
 from ._rms_norm import RMSNorm, RMSNormImpl
 from ._rope import RoPE
 from ._sdpa import SDPA
+from ._swiglu import SwiGLU, SwiGLUImpl
 
 __all__ = [
     "GatherMM",
@@ -16,4 +17,6 @@ __all__ = [
     "RMSNormImpl",
     "RoPE",
     "SDPA",
+    "SwiGLU",
+    "SwiGLUImpl",
 ]
