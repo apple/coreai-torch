@@ -48,7 +48,7 @@ coreai_program.optimize()
 
 Core AI is a set of technologies for deploying machine learning models on Apple hardware, covering the full model deployment lifecycle: from model conversion, debugging, optimization, and integration into your app. Models run entirely on device on Apple silicon, with no server required.
 
-```{image} _images/core-ai-ecosystem.png
+```{image} _images/core-ai-ecosystem.svg
 :alt: Diagram of the Core AI ecosystem. At the top, Core AI Models provides ready-to-use models and examples. Core AI Optimization and Core AI PyTorch Extensions prepare models for deployment, producing a .aimodel file. Core AI Debugger and Xcode support integration and debugging. Core AI Framework runs models on device.
 :align: center
 ```
