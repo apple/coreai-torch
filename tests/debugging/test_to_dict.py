@@ -21,6 +21,7 @@ from coreai_torch.debugging.benchmarker import (
     Measurement,
     OperationTiming,
 )
+from coreai_torch.debugging.changes import compute_changes
 from coreai_torch.debugging.compute_plan import ComputePlan
 from coreai_torch.debugging.graph_diff import (
     compute_coreai_program_diff,
@@ -302,3 +303,47 @@ async def test_a_compute_plan_without_a_program_still_serialises() -> None:
 
     assert set(data) == {"entries", "entry_count", "device_histogram"}
     assert data["entries"]
+
+
+def test_program_changes_lead_with_the_counts_a_caller_reads_first() -> None:
+    """
+    Summary before rows, and every row carries where it happened.
+
+    A caller's context is the scarce resource, so the totals and the per-module tree
+    have to come before the operations: a 2,500-operation model must not arrive as
+    2,500 rows to answer "did anything change, and where".
+    """
+    before, after = _program(ThreeLinearModel), _program(ExtraLayerModel)
+    result = compute_changes(before, after)
+
+    data = _roundtrip(result)
+
+    assert data["changed"] == result.counts["changed"]
+    assert data["added"] + data["removed"] + data["modified"] == data["changed"]
+    # The nesting is the information: a flat list repeats the shared prefix per row.
+    assert data["modules"], "a non-empty diff names at least one module"
+    root = data["modules"][0]
+    assert root["count"] == len(result.by_module()[0].all_items())
+    assert {
+        "name",
+        "type_name",
+        "instance",
+        "count",
+        "items",
+        "children",
+    } == root.keys()
+
+    rows = [item for node in data["modules"] for item in _every_item(node)]
+    assert len(rows) == data["changed"]
+    for row in rows:
+        assert row["change"] in {"added", "removed", "modified"}
+        assert row["side"] in {"source", "target"}
+        assert row["module"] != "<unknown>", "every change must name a module"
+
+
+def _every_item(node: dict) -> list[dict]:
+    """Items filed anywhere in a serialised module subtree."""
+    return [
+        *node["items"],
+        *(item for child in node["children"] for item in _every_item(child)),
+    ]
