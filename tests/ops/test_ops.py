@@ -7688,6 +7688,130 @@ class TestSDPA:
             **kwargs,
         )
 
+    @pytest.mark.parametrize("v_head_dim", [24, 48])
+    @pytest.mark.parametrize("mask_cfg", ["gen_causal", "pass_mask", "maskless"])
+    @pytest.mark.parametrize("batch_leading_dims", [tuple(), (1, 1)])
+    @pytest.mark.parametrize("dynamic", [False, True])
+    async def test_sdpa_value_head_dim_differs(
+        self,
+        v_head_dim: int,
+        mask_cfg: str,
+        batch_leading_dims: tuple[int, ...],
+        dynamic: bool,
+    ) -> None:
+        """D_v != D_k (MLA-style): the output head dim comes from value."""
+        is_causal = mask_cfg == "gen_causal"
+        batch_size, q_heads, kv_heads = 2, 8, 2
+        q_len, max_ctx_len, qk_head_dim = 4, 16, 32
+
+        class SDPAModule(nn.Module):
+            def forward(self, query, key, value, attn_mask=None):
+                if attn_mask is not None:
+                    return nn.functional.scaled_dot_product_attention(
+                        query, key, value, attn_mask, enable_gqa=True
+                    )
+                return nn.functional.scaled_dot_product_attention(
+                    query, key, value, is_causal=is_causal, enable_gqa=True
+                )
+
+        q = torch.randn(*batch_leading_dims, batch_size, q_heads, q_len, qk_head_dim)
+        k = torch.randn(
+            *batch_leading_dims, batch_size, kv_heads, max_ctx_len, qk_head_dim
+        )
+        v = torch.randn(
+            *batch_leading_dims, batch_size, kv_heads, max_ctx_len, v_head_dim
+        )
+        attn_mask = (
+            None
+            if is_causal or mask_cfg == "maskless"
+            else (
+                torch.ones(*batch_leading_dims, 1, q_len, max_ctx_len) * float("-inf")
+            ).tril()
+        )
+
+        model = SDPAModule().eval()
+        assert model(q, k, v, attn_mask).shape[-1] == v_head_dim
+
+        dynamic_shapes = None
+        if dynamic:
+            # batch lives at dim offset, q_len/max_ctx_len at dim offset + 2.
+            offset = len(batch_leading_dims)
+            dynamic_shapes = {
+                "query": {offset: torch.export.Dim.DYNAMIC},
+                "key": {offset: torch.export.Dim.DYNAMIC},
+                "value": {offset: torch.export.Dim.DYNAMIC},
+            }
+            if attn_mask is not None:
+                dynamic_shapes["attn_mask"] = {}
+
+        kwargs: dict[str, Any] = {"query": q, "key": k, "value": v}
+        if attn_mask is not None:
+            kwargs["attn_mask"] = attn_mask
+
+        await validate_numerical_output(
+            model=model,
+            dynamic_shapes=dynamic_shapes,
+            remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
+            **kwargs,
+        )
+
+    @pytest.mark.parametrize("with_mask", [False, True])
+    async def test_sdpa_rank3_value_head_dim_differs(self, with_mask: bool) -> None:
+        """Rank-3 (B, S, E) SDPA with a value head dim of its own."""
+        batch_size, q_len, seq_len, qk_head_dim, v_head_dim = 2, 5, 7, 16, 24
+
+        class SDPAModule(nn.Module):
+            def forward(
+                self,
+                query: Tensor,
+                key: Tensor,
+                value: Tensor,
+                attn_mask: Tensor | None = None,
+            ) -> Tensor:
+                if attn_mask is not None:
+                    return nn.functional.scaled_dot_product_attention(
+                        query, key, value, attn_mask
+                    )
+                return nn.functional.scaled_dot_product_attention(query, key, value)
+
+        kwargs: dict[str, Any] = {
+            "query": torch.rand(batch_size, q_len, qk_head_dim),
+            "key": torch.rand(batch_size, seq_len, qk_head_dim),
+            "value": torch.rand(batch_size, seq_len, v_head_dim),
+        }
+        if with_mask:
+            kwargs["attn_mask"] = torch.tril(
+                torch.ones((q_len, seq_len), dtype=torch.bool),
+                diagonal=seq_len - q_len,
+            )
+
+        await validate_numerical_output(
+            model=SDPAModule().eval(),
+            remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
+            **kwargs,
+        )
+
+    async def test_sdpa_dynamic_head_dim(self) -> None:
+        """A dynamic head dim is not provably equal to D_v — lowered directly."""
+
+        class SDPAModule(nn.Module):
+            def forward(self, query: Tensor, key: Tensor, value: Tensor) -> Tensor:
+                return nn.functional.scaled_dot_product_attention(query, key, value)
+
+        head_dim = torch.export.Dim("head_dim", min=8, max=64)
+        await validate_numerical_output(
+            model=SDPAModule().eval(),
+            query=torch.rand(2, 4, 3, 32),
+            key=torch.rand(2, 4, 5, 32),
+            value=torch.rand(2, 4, 5, 32),
+            dynamic_shapes={
+                "query": {3: head_dim},
+                "key": {3: head_dim},
+                "value": {3: head_dim},
+            },
+            remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
+        )
+
 
 # ndim (number of padded spatial dims) -> the aten op that must be preserved
 # so the reflect/replicate lowering (coreai.pad) is exercised end to end.
