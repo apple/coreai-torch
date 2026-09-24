@@ -440,7 +440,7 @@ async def create_validator_for_coreai_program(
         inspector = CachingInspector(inspector)
 
     graph = create_graph_from_coreai_program(
-        module=program._mlir_module,
+        module=program._module._mlir_module,
         entry_point=entry_point,
     )
 

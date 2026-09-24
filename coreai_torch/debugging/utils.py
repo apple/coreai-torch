@@ -104,7 +104,7 @@ def _walk_operations(coreai_program: AIProgram) -> list[Operation]:
         The operations, parents before children.
 
     """
-    module = coreai_program._mlir_module.operation
+    module = coreai_program._module._mlir_module.operation
     return [operation for operation, _ in _walk_operation(module)]
 
 

@@ -60,7 +60,6 @@ from coreai_torch.debugging.validator import create_validator_for_coreai_program
 # Convert to Core AI
 converter = TorchConverter().add_exported_program(exported_program)
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 
 # Create validator
 validator = await create_validator_for_coreai_program(coreai_program, "main")

@@ -53,10 +53,9 @@ model.eval()
 ep = torch.export.export(model, args=(torch.randn(1, 3, 224, 224),))
 ep = ep.run_decompositions(get_decomp_table())
 
-# Convert to Core AI IR
+# Convert to Core AI IR — the returned program is already optimized
 converter = TorchConverter().add_exported_program(ep)
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 #### From an nn.Module
@@ -78,7 +77,6 @@ converter = TorchConverter().add_pytorch_module(
     ),
 )
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 ## Documentation
