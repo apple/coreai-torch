@@ -314,3 +314,62 @@ async def test_the_written_report_accounts_for_what_it_compared() -> None:
     assert f"{diff.unresolved} unresolved" in caption
     assert f"{len(diff.only_after)} only after" in caption
     assert f"{len(diff.changes)} change(s) of" in caption
+
+
+# ---------------------------------------------------------------------------
+# Which layer
+# ---------------------------------------------------------------------------
+
+
+async def test_a_placement_names_the_layer_it_belongs_to() -> None:
+    """
+    A device is not a place in the model.
+
+    "6 operations moved to CPU" is not actionable and "``Linear$4`` moved to CPU" is, so
+    every placement carries the module instance it came from.
+    """
+    before, after = _program(ThreeLinearModel), _program(ExtraLayerModel)
+    diff = await _diff(before, after)
+
+    reported = [*diff.changes, *diff.only_before, *diff.only_after]
+    assert reported, "this pair differs, so something must be reported"
+    attributed = [entry for entry in reported if entry.module]
+    assert attributed, "no placement carried a module path"
+
+    for entry in attributed:
+        # Instance-qualified, outermost first, so two identical layers are told apart.
+        assert entry.module[0].startswith(("ThreeLinearModel$", "ExtraLayerModel$"))
+
+
+async def test_moves_group_into_the_module_tree() -> None:
+    """
+    The rollup is the same one every other report uses, so a subtree total is a
+    module total.
+    """
+    before, after = _program(ThreeLinearModel), _program(ExtraLayerModel)
+    diff = await _diff(before, after)
+
+    tree = diff.by_module()
+    filed = sum(len(node.all_items()) for node in tree)
+    # `by_module` covers moves only: an added or removed operation did not move, and
+    # `changes.compute_changes` is what reports those.
+    assert filed == len(diff.changes)
+
+    for node in tree:
+        # Ordered by subtree weight, so the layer that moved most leads.
+        assert [len(child.all_items()) for child in node.children] == sorted(
+            (len(child.all_items()) for child in node.children), reverse=True
+        )
+
+
+async def test_the_written_report_shows_the_module() -> None:
+    """A reader scans for the layer before the device it landed on."""
+    before, after = _program(ThreeLinearModel), _program(ExtraLayerModel)
+    diff = await _diff(before, after)
+
+    output = io.StringIO()
+    diff.write_to(output, width=200)
+    written = output.getvalue()
+
+    assert "Module" in written
+    assert "Linear$" in written, "a Linear instance must be named somewhere"

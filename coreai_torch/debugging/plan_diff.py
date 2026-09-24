@@ -26,6 +26,8 @@ from .compute_plan import ComputeDevice, ComputePlan
 from .debug_info import _build_coreai_op_map
 from .graph_diff import OpIdAlignment, op_id_alignment
 from .graph_match import WeightPolicy
+from .modules import ModuleNode, build_module_tree
+from .source_annotator import ModulePath, module_paths_by_op_id
 from .table_writer import _Column, _Row, _TableSpec, _write_table
 from .utils import _plain
 
@@ -46,6 +48,10 @@ class ComputePlacement:
     validation: tuple[str, ...] = ()
     """Delegate validation messages, sorted: why a delegate declined the operation."""
 
+    module: ModulePath = ()
+    """Module instance the operation came from, outermost frame first. Empty when the
+    program recorded no stack trace for it."""
+
     def to_dict(self: Self) -> dict[str, Any]:
         """
         Return the placement as plain values.
@@ -59,6 +65,8 @@ class ComputePlacement:
             "name": self.name,
             "devices": _plain(self.devices),
             "validation": _plain(self.validation),
+            "module": "/".join(self.module),
+            "module_path": list(self.module),
         }
 
 
@@ -97,6 +105,14 @@ class ComputePlacementChange:
     A move off a delegate is only actionable with the reason it was declined, and the
     message is the plan's own account of it. Both sides are kept: which messages are new
     is what explains the move.
+    """
+
+    module: ModulePath = ()
+    """Module instance the operation came from, in the *earlier* program -- the same side
+    :attr:`operation_id` is numbered in.
+
+    A device is not a place in the model. "6 operations moved to CPU" is not actionable
+    and "``Block$3/MLP$1`` moved to CPU" is, which is the whole reason this is here.
     """
 
     @property
@@ -142,6 +158,8 @@ class ComputePlacementChange:
             "validation_before": _plain(self.validation_before),
             "validation_after": _plain(self.validation_after),
             "reason": _plain(self.reason),
+            "module": "/".join(self.module),
+            "module_path": list(self.module),
         }
 
 
@@ -173,13 +191,35 @@ class ComputePlanDiff:
     alignment: OpIdAlignment | None = None
     """The operation correspondence this comparison was built on."""
 
+    def by_module(self: Self) -> list[ModuleNode[ComputePlacementChange]]:
+        """
+        The moves as the module tree they happened in.
+
+        Answers "which layer moved off the Neural Engine", which is the question a
+        placement regression is actually about: a list of op ids says a move happened
+        without saying where, and the same rollup every other report uses is what turns
+        one into the other.
+
+        :attr:`changes` only. An operation in :attr:`only_before` or :attr:`only_after`
+        did not *move* -- it arrived or left, which is `changes.compute_changes`'
+        question, and reporting it here as well would give one fact two homes. Both carry
+        a `module` of their own for a caller that wants to group them anyway.
+
+        Returns:
+            Root modules, each subtree ordered by how many operations moved beneath it,
+            so the layer that moved most is read first. Empty when nothing moved.
+
+        """
+        return build_module_tree((change.module, change) for change in self.changes)
+
     def to_dict(self: Self) -> dict[str, Any]:
         """
         Return the placement comparison as plain values.
 
         Returns:
             Every move, the counts that give them a denominator, the operations
-            present on one side only, and the correspondence used.
+            present on one side only, the correspondence used, and the moves grouped
+            by the module they happened in.
 
         """
         return {
@@ -189,6 +229,10 @@ class ComputePlanDiff:
             "only_before": [entry.to_dict() for entry in self.only_before],
             "only_after": [entry.to_dict() for entry in self.only_after],
             "alignment": self.alignment.to_dict() if self.alignment else None,
+            "modules": [
+                node.to_dict(lambda change: change.to_dict())
+                for node in self.by_module()
+            ],
         }
 
     def write_to(self: Self, output: TextIO, *, width: int | None = None) -> None:
@@ -207,6 +251,10 @@ class ComputePlanDiff:
             columns=(
                 _Column("Status"),
                 _Column("Operation"),
+                # Between the operation and the devices: an op id identifies a row, the
+                # module says what it is, and a reader scans for the layer before the
+                # device it landed on.
+                _Column("Module"),
                 _Column("Before"),
                 _Column("After"),
                 _Column("Reason"),
@@ -230,6 +278,7 @@ class ComputePlanDiff:
                     cells=(
                         "moved (modified)" if change.modified else "moved",
                         _operation_cell(change.operation_id, change.name),
+                        _module_cell(change.module),
                         _device_cell(change.before),
                         _device_cell(change.after),
                         _reason_cell(change),
@@ -247,6 +296,7 @@ class ComputePlanDiff:
                     cells=(
                         status,
                         _operation_cell(placement.operation_id, placement.name),
+                        _module_cell(placement.module),
                         devices if status == "only before" else "--",
                         devices if status == "only after" else "--",
                         "\n".join(placement.validation) or "--",
@@ -317,6 +367,21 @@ def _device_cell(devices: tuple[ComputeDevice, ...]) -> str:
     return "\n".join(device.name for device in devices)
 
 
+def _module_cell(module: ModulePath) -> str:
+    """
+    Render a module instance path for a report.
+
+    Args:
+        module: The path, outermost frame first, possibly empty.
+
+    Returns:
+        The frames one per line, so a deep path fits a column instead of forcing the
+        table wide, and ``--`` when the program recorded no stack trace.
+
+    """
+    return "\n".join(module) or "--"
+
+
 def _operation_cell(operation_id: int, name: str) -> str:
     """
     Render an operation for a report.
@@ -385,6 +450,8 @@ async def compare_compute_plans(
         alignment,
         names_before=_operation_names(before_program),
         names_after=_operation_names(after_program),
+        modules_before=module_paths_by_op_id(before_program),
+        modules_after=module_paths_by_op_id(after_program),
     )
 
 
@@ -414,6 +481,8 @@ def diff_compute_plans(
     alignment: OpIdAlignment,
     names_before: dict[int, str] | None = None,
     names_after: dict[int, str] | None = None,
+    modules_before: dict[int, ModulePath] | None = None,
+    modules_after: dict[int, ModulePath] | None = None,
 ) -> ComputePlanDiff:
     """
     Compare two compute plans through an op id alignment.
@@ -431,6 +500,12 @@ def diff_compute_plans(
         alignment: Which operation of the earlier program became which of the later.
         names_before: Names by op id in the earlier program. Missing entries render as ``?``.
         names_after: Names by op id in the later program.
+        modules_before: Module instance paths by op id in the earlier program, from
+            `source_annotator.module_paths_by_op_id`. Passed per side for the same reason
+            names are: the two numberings overlap, so one merged mapping would attribute
+            an operation of one program to a module of the other. Missing entries group
+            under `modules.UNATTRIBUTED`.
+        modules_after: The same for the later program.
 
     Returns:
         The differences.
@@ -438,6 +513,8 @@ def diff_compute_plans(
     """
     names_before = names_before or {}
     names_after = names_after or {}
+    modules_before = modules_before or {}
+    modules_after = modules_after or {}
     changes: list[ComputePlacementChange] = []
     unchanged = 0
     unresolved = 0
@@ -466,6 +543,7 @@ def diff_compute_plans(
                 validation_after=_sorted_messages(
                     after.validation_messages_for_id(after_id),
                 ),
+                module=modules_before.get(before_id, ()),
             ),
         )
 
@@ -479,6 +557,7 @@ def diff_compute_plans(
                 devices=_sorted_devices(before.devices_for_id(op_id)),
                 name=names_before.get(op_id, "?"),
                 validation=_sorted_messages(before.validation_messages_for_id(op_id)),
+                module=modules_before.get(op_id, ()),
             )
             for op_id in sorted(alignment.removed)
         ],
@@ -488,6 +567,7 @@ def diff_compute_plans(
                 devices=_sorted_devices(after.devices_for_id(op_id)),
                 name=names_after.get(op_id, "?"),
                 validation=_sorted_messages(after.validation_messages_for_id(op_id)),
+                module=modules_after.get(op_id, ()),
             )
             for op_id in sorted(alignment.added)
         ],
