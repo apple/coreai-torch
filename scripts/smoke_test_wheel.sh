@@ -22,9 +22,9 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Versions tested by default. pyproject.toml declares `requires-python = ">=3.11"`
 # with no upper bound, so this list must be bumped when a new Python ships
-# (e.g. when 3.14 final lands and torch + coreai-core have wheels for it).
+# (e.g. when 3.15 final lands and torch + coreai-core have wheels for it).
 # Override at invocation: --python 3.11
-PYTHON_VERSIONS="3.11,3.12,3.13"
+PYTHON_VERSIONS="3.11,3.12,3.13,3.14"
 BUILD=true
 
 usage() {
