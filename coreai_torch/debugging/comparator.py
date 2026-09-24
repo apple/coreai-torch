@@ -1577,7 +1577,7 @@ async def create_comparator_for_programs(
 
     # Create target graph
     target_graph = create_graph_from_coreai_program(
-        module=target_program._mlir_module,
+        module=target_program._module._mlir_module,
         entry_point=target_entry_point,
     )
 

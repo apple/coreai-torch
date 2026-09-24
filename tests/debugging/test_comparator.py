@@ -576,7 +576,7 @@ def _modify_nth_operation(
                 return WalkResult.INTERRUPT
         return WalkResult.ADVANCE
 
-    coreai_program._mlir_module.operation.walk(replace_operation)
+    coreai_program._module._mlir_module.operation.walk(replace_operation)
     return found_count[0]
 
 

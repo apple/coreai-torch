@@ -599,7 +599,7 @@ class TestTorchSDPAConversion:
         // CHECK-SAME: output_names = ["output"]
         // CHECK: coreai.invoke @sdpa_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("scale", [None, 1.5])
     @pytest.mark.parametrize("is_causal", [False, True])
@@ -758,7 +758,7 @@ class TestTorchSDPAConversion:
         // CHECK-SAME: output_names = ["output"]
         // CHECK: coreai.invoke @sdpa_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("dynamic", [False, True])
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -919,7 +919,7 @@ class TestTorchSDPAConversion:
         // CHECK-SAME: output_names = ["output"]
         // CHECK: coreai.invoke @sdpa_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("scale", [None, 1.5])
     @pytest.mark.parametrize("is_causal", [False, True])
@@ -1088,7 +1088,7 @@ class TestTorchSDPAConversion:
         // CHECK-SAME: output_names = ["output"]
         // CHECK: coreai.invoke @sdpa_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("scale", [None, 1.5])
     @pytest.mark.parametrize("is_causal", [False, True])

@@ -327,6 +327,50 @@ class TwoLinearSkipModel(torch.nn.Module):
         return x
 
 
+class ThreeAlikeLinearModel(torch.nn.Module):
+    """
+    Three same-shaped layers: fc1 -> relu -> fc2 -> relu -> fc3.  (from test_graph_diff)
+
+    Every layer is the same shape, so once parameter values are elided the three are
+    interchangeable and pairing them is a tie-break. `ThreeLinearModel` narrows at
+    every layer, which leaves a matcher nothing to choose between.
+    """
+
+    def __init__(self) -> None:
+        """Initialize layers."""
+        super().__init__()
+        self.fc1 = torch.nn.Linear(10, 10)
+        self.fc2 = torch.nn.Linear(10, 10)
+        self.fc3 = torch.nn.Linear(10, 10)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass."""
+        x = self.fc1(x)
+        x = torch.relu(x)
+        x = self.fc2(x)
+        x = torch.relu(x)
+        x = self.fc3(x)
+        return x
+
+
+class TwoAlikeLinearSkipModel(torch.nn.Module):
+    """ThreeAlikeLinearModel with the middle layer dropped.  (from test_graph_diff)"""
+
+    def __init__(self) -> None:
+        """Initialize layers."""
+        super().__init__()
+        self.fc1 = torch.nn.Linear(10, 10)
+        self.fc3 = torch.nn.Linear(10, 10)  # Skip fc2
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass."""
+        x = self.fc1(x)
+        x = torch.relu(x)
+        # No fc2 layer
+        x = self.fc3(x)
+        return x
+
+
 class ExtraLayerModel(torch.nn.Module):
     """Four-layer network: adds an extra layer to ThreeLinearModel.  (from test_graph_diff)"""
 
@@ -568,6 +612,12 @@ EXAMPLE_INPUTS = {
         x=torch.randn(2, 10),
     ),
     TwoLinearSkipModel: lambda: OrderedDict(
+        x=torch.randn(2, 10),
+    ),
+    ThreeAlikeLinearModel: lambda: OrderedDict(
+        x=torch.randn(2, 10),
+    ),
+    TwoAlikeLinearSkipModel: lambda: OrderedDict(
         x=torch.randn(2, 10),
     ),
     ExtraLayerModel: lambda: OrderedDict(
