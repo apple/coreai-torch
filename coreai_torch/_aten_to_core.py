@@ -38,6 +38,7 @@ from ._utils import (
     get_target,
     get_tensor_shape_at_index,
     get_tensor_type,
+    make_uniform_constant,
     prepare_compute_type_for_norm,
     process_expanded_indices,
     process_indices_with_transpose,
@@ -1348,7 +1349,7 @@ def replace_embedding(
 def replace_empty(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     # torch.empty is lowered to zeros for deterministic behavior
     shape = node.args[0]
-    np_dtype = _get_coreai_to_numpy_dtype()[get_output_element_type_from_node(node)]
+    elem_type = get_output_element_type_from_node(node)
     # With dynamic shapes, dims come from sym_size.int nodes rather than static ints.
     if any(isinstance(s, fx.Node) for s in shape):
         shape_tensor = build_shape_tensor(values_map, shape)
@@ -1356,11 +1357,11 @@ def replace_empty(values_map: dict[str, Value], node: fx.Node, loc: Location) ->
         rank = len(shape)
         # Explicit result type preserves static dims in the IR type.
         return coreai.BroadcastToOp(
-            coreai.constant(np.zeros([1] * rank, np_dtype)),
+            make_uniform_constant([1] * rank, 0, elem_type),
             coreai.cast(shape_tensor, np.uint32),
             results=[get_tensor_type(node.meta["val"])],
         ).result
-    return coreai.constant(np.zeros(shape, np_dtype))
+    return make_uniform_constant(shape, 0, elem_type)
 
 
 def replace_sym_size_int(
@@ -1489,16 +1490,18 @@ def replace_floor_divide(
 
 def replace_full(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     shape = node.args[0]
-    np_dtype = _get_coreai_to_numpy_dtype()[get_output_element_type_from_node(node)]
+    elem_type = get_output_element_type_from_node(node)
+    fill_value = node.args[1]
+
     if any(isinstance(s, fx.Node) for s in shape):
         shape_tensor = build_shape_tensor(values_map, shape)
         rank = len(shape)
         return coreai.BroadcastToOp(
-            coreai.constant(np.full([1] * rank, node.args[1], np_dtype)),
+            make_uniform_constant([1] * rank, fill_value, elem_type),
             coreai.cast(shape_tensor, np.uint32),
             results=[get_tensor_type(node.meta["val"])],
         ).result
-    return coreai.constant(np.full(shape, node.args[1], np_dtype))
+    return make_uniform_constant(shape, fill_value, elem_type)
 
 
 def replace_full_like(
@@ -1506,8 +1509,9 @@ def replace_full_like(
 ) -> Value:
     x = _get_operand(values_map, node, 0)
     target_type = get_tensor_type(node.meta["val"])
-    # Use target element type to avoid mismatched int64 input / int32 output.
-    fill_val = coreai.constant(node.args[1], dtype=target_type.element_type)
+    # Use target element type to avoid mismatched int64 input / int32 output,
+    # and to handle fp4/fp8 via a splat constant.
+    fill_val = make_uniform_constant([], node.args[1], target_type.element_type)
     if any(d < 0 for d in x.type.shape):
         return coreai.BroadcastToOp(
             fill_val,

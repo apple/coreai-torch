@@ -3190,6 +3190,20 @@ class TestEmptyIR:
             """,
         )
 
+    def test_fp8(self) -> None:
+        # fp8 has no NumPy dtype; empty (lowered to zeros) is built as a splat.
+        class EmptyFp8Model(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.empty((2, 3), dtype=torch.float8_e4m3fn)
+
+        ir = get_ir(EmptyFp8Model().eval(), x=torch.rand(2, 3))
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.constant dense<0.000000e+00> : tensor<2x3xf8E4M3FN>
+            """,
+        )
+
 
 class TestEqScalarIR:
     def test_static(self) -> None:
@@ -3832,6 +3846,40 @@ class TestFullIR:
             """,
         )
 
+    def test_fp8_static(self) -> None:
+        # fp8 has no NumPy dtype, so the constant is built as a splat
+        # (DenseElementsAttr.get_splat + coreai.ConstantOp), not the np.full path.
+        class FullFp8Model(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.full((2, 3), 0.0, dtype=torch.float8_e4m3fn)
+
+        ir = get_ir(FullFp8Model().eval(), x=torch.rand(2, 3))
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.constant dense<0.000000e+00> : tensor<2x3xf8E4M3FN>
+            """,
+        )
+
+    def test_fp8_dynamic(self) -> None:
+        class FullFp8DynModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.full((x.shape[0], 3), 0.0, dtype=torch.float8_e4m3fn)
+
+        x = torch.rand(2, 3)
+        ir = get_ir(
+            FullFp8DynModel().eval(),
+            x=x,
+            dynamic_shapes={"x": {0: torch.export.Dim("b")}},
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.constant dense<0.000000e+00> : tensor<1x1xf8E4M3FN>
+                // CHECK: coreai.broadcast_to %{{.*}} : (tensor<1x1xf8E4M3FN>, tensor<2xui32>) -> tensor<?x3xf8E4M3FN>
+            """,
+        )
+
 
 class TestFullLikeIR:
     def test_static(self) -> None:
@@ -3874,6 +3922,20 @@ class TestFullLikeIR:
                 // CHECK-NEXT:     coreai.output %[[V2]] : tensor<?x?xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
+            """,
+        )
+
+    def test_fp8(self) -> None:
+        # fp8 target -> splat constant (no NumPy dtype for the fill).
+        class FullLikeFp8Model(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.full_like(x.to(torch.float8_e4m3fn), 0.0)
+
+        ir = get_ir(FullLikeFp8Model().eval(), x=torch.rand(2, 3))
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.constant dense<0.000000e+00> : tensor<{{.*}}f8E4M3FN>
             """,
         )
 

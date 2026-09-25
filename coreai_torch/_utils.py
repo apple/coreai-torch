@@ -17,8 +17,14 @@ import torch
 import torch.fx as fx
 from coreai._compiler.dialects import coreai
 from coreai._compiler.ir import (
+    DenseElementsAttr,
     F16Type,
     F32Type,
+    Float4E2M1FNType,
+    Float8E4M3FNType,
+    Float8E5M2Type,
+    Float8E8M0FNUType,
+    FloatAttr,
     IntegerType,
     Location,
     OpResult,
@@ -27,6 +33,7 @@ from coreai._compiler.ir import (
     Type,
     Value,
 )
+from coreai._compiler.type_mapping import _MLIR_TO_NUMPY_DTYPE as MLIR_TO_NUMPY_DTYPE
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -47,6 +54,13 @@ from ._composite_declaration import generate_composite_decl
 from ._type_mapping import (
     TORCH_TO_COREAI_DTYPE,
     _get_coreai_to_torch_dtype,
+)
+
+_REDUCED_PRECISION_FLOAT_TYPES = (
+    Float4E2M1FNType,
+    Float8E4M3FNType,
+    Float8E5M2Type,
+    Float8E8M0FNUType,
 )
 
 
@@ -1103,6 +1117,41 @@ def build_shape_tensor(
         for s in shape
     ]
     return coreai.concat(0, dim_vals) if len(dim_vals) > 1 else dim_vals[0]
+
+
+def is_reduced_precision_float(elem_type: Type) -> bool:
+    """Whether ``elem_type`` is an fp4/fp8 float type."""
+    return isinstance(elem_type, _REDUCED_PRECISION_FLOAT_TYPES)
+
+
+def make_uniform_constant(
+    shape: Sequence[int], fill_value: Any, elem_type: Type
+) -> Value:
+    """Build a Core AI constant of ``shape`` filled with a single ``fill_value``.
+
+    The single place that turns a Core AI element type + fill into a constant,
+    so every ``full`` / ``empty`` / ``zeros`` style lowering handles fp4/fp8
+    the same way:
+
+    * reduced-precision floats (fp4/fp8) -> ``DenseElementsAttr.get_splat`` +
+      ``coreai.ConstantOp``, because NumPy has no such dtype and a
+      ``coreai.constant`` for them is an opaque resource the compiler cannot
+      splat-check;
+    * everything else -> the NumPy ``coreai.constant`` path, with ``dtype``
+      pinned to ``elem_type`` (so sub-byte ints packed in an int8/uint8 NumPy
+      container are reinterpreted correctly).
+    """
+    if is_reduced_precision_float(elem_type):
+        tensor_type = RankedTensorType.get(list(shape), elem_type)
+        splat_attr = DenseElementsAttr.get_splat(
+            tensor_type, FloatAttr.get(elem_type, float(fill_value))
+        )
+        return coreai.ConstantOp(value=splat_attr).result
+    numpy_dtype = MLIR_TO_NUMPY_DTYPE[str(elem_type)]
+    return coreai.constant(
+        np.full(list(shape), fill_value, numpy_dtype),
+        dtype=elem_type,  # type: ignore[arg-type]
+    )
 
 
 class _ModuleInstanceRegistry:
