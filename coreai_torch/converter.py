@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
-from collections.abc import Iterator, Sequence
+import warnings
+from collections import Counter, OrderedDict, defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Optional, cast
@@ -20,15 +21,13 @@ from coreai._compiler.ir import (
     ArrayAttr,
     Attribute,
     DictAttr,
-    InsertionPoint,
     Location,
-    Module,
     OpResultList,
     StringAttr,
     Type,
     Value,
 )
-from coreai.authoring import AIProgram
+from coreai.authoring import AIProgram, Module
 from coreai.authoring import Context as _CoreAIAuthoringContext
 from torch import Tensor
 from torch.export.exported_program import ExportedProgram
@@ -43,6 +42,7 @@ from ._custom_to_core import _custom_to_core_resolver
 from ._debug_locations import _DebugInfoRecorder
 from ._torch_metal_kernel import TorchMetalKernel
 from ._utils import (
+    _EXTERNALIZE_NAMESPACE,
     _NARROW_TORCH_DTYPE,
     _get_mutation_output_name,
     _get_verify_debuginfo_locations_enabled,
@@ -63,13 +63,11 @@ from ._utils import (
 from ._validate import validate_exported_program
 from .externalize import (
     ExternalizeSpec,
-    _ExportedModule,
-    _finalize_module_export,
-    _mark_externalize,
-    _prepare_externalized,
-    _PreparedModule,
+    _ExternalizedExportedProgram,
+    _find_marked_submodules,
+    _patch_model_for_externalization,
     _restore_externalized,
-    _torch_export_module,
+    _subexport_and_restore,
 )
 
 
@@ -86,6 +84,7 @@ class _StagedEntry:
     module: torch.nn.Module | None = None
     export_fn: Callable[..., Any] | None = None
     externalize_modules: list[type | ExternalizeSpec] | None = None
+    _externalized_exported_programs: list[_ExternalizedExportedProgram] | None = None
 
 
 class Context(_CoreAIAuthoringContext):
@@ -178,11 +177,16 @@ class TorchConverter:
 
         self._values_map: dict[str, Value] = {}
 
-        # per-node lowerings for externalized submodules, keyed by FX node name
-        self._externalized_lowerings: dict[str, Callable[..., Any]] = {}
+        # lowerings for externalized submodules, keyed by custom op name, one
+        # per call site in graph order
+        self._externalized_lowerings: defaultdict[str, list[Callable[..., Any]]] = (
+            defaultdict(list)
+        )
+        # call sites of each externalized op seen so far in the current graph
+        self._externalized_call_counts: Counter[str] = Counter()
 
         # externalized modules
-        self._externalized_modules: list[_ExportedModule] = []
+        self._externalized_exported_programs: list[_ExternalizedExportedProgram] = []
 
         self.user_input_names: Sequence[str] = []
         self.user_output_names: Sequence[str] = []
@@ -201,19 +205,23 @@ class TorchConverter:
         output_names: Sequence[str] | None = None,
         state_names: Sequence[str] | None = None,
         entrypoint_name: str = "main",
+        _externalized_exported_programs: list[_ExternalizedExportedProgram]
+        | None = None,
     ) -> Self:
-        """Stage a pre-exported ExportedProgram for conversion.
+        """Stage a pre-exported ``ExportedProgram`` for conversion.
 
         The caller is responsible for calling ``torch.export.export()`` and
         ``run_decompositions()`` before passing the program.
 
         Args:
-            input_names: Non-stateful forward() arg names only.
-            output_names: Return value names only (not mutation outputs).
-            state_names: One name per state, applied to both input and
-                mutation output. Order: buffers (registration order), then
-                mutated user inputs (signature order). Defaults to FX
-                placeholder names when not provided.
+            input_names: Non-stateful ``forward()`` arg names.
+            output_names: Return value names (not mutation outputs).
+            state_names: One name per state (buffers then mutated inputs).
+                Defaults to FX placeholder names.
+            _externalized_exported_programs: Result of
+                :func:`coreai_torch.externalize._subexport_and_restore`.
+                When set, emits composite ``coreai.graph``s for the patched
+                call sites in ``exported_program``.
 
         Returns ``self`` for chaining.
         """
@@ -233,6 +241,7 @@ class TorchConverter:
                 output_names=output_names or [],
                 state_names=state_names or [],
                 entrypoint_name=entrypoint_name,
+                _externalized_exported_programs=_externalized_exported_programs,
             )
         )
         return self
@@ -303,65 +312,43 @@ class TorchConverter:
         )
         return self
 
-    def _run_externalize_pipeline(self) -> None:
-        """Mark, re-export, and export each externalized submodule.
+    def _run_externalize_pipeline_from_module(self) -> None:
+        """Externalize from a live ``nn.Module`` + ``export_fn`` (Phases 1-3).
 
-        The model is patched temporarily and always restored, even on error.
-
-        Steps:
-        1. Mark matching submodules with custom ops via ``_mark_externalize``.
-        2. Re-export the whole model (now containing custom op calls).
-        3. For each marked submodule, export it standalone and decompose.
-        4. Store results in ``self._externalized_modules`` and update
-           ``self.exported_program`` to the re-exported whole-model program.
+        Used by :meth:`add_pytorch_module`. Marks matching submodules with
+        custom ops, re-exports the whole model, then delegates Phases 2-3
+        (sub-export) to :func:`_subexport_and_restore`, which stashes the
+        results in ``self._externalized_exported_programs`` for
+        :meth:`_perform_externalization` to emit and restores the model
+        patch (``try/finally``) internally.
         """
         assert self._module is not None
         assert self._export_fn is not None
         assert self._externalize_modules is not None
 
-        _mark_externalize(self._module, self._externalize_modules)
+        _patch_model_for_externalization(self._module, self._externalize_modules)
 
         try:
-            # Re-export after marking — failure here is our bug, not the user's
-            try:
-                with self._progress_bar.status("Re-exporting for externalization..."):
-                    whole_ep: ExportedProgram = self._export_fn(self._module)
-                inject_subbyte_tensors(whole_ep)
-            except Exception as e:
-                raise RuntimeError(
-                    f"Internal error: re-export after externalization failed: {e}\n"
-                    f"This is a coreai-torch bug. Please report it."
-                ) from e
+            with self._progress_bar.status("Re-exporting for externalization..."):
+                whole_ep: ExportedProgram = self._export_fn(self._module)
+            inject_subbyte_tensors(whole_ep)
+        except Exception as e:
+            # Re-export after marking failed — our bug, not the user's. Restore
+            # here since _subexport_and_restore never gets a chance to.
+            _restore_externalized(_find_marked_submodules(self._module))
+            raise RuntimeError(
+                f"Internal error: re-export after externalization failed: {e}\n"
+                f"This is a coreai-torch bug. Please report it."
+            ) from e
 
-            # Prepare and export each submodule
-            preps: Iterator[_PreparedModule] = _prepare_externalized(
-                self._module, whole_ep
-            )
-            exts: list[_ExportedModule] = []
-            with self._progress_bar.stream("Externalizing submodules") as advance:
-                for prep in preps:
-                    try:
-                        inner_ep = _torch_export_module(prep)
-                    except Exception as e:
-                        raise RuntimeError(
-                            f"Internal error: failed to export submodule "
-                            f"'{prep.name}': {e}\n"
-                            f"This is a coreai-torch bug. Please report it."
-                        ) from e
-
-                    # Use the standard decomposition table for inner modules.
-                    # The user's export_fn may preserve composite ops like
-                    # aten.scaled_dot_product_attention so they survive in the
-                    # *whole-model* graph for externalization detection.
-                    # Inside the externalized body those ops must be decomposed.
-                    inner_ep = inner_ep.run_decompositions()
-                    exts.append(_finalize_module_export(prep, inner_ep))
-                    advance()
-
-            self._externalized_modules = exts
-            self.exported_program = whole_ep
-        finally:
-            _restore_externalized(self._module)
+        # The user's export_fn may preserve composite ops like
+        # aten.scaled_dot_product_attention so they survive in the
+        # *whole-model* graph for externalization detection; decompositions
+        # inside each submodule's own export happen in _subexport_and_restore.
+        self._externalized_exported_programs = _subexport_and_restore(
+            self._module, whole_ep, progress_bar=self._progress_bar
+        )
+        self.exported_program = whole_ep
 
     def _perform_externalization(self, context) -> None:
         """Emit externalized submodule graphs and register their lowerings.
@@ -369,7 +356,7 @@ class TorchConverter:
         Modules are processed deepest-first so that inner lowerings are
         available when parent graphs are built (nested externalization).
 
-        For each :class:`_ExportedModule`, this method:
+        For each :class:`_ExternalizedExportedProgram`, this method:
 
         1. Temporarily swaps ``self.exported_program`` to the submodule's export.
         2. Builds a ``coreai.graph noinline`` via :meth:`_get_graph_op`
@@ -377,15 +364,15 @@ class TorchConverter:
         3. Registers a lowering that maps the custom op to ``coreai.invoke``.
         4. Restores the whole-model program.
         """
-        if not self._externalized_modules:
+        if not self._externalized_exported_programs:
             return
 
         whole_program: ExportedProgram = self.exported_program
 
         # Process deepest modules first so their lowerings exist
         # when parent modules are built.
-        sorted_exts: list[_ExportedModule] = sorted(
-            self._externalized_modules,
+        sorted_exts: list[_ExternalizedExportedProgram] = sorted(
+            self._externalized_exported_programs,
             key=lambda ext: ext.name.count("."),
             reverse=True,
         )
@@ -417,15 +404,25 @@ class TorchConverter:
                 composite_decl=composite_decl_attr,
             )
 
-            # Register per-node lowering: node.name → coreai.invoke @graph
-            for node_name in ext.source_nodes:
-                self._externalized_lowerings[node_name] = (
-                    lambda values_map, node, loc, _gop=graph_op: get_invoke_from_graph(
-                        values_map, node, loc, _gop
-                    )
+            # Register the lowering for this call site: op → coreai.invoke @graph.
+            # Keyed by op rather than FX node name, which a pass between
+            # sub-export and conversion may change. Call sites of one op were
+            # prepared in graph order, and the depth sort above is stable, so
+            # the n-th call of an op in a graph dispatches to the n-th lowering.
+            self._externalized_lowerings[ext.op_name].append(
+                lambda values_map, node, loc, _gop=graph_op: get_invoke_from_graph(
+                    values_map, node, loc, _gop
                 )
+            )
 
         self.exported_program = whole_program
+
+        # Each submodule above was converted as its own hierarchy, rooted at the
+        # submodule, so it consumed instance numbers from a different namespace
+        # than the whole model's -- and those numbers reach nothing in the emitted
+        # asset. Left in, a model with three blocks reported Block$2, Block$3 and
+        # Block$4, with no Block$1 anywhere.
+        self._debug_info_recorder.reset_module_registry()
 
     def _clean(self) -> None:
         """Reset all internal state dictionaries to empty.
@@ -440,6 +437,30 @@ class TorchConverter:
         self._inputs_map = OrderedDict()
         self._outputs_map = OrderedDict()
         self._values_map = {}
+        # Reset per graph: an externalized parent with several call sites has
+        # its body converted once per call site, each calling its nested ops
+        # afresh.
+        self._externalized_call_counts = Counter()
+
+    def _warn_unused_externalized_lowerings(self) -> None:
+        """Warn when the graph just converted called an op fewer times than it
+        has prepared submodules.
+
+        Ops the graph never calls are skipped: a nested op is legitimately
+        absent from the whole-model graph.
+        """
+        for op_name, count in self._externalized_call_counts.items():
+            prepared = len(self._externalized_lowerings[op_name])
+            if count < prepared:
+                warnings.warn(
+                    f"coreai_torch.externalize: op '{op_name}' has {count} "
+                    f"call site(s) in the program being converted but "
+                    f"{prepared} prepared submodule(s), so call sites may be "
+                    f"paired with the wrong submodules. Action: convert the "
+                    f"program the submodules were prepared from, or one "
+                    f"derived from it without adding or removing call sites.",
+                    stacklevel=2,
+                )
 
     def _register_io(self) -> None:
         """
@@ -677,11 +698,23 @@ class TorchConverter:
         variantless_target: str = strip_variant_from_target(target)
         key: tuple[str, str] | str = (str(namespace), variantless_target)
 
-        if node.name in self._externalized_lowerings:
-            with self._location:
-                results = self._externalized_lowerings[node.name](
-                    self._values_map, node, self._location
+        if (
+            namespace == _EXTERNALIZE_NAMESPACE
+            and variantless_target in self._externalized_lowerings
+        ):
+            lowerings = self._externalized_lowerings[variantless_target]
+            index = self._externalized_call_counts[variantless_target]
+            self._externalized_call_counts[variantless_target] += 1
+            if index >= len(lowerings):
+                raise ValueError(
+                    f"coreai_torch.externalize: op '{variantless_target}' has "
+                    f"more call sites than the {len(lowerings)} prepared "
+                    f"submodule(s). Action: convert the program the submodules "
+                    f"were prepared from, or one derived from it without adding "
+                    f"call sites."
                 )
+            with self._location:
+                results = lowerings[index](self._values_map, node, self._location)
             if not isinstance(results, (list, tuple, OpResultList)):
                 results = [results]
 
@@ -847,6 +880,12 @@ class TorchConverter:
                 with graph_op.block:
                     self._get_operation(node)
 
+            self._warn_unused_externalized_lowerings()
+
+            # Operation IDs and debug locations for everything just lowered, in one
+            # IR-order pass, now that the graph body is complete.
+            self._debug_info_recorder.finalize_node_operations()
+
             # Assemble outputs with resolved names
             outputs_name_value: list[tuple[str, Value]] = [
                 (resolved_name, self._values_map[fx_name])
@@ -897,6 +936,9 @@ class TorchConverter:
         It creates a Core AI module, processes staged entries (from ``add_exported_program``
         and ``add_pytorch_module`` calls), and generates graph operations.
 
+        The returned ``AIProgram`` is already optimized. There is no separate
+        optimization step to call.
+
         Staged programs persist after conversion. Call ``clear()`` to remove them.
 
         Args:
@@ -904,7 +946,7 @@ class TorchConverter:
                   If None, convert all staged programs.
 
         Returns:
-            An AIProgram containing the converted Core AI model
+            An optimized AIProgram containing the converted Core AI model
 
         Raises:
             RuntimeError: If no programs have been staged via ``add_exported_program()``
@@ -927,8 +969,11 @@ class TorchConverter:
                 f"converting {len(entries)} program(s) to Core AI"
             )
             module: Module = Module.create()
-            with self._debug_info_recorder.record_module(module):
-                with InsertionPoint(module.body):
+            # ``record_module`` must exit before ``with module`` runs the
+            # pre-compilation rewrite: the rewrite merges locations, which the
+            # debuginfo verifier rejects.
+            with module:
+                with self._debug_info_recorder.record_module(module._mlir_module):
                     for entry in bar.track(entries, description="Entries"):
                         self._init_conversion_state()
                         self.exported_program = entry.exported_program
@@ -941,14 +986,21 @@ class TorchConverter:
                             self._module = entry.module
                             self._export_fn = entry.export_fn
                             self._externalize_modules = entry.externalize_modules
-                            self._run_externalize_pipeline()
-                            self._perform_externalization(module.context)
+                            self._run_externalize_pipeline_from_module()
+                            self._perform_externalization(module._context)
+
+                        # Handle externalization for pre-marked ExportedProgram path
+                        elif entry._externalized_exported_programs is not None:
+                            self._externalized_exported_programs = (
+                                entry._externalized_exported_programs
+                            )
+                            self._perform_externalization(module._context)
 
                         self._get_graph_op(
                             entry.entrypoint_name, primary_entrypoint=True
                         )
 
-        return AIProgram._from_mlir_module(module)
+        return AIProgram(module)
 
     def clear(self, *, entrypoints: Sequence[str] | None = None) -> None:
         """Remove staged programs. If entrypoints given, remove only those; else remove all.
@@ -971,7 +1023,7 @@ class TorchConverter:
             parts = [f"    {entry.entrypoint_name}: {kind} {inputs} -> {outputs}"]
             if entry.externalize_modules:
                 names = [
-                    s.module_type.__name__
+                    s.target_class.__name__
                     if isinstance(s, ExternalizeSpec)
                     else s.__name__
                     for s in entry.externalize_modules

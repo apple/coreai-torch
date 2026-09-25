@@ -249,14 +249,12 @@ def _export_and_convert(
     state_names: list[str] | None,
     input_names: list[str] | None,
     output_names: list[str] | None,
-    run_optimize_passes: bool,
     custom_kernels: list | None = None,
 ) -> tuple[Any, Any, list[str]]:
     """Export an nn.Module, run decompositions, and convert to a Core AI program.
 
-    Returns ``(coreai_program, exported_program, fx_output_names)``. Optimizer
-    passes run when the model has buffer/user-input mutations, the caller
-    explicitly requests it, or state_names is supplied.
+    Returns ``(coreai_program, exported_program, fx_output_names)``. ``to_coreai``
+    already applies the Core AI pre-compilation rewrites.
     """
     model.eval()
     exported_program = torch.export.export(
@@ -282,11 +280,6 @@ def _export_and_convert(
         output_names=output_names,
     )
     coreai_program = converter.to_coreai()
-
-    sig = exported_program.graph_signature
-    has_state = bool(sig.buffers_to_mutate) or bool(sig.user_inputs_to_mutate)
-    if run_optimize_passes or state_names or has_state:
-        coreai_program.optimize()
 
     output_node = next(
         n for n in exported_program.graph_module.graph.nodes if n.op == "output"
@@ -549,7 +542,6 @@ async def validate_numerical_output(**kwargs: Any) -> None:
     print_exported_graph = kwargs.pop("print_exported_graph", False)
     remove_decomps = kwargs.pop("remove_decomps", None)
     prepare_program = kwargs.pop("prepare_program", None)
-    run_optimize_passes = kwargs.pop("run_optimize_passes", False)
     state_names: list[str] | None = kwargs.pop("state_names", None)
     input_names: list[str] | None = kwargs.pop("input_names", None)
     output_names: list[str] | None = kwargs.pop("output_names", None)
@@ -573,7 +565,6 @@ async def validate_numerical_output(**kwargs: Any) -> None:
             state_names=state_names,
             input_names=input_names,
             output_names=output_names,
-            run_optimize_passes=run_optimize_passes,
             custom_kernels=custom_kernels,
         )
 
@@ -637,7 +628,9 @@ def walk_coreai_program(coreai_program):
                     for nested_op in block.operations:
                         walk_operations(nested_op, indent + 1)
 
-    for op in coreai_program._mlir_module.operation.regions[0].blocks[0].operations:
+    for op in (
+        coreai_program._module._mlir_module.operation.regions[0].blocks[0].operations
+    ):
         walk_operations(op)
 
 
@@ -702,5 +695,4 @@ def get_ir(
             decomp_table.pop(decomp)
     program = program.run_decompositions(decomp_table)
     coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-    coreai_program.optimize()
     return str(coreai_program)

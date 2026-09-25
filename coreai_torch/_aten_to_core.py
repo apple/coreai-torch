@@ -38,6 +38,7 @@ from ._utils import (
     get_target,
     get_tensor_shape_at_index,
     get_tensor_type,
+    make_uniform_constant,
     prepare_compute_type_for_norm,
     process_expanded_indices,
     process_indices_with_transpose,
@@ -1241,6 +1242,14 @@ def replace_conv(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
             raise ValueError(
                 f"Transposed conv3d is not yet supported, at node: {node}, name: {node.name}"
             )
+        if any(
+            op >= s and op >= d for op, s, d in zip(output_padding, stride, dilation)
+        ):
+            raise ValueError(
+                f"output padding must be smaller than either stride or dilation, got "
+                f"output_padding={output_padding}, stride={stride}, dilation={dilation}, "
+                f"at node: {node}, name: {node.name}"
+            )
         return _conv_transpose(
             x, weight, bias, stride, padding, dilation, output_padding, groups, loc
         )
@@ -1340,7 +1349,7 @@ def replace_embedding(
 def replace_empty(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     # torch.empty is lowered to zeros for deterministic behavior
     shape = node.args[0]
-    np_dtype = _get_coreai_to_numpy_dtype()[get_output_element_type_from_node(node)]
+    elem_type = get_output_element_type_from_node(node)
     # With dynamic shapes, dims come from sym_size.int nodes rather than static ints.
     if any(isinstance(s, fx.Node) for s in shape):
         shape_tensor = build_shape_tensor(values_map, shape)
@@ -1348,11 +1357,11 @@ def replace_empty(values_map: dict[str, Value], node: fx.Node, loc: Location) ->
         rank = len(shape)
         # Explicit result type preserves static dims in the IR type.
         return coreai.BroadcastToOp(
-            coreai.constant(np.zeros([1] * rank, np_dtype)),
+            make_uniform_constant([1] * rank, 0, elem_type),
             coreai.cast(shape_tensor, np.uint32),
             results=[get_tensor_type(node.meta["val"])],
         ).result
-    return coreai.constant(np.zeros(shape, np_dtype))
+    return make_uniform_constant(shape, 0, elem_type)
 
 
 def replace_sym_size_int(
@@ -1481,16 +1490,18 @@ def replace_floor_divide(
 
 def replace_full(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     shape = node.args[0]
-    np_dtype = _get_coreai_to_numpy_dtype()[get_output_element_type_from_node(node)]
+    elem_type = get_output_element_type_from_node(node)
+    fill_value = node.args[1]
+
     if any(isinstance(s, fx.Node) for s in shape):
         shape_tensor = build_shape_tensor(values_map, shape)
         rank = len(shape)
         return coreai.BroadcastToOp(
-            coreai.constant(np.full([1] * rank, node.args[1], np_dtype)),
+            make_uniform_constant([1] * rank, fill_value, elem_type),
             coreai.cast(shape_tensor, np.uint32),
             results=[get_tensor_type(node.meta["val"])],
         ).result
-    return coreai.constant(np.full(shape, node.args[1], np_dtype))
+    return make_uniform_constant(shape, fill_value, elem_type)
 
 
 def replace_full_like(
@@ -1498,8 +1509,9 @@ def replace_full_like(
 ) -> Value:
     x = _get_operand(values_map, node, 0)
     target_type = get_tensor_type(node.meta["val"])
-    # Use target element type to avoid mismatched int64 input / int32 output.
-    fill_val = coreai.constant(node.args[1], dtype=target_type.element_type)
+    # Use target element type to avoid mismatched int64 input / int32 output,
+    # and to handle fp4/fp8 via a splat constant.
+    fill_val = make_uniform_constant([], node.args[1], target_type.element_type)
     if any(d < 0 for d in x.type.shape):
         return coreai.BroadcastToOp(
             fill_val,
@@ -3425,6 +3437,10 @@ def replace_sdpa(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
         5. (mask) attn_scores += float_mask
         6. attn_weights = softmax(attn_scores, dim=-1)
         7. output = matmul(attn_weights, value)
+
+    The composite is only used when the value head dim is provably equal to
+    the query/key head dim; otherwise (D_v != D_k, or a head dim that is
+    dynamic) the decomposition is emitted directly.
     """
 
     args = node.args
@@ -3488,66 +3504,100 @@ def replace_sdpa(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
     if attn_mask is not None and attn_mask.type.rank > 4:
         attn_mask = _sdpa_flatten_leading_batch_dims(attn_mask)
 
-    # Build composite inputs. Scale is NOT an input — it is embedded in
-    # op_attributes when a compile-time constant, otherwise defaulted to
-    # 1/sqrt(head_dim) inside the decomposition body.
-    input_names = ["query", "key", "value"]
-    if attn_mask is not None:
-        input_names.append("attn_mask")
-
-    op_attributes: dict[str, Any] = {"is_causal": False, "window_size": 0, "version": 1}
-    if scale is not None:
-        op_attributes["scale"] = scale
-
-    composite_decl = generate_composite_decl(
-        query.context,
-        "scaled_dot_product_attention",
-        input_names,
-        ["output"],
-        op_attributes,
-    )
-
-    # Capture shape/type info for the composite body closure.
+    # Capture shape/type info for the decomposition body.
     q_shape = query.type.shape
     k_shape = key.type.shape
     v_shape = value.type.shape
 
-    @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
-    def sdpa(q: Value, k: Value, v: Value, m: Value) -> Value:
-        return _sdpa_decompose(
-            q, k, v, m, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
+    if not (q_shape[3] >= 0 and v_shape[3] >= 0 and q_shape[3] == v_shape[3]):
+        # The composite op's interface requires the attention output to carry
+        # the query head dim, so it can only be used when D_v and D_k are
+        # provably equal. Otherwise — D_v != D_k (MLA-style attention), or a
+        # dynamic head dim we cannot prove equal — lower the decomposition
+        # directly.
+        result = _sdpa_decompose(
+            query,
+            key,
+            value,
+            attn_mask,
+            scale,
+            enable_gqa,
+            ele_type,
+            q_shape,
+            k_shape,
+            v_shape,
+        )
+    else:
+        # Build composite inputs. Scale is NOT an input — it is embedded in
+        # op_attributes when a compile-time constant, otherwise defaulted to
+        # 1/sqrt(head_dim) inside the decomposition body.
+        input_names = ["query", "key", "value"]
+        if attn_mask is not None:
+            input_names.append("attn_mask")
+
+        op_attributes: dict[str, Any] = {
+            "is_causal": False,
+            "window_size": 0,
+            "version": 1,
+        }
+        if scale is not None:
+            op_attributes["scale"] = scale
+
+        composite_decl = generate_composite_decl(
+            query.context,
+            "scaled_dot_product_attention",
+            input_names,
+            ["output"],
+            op_attributes,
         )
 
-    @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
-    def sdpa_maskless(q: Value, k: Value, v: Value) -> Value:
-        return _sdpa_decompose(
-            q, k, v, None, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
-        )
+        @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+        def sdpa(q: Value, k: Value, v: Value, m: Value) -> Value:
+            return _sdpa_decompose(
+                q, k, v, m, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
+            )
 
-    result = (
-        sdpa(query, key, value, attn_mask)
-        if attn_mask is not None
-        else sdpa_maskless(query, key, value)
-    )[0]
+        @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+        def sdpa_maskless(q: Value, k: Value, v: Value) -> Value:
+            return _sdpa_decompose(
+                q, k, v, None, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
+            )
+
+        result = (
+            sdpa(query, key, value, attn_mask)
+            if attn_mask is not None
+            else sdpa_maskless(query, key, value)
+        )[0]
+
+    # Output shape is the query's batch/head/seq dims with value's head dim.
+    v_head_dim = v_shape[3]
+    result_shape = [*original_query.type.shape[:-1], v_head_dim]
+    result_type = RankedTensorType.get(result_shape, ele_type)
 
     # Restore original leading batch dims if inputs were rank > 4.
     if query_rank == 4:
-        assert result.type == original_query.type, (
-            "Result type and original query type must be identical"
+        assert result.type == result_type, (
+            f"SDPA result type {result.type} must be {result_type}"
         )
         return result
     if query_rank == 3:
         result = coreai.shrink_dims(result, [1])
-        assert result.type == original_query.type, (
-            "Result type and original query type must be identical"
+        assert result.type == result_type, (
+            f"SDPA result type {result.type} must be {result_type}"
         )
         return result
-    orig_shape = coreai.get_shape(original_query)
-    result = coreai.reshape(result, orig_shape)
-    assert result.type == original_query.type, (
-        "Result type and original query type must be identical"
+
+    # Rebuild the leading batch dims from the original query, keeping value's
+    # head dim as the last one.
+    q_shape_val = coreai.get_shape(original_query)
+    leading_shape = coreai.slice_(q_shape_val, [0], [query_rank - 1], [1])
+    v_head_dim_1d = (
+        coreai.constant([v_head_dim], dtype=np.uint32)
+        if v_head_dim >= 0
+        else coreai.slice_(coreai.get_shape(value), [3], [4], [1])
     )
-    return result
+    orig_shape = coreai.concat(0, [leading_shape, v_head_dim_1d])
+    return coreai.ReshapeOp(result, orig_shape, results=[result_type]).result
 
 
 _aten_to_core_resolver: dict[str, Callable[..., Any]] = {

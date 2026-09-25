@@ -17,8 +17,10 @@ import torch
 import torch.fx as fx
 from coreai._compiler.dialects import coreai
 from coreai._compiler.ir import (
+    DenseElementsAttr,
     F16Type,
     F32Type,
+    FloatAttr,
     IntegerType,
     Location,
     OpResult,
@@ -27,6 +29,7 @@ from coreai._compiler.ir import (
     Type,
     Value,
 )
+from coreai._compiler.type_mapping import _MLIR_TO_NUMPY_DTYPE as MLIR_TO_NUMPY_DTYPE
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -47,6 +50,7 @@ from ._composite_declaration import generate_composite_decl
 from ._type_mapping import (
     TORCH_TO_COREAI_DTYPE,
     _get_coreai_to_torch_dtype,
+    is_reduced_precision_float,
 )
 
 
@@ -1105,6 +1109,36 @@ def build_shape_tensor(
     return coreai.concat(0, dim_vals) if len(dim_vals) > 1 else dim_vals[0]
 
 
+def make_uniform_constant(
+    shape: Sequence[int], fill_value: Any, elem_type: Type
+) -> Value:
+    """Build a Core AI constant of ``shape`` filled with a single ``fill_value``.
+
+    The single place that turns a Core AI element type + fill into a constant,
+    so every ``full`` / ``empty`` / ``zeros`` style lowering handles fp4/fp8
+    the same way:
+
+    * reduced-precision floats (fp4/fp8) -> ``DenseElementsAttr.get_splat`` +
+      ``coreai.ConstantOp``, because NumPy has no such dtype and a
+      ``coreai.constant`` for them is an opaque resource the compiler cannot
+      splat-check;
+    * everything else -> the NumPy ``coreai.constant`` path, with ``dtype``
+      pinned to ``elem_type`` (so sub-byte ints packed in an int8/uint8 NumPy
+      container are reinterpreted correctly).
+    """
+    if is_reduced_precision_float(elem_type):
+        tensor_type = RankedTensorType.get(list(shape), elem_type)
+        splat_attr = DenseElementsAttr.get_splat(
+            tensor_type, FloatAttr.get(elem_type, float(fill_value))
+        )
+        return coreai.ConstantOp(value=splat_attr).result
+    numpy_dtype = MLIR_TO_NUMPY_DTYPE[str(elem_type)]
+    return coreai.constant(
+        np.full(list(shape), fill_value, numpy_dtype),
+        dtype=elem_type,  # type: ignore[arg-type]
+    )
+
+
 class _ModuleInstanceRegistry:
     """Assign stable per-type instance counts to module instances.
 
@@ -1122,7 +1156,7 @@ class _ModuleInstanceRegistry:
     def __init__(self) -> None:
         """Initialize empty module bookkeeping state."""
         self.module_type_to_next_count: dict[str, int] = {}
-        self.module_instance_to_count: dict[str, int] = {}
+        self.module_instance_to_count: dict[tuple[str, str], int] = {}
 
     def get_instance_count(
         self,
@@ -1134,6 +1168,12 @@ class _ModuleInstanceRegistry:
         If the instance was already seen, return its existing count. Otherwise,
         assign the next count for the given module type, store it, and return it.
 
+        Keyed on the instance name *and* its type. Keying on the name alone meant
+        one name reused for a different type inherited the other type's count:
+        when a submodule is converted standalone its root is ``L__self__`` of that
+        submodule's type, and the whole model's root is ``L__self__`` too, so the
+        model's root silently took the number assigned to the submodule.
+
         Args:
             module_instance_name: Unique module instance identifier.
             module_type: Module type name, for example "Linear".
@@ -1141,13 +1181,14 @@ class _ModuleInstanceRegistry:
         Returns:
             The stable per-type instance count for this module instance.
         """
-        existing_count = self.module_instance_to_count.get(module_instance_name)
+        key = (module_instance_name, module_type)
+        existing_count = self.module_instance_to_count.get(key)
         if existing_count is not None:
             return existing_count
 
         next_count = self.module_type_to_next_count.get(module_type, 0) + 1
         self.module_type_to_next_count[module_type] = next_count
-        self.module_instance_to_count[module_instance_name] = next_count
+        self.module_instance_to_count[key] = next_count
         return next_count
 
 
@@ -1497,7 +1538,14 @@ def _sdpa_decompose(
         coreai.cast(attn_weights, ele_type),
         coreai.cast(value, ele_type),
     )
-    assert result.type == query.type, "Result type and query type must be identical"
+    # The output takes its last dim from value: [B, n_q_heads, T_q, D_v]. D_v
+    # need not match the query/key head dim (e.g. MLA-style attention).
+    expected_type = RankedTensorType.get(
+        [*query.type.shape[:3], value.type.shape[3]], query.type.element_type
+    )
+    assert result.type == expected_type, (
+        f"SDPA result type {result.type} must be {expected_type}"
+    )
     return result
 
 
