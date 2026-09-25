@@ -129,9 +129,6 @@ class _ExternalizedExportedProgram:
     composite_decl_attrs: dict[str, Any] = field(default_factory=dict)
     composite_input_names: list[str] = field(default_factory=list)
     composite_output_names: list[str] = field(default_factory=list)
-    source_nodes: list[str] = field(
-        default_factory=list
-    )  # FX node names for per-node dispatch
 
 
 @dataclass
@@ -271,7 +268,6 @@ def _finalize_module_export(
         composite_decl_attrs=prep.composite_decl_attrs,
         composite_input_names=prep.composite_input_names,
         composite_output_names=prep.composite_output_names,
-        source_nodes=[n.name for n in prep.source_nodes],
     )
 
 

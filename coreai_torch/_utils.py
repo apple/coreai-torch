@@ -1612,19 +1612,6 @@ def _find_all_custom_op_nodes(
     ]
 
 
-def _externalized_op_name(target: object) -> str | None:
-    """The externalized op's name for a call target, or ``None`` if it is not one.
-
-    The inverse of the lookups above: use it to bucket a graph's nodes by op in
-    one pass, rather than re-walking the graph once per op name.
-    """
-    text = str(target)
-    prefix = f"{_EXTERNALIZE_NAMESPACE}."
-    if not text.startswith(prefix):
-        return None
-    return text[len(prefix) :].rsplit(".", 1)[0]
-
-
 def _fake_inputs_from_node(node: fx.Node) -> tuple[torch.Tensor, ...]:
     """Extract concrete example tensors from a node's FakeTensor args.
 
