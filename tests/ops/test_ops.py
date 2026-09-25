@@ -2354,6 +2354,41 @@ async def test_full(
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
+@pytest.mark.parametrize("fill_value", [0.0, 1.0, 2.0])
+async def test_full_fp8(fill_value: float, dtype: torch.dtype, dynamic: bool) -> None:
+    """Numerically validate fp8 ``torch.full``."""
+
+    class FullFp8Model(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return torch.full(x.shape, fill_value, dtype=dtype).to(torch.float32) + x
+
+    x = torch.zeros(2, 32, dtype=torch.float32)
+    model = FullFp8Model().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
+@pytest.mark.parametrize("fill_value", [0.0, 1.0, 2.0])
+async def test_full_like_fp8(
+    fill_value: float, dtype: torch.dtype, dynamic: bool
+) -> None:
+    """Numerically validate fp8 ``torch.full_like`` (splat constant path)."""
+
+    class FullLikeFp8Model(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            fp8 = x.to(dtype)
+            return torch.full_like(fp8, fill_value).to(torch.float32) + x
+
+    x = torch.zeros(2, 32, dtype=torch.float32)
+    model = FullLikeFp8Model().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("x", [torch.rand(2, 2), torch.rand(3, 4, 5)])
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 async def test_gelu(x: Tensor, approximate: str, dynamic: bool) -> None:
