@@ -25,13 +25,7 @@ import numpy as np
 import torch.fx as fx
 from coreai._compiler.dialects import coreai
 from coreai._compiler.ir import (
-    DenseElementsAttr,
     DenseResourceElementsAttr,
-    Float4E2M1FNType,
-    Float8E4M3FNType,
-    Float8E5M2Type,
-    Float8E8M0FNUType,
-    FloatAttr,
     IntegerType,
     Location,
     RankedTensorType,
@@ -42,6 +36,7 @@ from coreai._compiler.type_mapping import _MLIR_TO_NUMPY_DTYPE as MLIR_TO_NUMPY_
 from ._type_mapping import TORCH_TO_COREAI_DTYPE
 from ._utils import get_operand as _get_operand
 from ._utils import get_operands as _get_operands
+from ._utils import make_uniform_constant
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -50,28 +45,7 @@ from ._utils import get_operands as _get_operands
 
 def _zeros_constant(shape: list[int], elem_type: object) -> Value:
     """Create a splat zero constant tensor with the given shape and element type."""
-    if isinstance(
-        elem_type,
-        (Float4E2M1FNType, Float8E4M3FNType, Float8E5M2Type, Float8E8M0FNUType),
-    ):
-        # Core AI compiler can only check if a DenseElementsAttr is splat,
-        # i.e. cannot check the opaque DenseResourceElementsAttr.
-        # As of 2026-04-10 coreai.constant uses DenseResourceElementsAttr
-        # for reduced-precision float dtypes (fp4/fp8), so we have to
-        # explicitly call DenseElementsAttr.get_splat + ConstantOp for them.
-        # TODO: Once coreai.constant correctly handles fp4/fp8, migrate to it.
-        tensor_type = RankedTensorType.get(shape, elem_type)
-        zero_attr = DenseElementsAttr.get_splat(
-            tensor_type,
-            FloatAttr.get(elem_type, 0.0),
-        )
-        return coreai.ConstantOp(value=zero_attr).result
-    else:
-        numpy_dtype = MLIR_TO_NUMPY_DTYPE[str(elem_type)]
-        return coreai.constant(
-            np.zeros(shape, dtype=numpy_dtype),
-            dtype=elem_type,  # type: ignore[arg-type]
-        )
+    return make_uniform_constant(shape, 0.0, elem_type)
 
 
 def _qmin_constant(shape: list[int], elem_type: object) -> Value:
