@@ -1171,7 +1171,7 @@ def _build_coreai_op_map(program: AIProgram) -> dict[int, "Operation"]:
             op_map[op_id.value] = operation
         return WalkResult.ADVANCE
 
-    program._mlir_module.operation.walk(_collect)
+    program._module._mlir_module.operation.walk(_collect)
     return op_map
 
 
@@ -1184,7 +1184,7 @@ def strip_debug_info(program: AIProgram) -> None:
     Args:
         program: The AIProgram to strip debug info from. Modified in place.
     """
-    module = program._mlir_module
+    module = program._module._mlir_module
     module_op = module.operation
     context = module_op.context
 

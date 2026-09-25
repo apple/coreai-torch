@@ -91,7 +91,7 @@ def _validate_and_count_source_info(program: AIProgram) -> int:
         return WalkResult.ADVANCE
 
     # Walk all operations in the module
-    program._mlir_module.operation.walk(check_operation)
+    program._module._mlir_module.operation.walk(check_operation)
 
     return found_count[0]
 
@@ -330,7 +330,7 @@ async def test_get_source_info(simple_coreai_program: AIProgram) -> None:
                         )
         return WalkResult.ADVANCE
 
-    simple_coreai_program._mlir_module.operation.walk(check_identifiers)
+    simple_coreai_program._module._mlir_module.operation.walk(check_identifiers)
 
 
 async def test_get_all_output_maps_from_module_with_debug(
@@ -343,7 +343,7 @@ async def test_get_all_output_maps_from_module_with_debug(
     """
     # Get all output maps from the module
     output_maps = _mlir.get_all_output_maps_from_module(
-        simple_coreai_program._mlir_module
+        simple_coreai_program._module._mlir_module
     )
 
     # Validate structure using helper
@@ -402,7 +402,7 @@ async def test_complex_model_source_info(
 
         return WalkResult.ADVANCE
 
-    complex_coreai_program._mlir_module.operation.walk(check_operation)
+    complex_coreai_program._module._mlir_module.operation.walk(check_operation)
 
     # Should have found source info
     assert source_info_count[0] > 0, "Expected source info in complex model"
@@ -432,7 +432,7 @@ async def test_complex_model_operation_ids(
 
         return WalkResult.ADVANCE
 
-    complex_coreai_program._mlir_module.operation.walk(check_operation)
+    complex_coreai_program._module._mlir_module.operation.walk(check_operation)
 
     # Note: Operation IDs may not be present after full compilation pipeline
     # When present, IDs should be unique for different operations
@@ -475,7 +475,7 @@ async def test_operation_id_uniqueness(
 
         return WalkResult.ADVANCE
 
-    simple_coreai_program._mlir_module.operation.walk(collect_ids)
+    simple_coreai_program._module._mlir_module.operation.walk(collect_ids)
 
     # Guarded by `if len(coreai_ids) > 1` before, so a walk that found one id or none
     # passed without comparing anything -- and "no operation carries an id" is the
@@ -516,7 +516,7 @@ async def test_get_operation_id(simple_coreai_program: AIProgram) -> None:
         return WalkResult.ADVANCE
 
     # Walk all operations in the module
-    simple_coreai_program._mlir_module.operation.walk(check_operation)
+    simple_coreai_program._module._mlir_module.operation.walk(check_operation)
 
     # Note: Operation IDs may not be present after full compilation pipeline
     # This test validates the structure when they are present
@@ -692,7 +692,7 @@ async def test_get_stack_trace_from_coreai_program(
         return WalkResult.ADVANCE
 
     # Walk all operations in the module
-    complex_coreai_program._mlir_module.operation.walk(check_operation)
+    complex_coreai_program._module._mlir_module.operation.walk(check_operation)
 
     # We should find at least some operations with stack traces
     # Note: Not all operations may have stack traces, but with debug info enabled

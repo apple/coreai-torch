@@ -27,7 +27,9 @@ from coreai_torch.debugging.graph_match import UNSTABLE_ATTRIBUTES, WeightPolicy
 from .test_model import (
     ExtraLayerModel,
     ModifiedActivationModel,
+    ThreeAlikeLinearModel,
     ThreeLinearModel,
+    TwoAlikeLinearSkipModel,
     TwoLinearSkipModel,
     get_example_inputs,
 )
@@ -559,12 +561,12 @@ async def test_op_id_alignment_names_the_removals_a_tie_break_produced() -> None
     The sets narrow the like-named fields rather than adding to them, so subtracting
     one from the other cannot go negative.
     """
-    args = tuple(get_example_inputs(ThreeLinearModel).values())
+    args = tuple(get_example_inputs(ThreeAlikeLinearModel).values())
     before = await _create_coreai_program_from_model(
-        torch.export.export(ThreeLinearModel().eval(), args).run_decompositions()
+        torch.export.export(ThreeAlikeLinearModel().eval(), args).run_decompositions()
     )
     after = await _create_coreai_program_from_model(
-        torch.export.export(TwoLinearSkipModel().eval(), args).run_decompositions()
+        torch.export.export(TwoAlikeLinearSkipModel().eval(), args).run_decompositions()
     )
 
     alignment = op_id_alignment(before, after)
@@ -590,8 +592,13 @@ async def test_written_diff_says_when_a_tie_break_decided_it() -> None:
     rebuilt = await _create_coreai_program_from_model(
         torch.export.export(ThreeLinearModel().eval(), args).run_decompositions()
     )
-    after = await _create_coreai_program_from_model(
-        torch.export.export(TwoLinearSkipModel().eval(), args).run_decompositions()
+    # A layer dropped from three interchangeable ones: which two survived is the
+    # tie-break the report has to own up to.
+    alike = await _create_coreai_program_from_model(
+        torch.export.export(ThreeAlikeLinearModel().eval(), args).run_decompositions()
+    )
+    alike_without_middle = await _create_coreai_program_from_model(
+        torch.export.export(TwoAlikeLinearSkipModel().eval(), args).run_decompositions()
     )
 
     def rendered(source: AIProgram, target: AIProgram) -> str:
@@ -600,7 +607,7 @@ async def test_written_diff_says_when_a_tie_break_decided_it() -> None:
         write_diff(diff, diff.source_graph, diff.target_graph, output=output)
         return output.getvalue()
 
-    dropped_layer = rendered(before, after)
+    dropped_layer = rendered(alike, alike_without_middle)
     assert "Decided by tie-break" in dropped_layer
     assert "WeightPolicy.DIGEST" in dropped_layer, "Name the remedy, not just the risk"
 

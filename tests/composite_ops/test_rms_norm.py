@@ -405,7 +405,7 @@ class TestTorchRMSNormConversion:
         // CHECK: coreai.invoke @norm.rmsnorm_impl_[[S]](%arg0, %{{{{[a-zA-Z0-9_.]+}}}})
         """
         filecheck_pattern(
-            str(converted_program._mlir_module),
+            str(converted_program._module._mlir_module),
             check_file=truth,
         )
 
@@ -501,7 +501,7 @@ class TestTorchRMSNormConversion:
         // CHECK: coreai.invoke @norm.rmsnorm_impl_[[S]](%arg0, %{{[a-zA-Z0-9_.]+}})
         """
         filecheck_pattern(
-            str(converted_program._mlir_module),
+            str(converted_program._module._mlir_module),
             check_file=truth,
         )
 
@@ -598,7 +598,7 @@ class TestTorchRMSNormConversion:
         // CHECK: coreai.invoke @norm.rmsnorm_impl_[[S]](%arg0, %{{{{[a-zA-Z0-9_.]+}}}})
         """
         filecheck_pattern(
-            str(converted_program._mlir_module),
+            str(converted_program._module._mlir_module),
             check_file=truth,
         )
 

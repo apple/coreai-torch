@@ -327,6 +327,50 @@ class TwoLinearSkipModel(torch.nn.Module):
         return x
 
 
+class ThreeAlikeLinearModel(torch.nn.Module):
+    """
+    Three same-shaped layers: fc1 -> relu -> fc2 -> relu -> fc3.  (from test_graph_diff)
+
+    Every layer is the same shape, so once parameter values are elided the three are
+    interchangeable and pairing them is a tie-break. `ThreeLinearModel` narrows at
+    every layer, which leaves a matcher nothing to choose between.
+    """
+
+    def __init__(self) -> None:
+        """Initialize layers."""
+        super().__init__()
+        self.fc1 = torch.nn.Linear(10, 10)
+        self.fc2 = torch.nn.Linear(10, 10)
+        self.fc3 = torch.nn.Linear(10, 10)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass."""
+        x = self.fc1(x)
+        x = torch.relu(x)
+        x = self.fc2(x)
+        x = torch.relu(x)
+        x = self.fc3(x)
+        return x
+
+
+class TwoAlikeLinearSkipModel(torch.nn.Module):
+    """ThreeAlikeLinearModel with the middle layer dropped.  (from test_graph_diff)"""
+
+    def __init__(self) -> None:
+        """Initialize layers."""
+        super().__init__()
+        self.fc1 = torch.nn.Linear(10, 10)
+        self.fc3 = torch.nn.Linear(10, 10)  # Skip fc2
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass."""
+        x = self.fc1(x)
+        x = torch.relu(x)
+        # No fc2 layer
+        x = self.fc3(x)
+        return x
+
+
 class ExtraLayerModel(torch.nn.Module):
     """Four-layer network: adds an extra layer to ThreeLinearModel.  (from test_graph_diff)"""
 
@@ -481,6 +525,42 @@ class TwoNormModel(torch.nn.Module):
         return self.block(self.block(x))
 
 
+class StackBlock(torch.nn.Module):
+    """One layer of `BlockStack`, so a stack gives repeated instances of one type."""
+
+    def __init__(self, width: int = 8) -> None:
+        """Initialize the block."""
+        super().__init__()
+        self.linear = torch.nn.Linear(width, width)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the block."""
+        return torch.relu(self.linear(x))
+
+
+class BlockStack(torch.nn.Module):
+    """*depth* `StackBlock`s in sequence, under one class name.
+
+    Parameterised by depth, which is the only shape in this file that lets two programs
+    share every module path *but one*. Two different classes share none -- every frame
+    sits under a different root -- so a comparison of them cannot tell whether a report
+    named the module instance that changed or merely the first one of its kind. Compare
+    ``BlockStack(2)`` with ``BlockStack(3)`` for that.
+
+    Not in `EXAMPLE_INPUTS`, as `NormBlock` and `RMSNorm` are not: it is a building block
+    for one comparison rather than a model the whole-suite sweeps should convert.
+    """
+
+    def __init__(self, depth: int = 2, width: int = 8) -> None:
+        """Initialize *depth* blocks."""
+        super().__init__()
+        self.blocks = torch.nn.Sequential(*[StackBlock(width) for _ in range(depth)])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through every block."""
+        return self.blocks(x)
+
+
 EXAMPLE_INPUTS = {
     HierarchicalModel: lambda: OrderedDict(
         x=torch.randn(1, 2, 4),
@@ -532,6 +612,12 @@ EXAMPLE_INPUTS = {
         x=torch.randn(2, 10),
     ),
     TwoLinearSkipModel: lambda: OrderedDict(
+        x=torch.randn(2, 10),
+    ),
+    ThreeAlikeLinearModel: lambda: OrderedDict(
+        x=torch.randn(2, 10),
+    ),
+    TwoAlikeLinearSkipModel: lambda: OrderedDict(
         x=torch.randn(2, 10),
     ),
     ExtraLayerModel: lambda: OrderedDict(

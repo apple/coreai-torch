@@ -31,6 +31,8 @@ from typing_extensions import Self
 
 from .comparator import _DEFAULT_ATOL, _DEFAULT_RTOL, Comparator
 from .inspector import CoreAIInspector, TorchFXInspector
+from .modules import ModuleNode, build_module_tree
+from .source_annotator import ModulePath, module_paths_by_op_id
 from .table_writer import _Column, _Row, _TableSpec, _write_table
 from .torch_utils import get_torch_to_coreai_output_mapping
 from .utils import _plain, _with_debug
@@ -71,13 +73,21 @@ class IntermediateComparison:
     detail: str = ""
     """Why this was not compared, when it was not."""
 
+    module: ModulePath = ()
+    """Module instance the Core AI operation came from, outermost frame first.
+
+    A torch node name and an op id both identify an operation without saying where it
+    sits: "``mul_3`` diverges" is a fact about the graph, and "``Block$3/MLP$1``
+    diverges" is a fact about the model. Empty when no stack trace was recorded.
+    """
+
     def to_dict(self) -> dict[str, Any]:
         """
         Return the comparison as plain values.
 
         Returns:
-            Which operations were compared, the verdict, and the difference when
-            values were compared at all.
+            Which operations were compared, the verdict, the difference when values were
+            compared at all, and the module the operation came from.
 
         """
         return {
@@ -87,6 +97,8 @@ class IntermediateComparison:
             "max_diff": _plain(self.max_diff),
             "shape": _plain(self.shape),
             "detail": self.detail,
+            "module": "/".join(self.module),
+            "module_path": list(self.module),
         }
 
 
@@ -142,6 +154,26 @@ class IntermediatesReport:
             counts[entry.status.name] = counts.get(entry.status.name, 0) + 1
         return counts
 
+    def by_module(self: Self) -> list[ModuleNode[IntermediateComparison]]:
+        """
+        The failures as the module tree they happened in.
+
+        Answers "which layer diverges", which is what a wrong-output investigation is
+        for: one failing op id localises a symptom to a graph position, and the layer is
+        what a reader can go and look at.
+
+        Failures only. A report over a real model is mostly PASS and EXCLUDED entries, and
+        a tree holding all of them buries the handful that matter under the bulk that do
+        not -- the same reason :attr:`failures` exists. Group :attr:`comparisons`
+        yourself for the full picture.
+
+        Returns:
+            Root modules, each subtree ordered by how many failures are beneath it, so
+            the layer that diverges most is read first. Empty when nothing failed.
+
+        """
+        return build_module_tree((entry.module, entry) for entry in self.failures)
+
     def to_dict(self: Self) -> dict[str, Any]:
         """
         Return the report as plain values.
@@ -153,7 +185,8 @@ class IntermediatesReport:
         as compared.
 
         Returns:
-            Every comparison, and the counts that say how much was actually checked.
+            Every comparison, the counts that say how much was actually checked, and the
+            failures grouped by the module they happened in.
 
         """
         return {
@@ -161,6 +194,9 @@ class IntermediatesReport:
             "summary": dict(self.summary()),
             "compared_count": len(self.compared),
             "failure_count": len(self.failures),
+            "modules": [
+                node.to_dict(lambda entry: entry.to_dict()) for node in self.by_module()
+            ],
         }
 
     def write_to(self: Self, output: TextIO, *, width: int | None = None) -> None:
@@ -178,6 +214,7 @@ class IntermediatesReport:
                 _Column("Status"),
                 _Column("Torch op"),
                 _Column("Core AI op", justify="right"),
+                _Column("Module"),
                 _Column("Max diff", justify="right"),
                 _Column("Detail"),
             ),
@@ -202,6 +239,7 @@ class IntermediatesReport:
                         entry.status.name,
                         entry.torch_node_name,
                         str(entry.coreai_op_id),
+                        "\n".join(entry.module) or "--",
                         "--" if entry.max_diff is None else f"{entry.max_diff:.6g}",
                         entry.detail or "--",
                     ),
@@ -241,6 +279,7 @@ def compare_intermediates(
     rtol: float = _DEFAULT_RTOL,
     atol: float = _DEFAULT_ATOL,
     exclude_multi_output: bool = True,
+    modules: dict[int, ModulePath] | None = None,
 ) -> IntermediatesReport:
     """
     Compare each mapped operation's captured intermediates.
@@ -259,12 +298,17 @@ def compare_intermediates(
             an indexed comparison of one tests the labelling rather than the values. Pass
             False to compare anyway and let it fail: the unstable order is a defect, and a
             report that excuses it as "only the labelling" hides the thing worth fixing.
+        modules: Module instance paths by Core AI op id, from
+            `source_annotator.module_paths_by_op_id`. Passed in rather than read here so
+            this stays a pure function of the values it was given -- it has no program to
+            read them from. Omitted, every entry groups under `modules.UNATTRIBUTED`.
 
     Returns:
         One entry per mapping, classified.
 
     """
     report = IntermediatesReport()
+    paths = modules or {}
 
     def record(
         name: str,
@@ -288,6 +332,7 @@ def compare_intermediates(
                 coreai_op_id=op_id,
                 status=status,
                 detail=detail,
+                module=paths.get(op_id, ()),
                 **extra,
             ),
         )
@@ -467,4 +512,5 @@ async def compare_program_intermediates(
         rtol=rtol,
         atol=atol,
         exclude_multi_output=exclude_multi_output,
+        modules=module_paths_by_op_id(program),
     )
