@@ -20,10 +20,6 @@ from coreai._compiler.ir import (
     DenseElementsAttr,
     F16Type,
     F32Type,
-    Float4E2M1FNType,
-    Float8E4M3FNType,
-    Float8E5M2Type,
-    Float8E8M0FNUType,
     FloatAttr,
     IntegerType,
     Location,
@@ -54,13 +50,7 @@ from ._composite_declaration import generate_composite_decl
 from ._type_mapping import (
     TORCH_TO_COREAI_DTYPE,
     _get_coreai_to_torch_dtype,
-)
-
-_REDUCED_PRECISION_FLOAT_TYPES = (
-    Float4E2M1FNType,
-    Float8E4M3FNType,
-    Float8E5M2Type,
-    Float8E8M0FNUType,
+    is_reduced_precision_float,
 )
 
 
@@ -1117,11 +1107,6 @@ def build_shape_tensor(
         for s in shape
     ]
     return coreai.concat(0, dim_vals) if len(dim_vals) > 1 else dim_vals[0]
-
-
-def is_reduced_precision_float(elem_type: Type) -> bool:
-    """Whether ``elem_type`` is an fp4/fp8 float type."""
-    return isinstance(elem_type, _REDUCED_PRECISION_FLOAT_TYPES)
 
 
 def make_uniform_constant(
