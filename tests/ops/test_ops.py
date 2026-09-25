@@ -1569,6 +1569,8 @@ class TestConvolution:
             (2, 4, 3, (1, 1), (2, 2), (2, 2), (0, 0), 1, False),
             # ConvTranspose2d: With output_padding
             (1, 1, 3, (2, 2), (1, 1), (1, 1), (1, 1), 1, False),
+            # ConvTranspose2d: output_padding permitted by dilation, not stride
+            (2, 4, 3, (1, 1), (0, 0), (3, 3), (2, 2), 1, False),
             # ConvTranspose2d: Grouped convolution
             (4, 4, 3, (2, 2), (1, 1), (1, 1), (0, 0), 2, False),
             # ConvTranspose1d: Basic case
@@ -1651,6 +1653,26 @@ class TestConvolution:
         else:
             dynamic_shapes = None
         await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+    @pytest.mark.parametrize(
+        "stride, dilation, output_padding",
+        [
+            ((1, 2), (1, 1), (1, 1)),
+            ((2, 1), (1, 1), (1, 1)),
+        ],
+    )
+    def test_conv_transpose_invalid_output_padding(
+        self, stride: Any, dilation: Any, output_padding: Any
+    ) -> None:
+        """output_padding must be < stride or < dilation in every spatial dim."""
+        model = nn.ConvTranspose2d(
+            2, 2, 3, stride=stride, dilation=dilation, output_padding=output_padding
+        ).eval()
+        ep = torch.export.export(
+            model, args=(torch.rand(2, 2, 8, 8),)
+        ).run_decompositions()
+        with pytest.raises(ValueError, match="output padding must be smaller"):
+            TorchConverter().add_exported_program(ep).to_coreai()
 
     @pytest.mark.parametrize(
         "is_1d, output_padding",
@@ -2600,7 +2622,6 @@ class TestLayerNorm:
             model=model,
             x=x,
             dynamic_shapes=make_dynamic_shapes(x=dynamic_dims),
-            run_optimize_passes=True,
         )
 
 
@@ -3597,12 +3618,13 @@ class TestRepeat:
                 // CHECK-LABEL: coreai.graph @main
                 // CHECK-SAME:    %arg0: tensor<2x3xf32>
                 // CHECK-SAME:    %arg1: tensor<?x8xf32>
+                // CHECK:         %[[ONE:.+]] = coreai.constant dense<1> : tensor<1xui32>
                 // CHECK:         %[[SHAPE:.+]] = coreai.get_shape %arg1 : tensor<?x8xf32> -> tensor<2xui32>
                 // CHECK:         %[[SHAPE_SI32:.+]] = coreai.cast %[[SHAPE]] : tensor<2xui32> to tensor<2xsi32>
                 // CHECK:         %[[SLICE:.+]] = coreai.slice %[[SHAPE_SI32]]
                 // CHECK-SAME:      -> tensor<1xsi32>
-                // CHECK:         %[[ONE:.+]] = coreai.constant dense<1> : tensor<1xui32>
-                // CHECK:         %[[DIMS:.+]] = coreai.concat {{.*}}, %{{.+}}, %[[ONE]]
+                // CHECK:         %[[BATCH:.+]] = coreai.cast %[[SLICE]] : tensor<1xsi32> to tensor<1xui32>
+                // CHECK:         %[[DIMS:.+]] = coreai.concat {{.*}}, %[[BATCH]], %[[ONE]]
                 // CHECK-SAME:      -> tensor<2xui32>
                 // CHECK:         %[[OUT:.+]] = coreai.tile %arg0, %[[DIMS]]
                 // CHECK:         coreai.output %[[OUT]]
@@ -3807,7 +3829,6 @@ class TestRound:
         self._rewrite_to_overload_packet(program)
 
         coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-        coreai_program.optimize()
         # The bare ``aten.round`` target must reach ``coreai.round`` —
         # not produce a different op or fail with ``Unsupported ATen op``.
         # Shape and element type must pass through unchanged.
@@ -3882,7 +3903,6 @@ class TestView:
         # with the diagnostic ``expected the same element type for all
         # inputs to concat``.
         coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-        coreai_program.optimize()
         # The fix's job is to normalise every entry of the view shape
         # ``[1, 1024, h, w]`` to the same canonical rank-1 si32 form
         # before the dim-vector concat. The check below pins:
@@ -3910,8 +3930,9 @@ class TestView:
                 // CHECK:         %[[SHAPE:.+]] = coreai.concat {{.*}} : (tensor<si32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<4xsi32>
                 //
                 // Final reshape uses that shape vector to produce the 4-D output.
-                // (After optimize() the inner ``view(1, 1024, -1)`` is fused
-                // away, so the reshape applies directly to %arg0.):
+                // (The pre-compilation rewrite fuses the inner
+                // ``view(1, 1024, -1)`` away, so the reshape applies directly
+                // to %arg0.):
                 // CHECK:         %[[OUT:.+]] = coreai.reshape %[[ARG0]], %[[SHAPE]] : (tensor<1x1024x?x?xf16>, tensor<4xsi32>) -> tensor<1x1024x?x?xf16>
                 // CHECK:         coreai.output %[[OUT]]
             """,
@@ -4804,15 +4825,16 @@ class TestMaskedScatter:
                 // CHECK-SAME:    %arg0: tensor<2x3xf32>
                 // CHECK-SAME:    %arg1: tensor<2x3xi1>
                 // CHECK-SAME:    %arg2: tensor<6xf32>
-                // CHECK:         %[[SF:.+]] = coreai.reshape %arg0, %{{.+}} : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<6xf32>
-                // CHECK:         %[[MF:.+]] = coreai.reshape %arg1, %{{.+}} : (tensor<2x3xi1>, tensor<1xsi32>) -> tensor<6xi1>
-                // CHECK:         %[[VF:.+]] = coreai.reshape %arg2, %{{.+}} : (tensor<6xf32>, tensor<1xsi32>) -> tensor<6xf32>
+                // CHECK:         %[[SF:.+]] = coreai.reshape %arg0, %{{.+}} : (tensor<2x3xf32>, tensor<1xui32>) -> tensor<6xf32>
+                // CHECK:         %[[MF:.+]] = coreai.reshape %arg1, %{{.+}} : (tensor<2x3xi1>, tensor<1xui32>) -> tensor<6xi1>
                 // CHECK:         %[[MI:.+]] = coreai.cast %[[MF]] : tensor<6xi1> to tensor<6xsi32>
                 // CHECK:         %[[CS:.+]] = coreai.scan %[[MI]], %{{.+}}, %{{.+}} combiner = <sum> : (tensor<6xsi32>, tensor<ui32>, tensor<i1>) -> tensor<6xsi32>
                 // CHECK:         %[[IDX:.+]] = coreai.decomposable.broadcasting_sub %[[CS]], %{{.+}} : (tensor<6xsi32>, tensor<si32>) -> tensor<6xsi32>
-                // CHECK:         %[[G:.+]] = coreai.gather_along_axis %[[VF]] at %[[IDX]] along %{{.+}} : (tensor<6xf32>, tensor<6xsi32>, tensor<si32>) to tensor<6xf32>
+                // The src reshape is a no-op on a 1-D input, so the rewrite
+                // folds it away and the gather reads %arg2 directly.
+                // CHECK:         %[[G:.+]] = coreai.gather_along_axis %arg2 at %[[IDX]] along %{{.+}} : (tensor<6xf32>, tensor<6xsi32>, tensor<si32>) to tensor<6xf32>
                 // CHECK:         %[[W:.+]] = coreai.decomposable.broadcasting_where %[[MF]], %[[G]], %[[SF]] : (tensor<6xi1>, tensor<6xf32>, tensor<6xf32>) -> tensor<6xf32>
-                // CHECK:         %[[OUT:.+]] = coreai.reshape %[[W]], %{{.+}} : (tensor<6xf32>, tensor<2xsi32>) -> tensor<2x3xf32>
+                // CHECK:         %[[OUT:.+]] = coreai.reshape %[[W]], %{{.+}} : (tensor<6xf32>, tensor<2xui32>) -> tensor<2x3xf32>
                 // CHECK:         coreai.output %[[OUT]]
             """,
         )
@@ -4835,7 +4857,6 @@ class TestMaskedScatter:
             str(coreai_program),
             check_file="""
                 // CHECK-LABEL: coreai.graph @main
-                // CHECK:       coreai.reshape
                 // CHECK:       coreai.reshape
                 // CHECK:       coreai.reshape
                 // CHECK:       coreai.cast {{.+}} to tensor<{{.*}}xsi32>
@@ -6340,7 +6361,6 @@ class TestUpsampleNearest2d:
         # Convert must not raise. Pre-fix this raised ``ValueError:
         # Operation creation failed`` from ``coreai.concat``.
         coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-        coreai_program.optimize()
         # The output_shape concat must take three rank-1 si32 operands —
         # the (N, C) slice from x's get_shape, plus normalised out_h and
         # out_w. Pre-fix, out_h/out_w arrived as rank-1 f32 (from
@@ -6513,7 +6533,6 @@ class TestUpsampleBilinear2d:
         # Convert must not raise. Pre-fix this raised ``ValueError:
         # Operation creation failed`` from ``coreai.concat``.
         coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-        coreai_program.optimize()
         # Same shape concat as the nearest case; only the interpolation
         # mode tag differs. The fix is in the shape-build path so it
         # applies identically here.
@@ -7664,6 +7683,130 @@ class TestSDPA:
             dynamic_shapes=dynamic_shapes,
             remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
             **kwargs,
+        )
+
+    @pytest.mark.parametrize("v_head_dim", [24, 48])
+    @pytest.mark.parametrize("mask_cfg", ["gen_causal", "pass_mask", "maskless"])
+    @pytest.mark.parametrize("batch_leading_dims", [tuple(), (1, 1)])
+    @pytest.mark.parametrize("dynamic", [False, True])
+    async def test_sdpa_value_head_dim_differs(
+        self,
+        v_head_dim: int,
+        mask_cfg: str,
+        batch_leading_dims: tuple[int, ...],
+        dynamic: bool,
+    ) -> None:
+        """D_v != D_k (MLA-style): the output head dim comes from value."""
+        is_causal = mask_cfg == "gen_causal"
+        batch_size, q_heads, kv_heads = 2, 8, 2
+        q_len, max_ctx_len, qk_head_dim = 4, 16, 32
+
+        class SDPAModule(nn.Module):
+            def forward(self, query, key, value, attn_mask=None):
+                if attn_mask is not None:
+                    return nn.functional.scaled_dot_product_attention(
+                        query, key, value, attn_mask, enable_gqa=True
+                    )
+                return nn.functional.scaled_dot_product_attention(
+                    query, key, value, is_causal=is_causal, enable_gqa=True
+                )
+
+        q = torch.randn(*batch_leading_dims, batch_size, q_heads, q_len, qk_head_dim)
+        k = torch.randn(
+            *batch_leading_dims, batch_size, kv_heads, max_ctx_len, qk_head_dim
+        )
+        v = torch.randn(
+            *batch_leading_dims, batch_size, kv_heads, max_ctx_len, v_head_dim
+        )
+        attn_mask = (
+            None
+            if is_causal or mask_cfg == "maskless"
+            else (
+                torch.ones(*batch_leading_dims, 1, q_len, max_ctx_len) * float("-inf")
+            ).tril()
+        )
+
+        model = SDPAModule().eval()
+        assert model(q, k, v, attn_mask).shape[-1] == v_head_dim
+
+        dynamic_shapes = None
+        if dynamic:
+            # batch lives at dim offset, q_len/max_ctx_len at dim offset + 2.
+            offset = len(batch_leading_dims)
+            dynamic_shapes = {
+                "query": {offset: torch.export.Dim.DYNAMIC},
+                "key": {offset: torch.export.Dim.DYNAMIC},
+                "value": {offset: torch.export.Dim.DYNAMIC},
+            }
+            if attn_mask is not None:
+                dynamic_shapes["attn_mask"] = {}
+
+        kwargs: dict[str, Any] = {"query": q, "key": k, "value": v}
+        if attn_mask is not None:
+            kwargs["attn_mask"] = attn_mask
+
+        await validate_numerical_output(
+            model=model,
+            dynamic_shapes=dynamic_shapes,
+            remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
+            **kwargs,
+        )
+
+    @pytest.mark.parametrize("with_mask", [False, True])
+    async def test_sdpa_rank3_value_head_dim_differs(self, with_mask: bool) -> None:
+        """Rank-3 (B, S, E) SDPA with a value head dim of its own."""
+        batch_size, q_len, seq_len, qk_head_dim, v_head_dim = 2, 5, 7, 16, 24
+
+        class SDPAModule(nn.Module):
+            def forward(
+                self,
+                query: Tensor,
+                key: Tensor,
+                value: Tensor,
+                attn_mask: Tensor | None = None,
+            ) -> Tensor:
+                if attn_mask is not None:
+                    return nn.functional.scaled_dot_product_attention(
+                        query, key, value, attn_mask
+                    )
+                return nn.functional.scaled_dot_product_attention(query, key, value)
+
+        kwargs: dict[str, Any] = {
+            "query": torch.rand(batch_size, q_len, qk_head_dim),
+            "key": torch.rand(batch_size, seq_len, qk_head_dim),
+            "value": torch.rand(batch_size, seq_len, v_head_dim),
+        }
+        if with_mask:
+            kwargs["attn_mask"] = torch.tril(
+                torch.ones((q_len, seq_len), dtype=torch.bool),
+                diagonal=seq_len - q_len,
+            )
+
+        await validate_numerical_output(
+            model=SDPAModule().eval(),
+            remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
+            **kwargs,
+        )
+
+    async def test_sdpa_dynamic_head_dim(self) -> None:
+        """A dynamic head dim is not provably equal to D_v — lowered directly."""
+
+        class SDPAModule(nn.Module):
+            def forward(self, query: Tensor, key: Tensor, value: Tensor) -> Tensor:
+                return nn.functional.scaled_dot_product_attention(query, key, value)
+
+        head_dim = torch.export.Dim("head_dim", min=8, max=64)
+        await validate_numerical_output(
+            model=SDPAModule().eval(),
+            query=torch.rand(2, 4, 3, 32),
+            key=torch.rand(2, 4, 5, 32),
+            value=torch.rand(2, 4, 5, 32),
+            dynamic_shapes={
+                "query": {3: head_dim},
+                "key": {3: head_dim},
+                "value": {3: head_dim},
+            },
+            remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
         )
 
 

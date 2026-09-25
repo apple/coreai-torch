@@ -1504,7 +1504,14 @@ def _sdpa_decompose(
         coreai.cast(attn_weights, ele_type),
         coreai.cast(value, ele_type),
     )
-    assert result.type == query.type, "Result type and query type must be identical"
+    # The output takes its last dim from value: [B, n_q_heads, T_q, D_v]. D_v
+    # need not match the query/key head dim (e.g. MLA-style attention).
+    expected_type = RankedTensorType.get(
+        [*query.type.shape[:3], value.type.shape[3]], query.type.element_type
+    )
+    assert result.type == expected_type, (
+        f"SDPA result type {result.type} must be {expected_type}"
+    )
     return result
 
 

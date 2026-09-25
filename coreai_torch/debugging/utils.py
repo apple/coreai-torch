@@ -13,13 +13,61 @@ module.
 
 from __future__ import annotations
 
+import math
+import re
 from collections import OrderedDict
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any
 
 import coreai._compiler._mlir_libs._coreaiIR._bindings.mlir as _mlir
 from coreai._compiler.ir import Operation
 from coreai.authoring import AIProgram
+from coreai.runtime import SpecializationOptions
+
+
+def _with_debug(
+    specialization_options: SpecializationOptions | None,
+) -> SpecializationOptions:
+    """
+    The caller's options with debug enabled, defaulting when they passed none.
+
+    Args:
+        specialization_options: What the caller asked for, or None.
+
+    Returns:
+        Those options with debug enabled, or the defaults with debug enabled.
+
+    """
+    if specialization_options is None:
+        specialization_options = SpecializationOptions.default()
+    return specialization_options.with_debug(enabled=True)
+
+
+def _plain(value: Any) -> Any:
+    """
+    Normalise one leaf value for a report's ``to_dict``.
+
+    Args:
+        value: Leaf, or a container of leaves.
+
+    Returns:
+        The same value as `json.dumps` accepts it. A non-finite float becomes None,
+        which is the convention `IntermediateComparison.max_diff` already uses.
+
+    """
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, (set, frozenset)):
+        return sorted(_plain(item) for item in value)
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _plain(item) for key, item in value.items()}
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
 
 
 def _walk_operation(
@@ -56,7 +104,7 @@ def _walk_operations(coreai_program: AIProgram) -> list[Operation]:
         The operations, parents before children.
 
     """
-    module = coreai_program._mlir_module.operation
+    module = coreai_program._module._mlir_module.operation
     return [operation for operation, _ in _walk_operation(module)]
 
 
@@ -116,3 +164,128 @@ def get_operation_locations(operation: Operation) -> list[LocationInfo]:
 
     # Dedupe while preserving order.
     return list(reversed(OrderedDict.fromkeys(locations)))
+
+
+STRUCTURAL_OPS = frozenset(
+    {
+        "builtin.module",
+        "coreai.graph",
+        "coreai.output",
+    }
+)
+"""Operations that are a program's structure rather than a computation in it.
+
+They open or close a graph, so no module produced them and none of them is a thing a
+user wrote: measured over the debugging test models, ``coreai.graph`` and
+``coreai.output`` are the *only* operations `module_paths_by_op_id` has no path for.
+A report that groups by module therefore filters these rather than growing an
+"unattributed" bucket whose entire contents are plumbing.
+
+The `coreai` dialect only. A lowered program's own graph openers live in dialects that
+are not public API, and they are also out of reach here: the tools that read this take
+an `AIProgram` as `to_coreai()` returns it, which is many passes before anything
+replaces the graphs with runtime functions.
+"""
+
+
+# ---------------------------------------------------------------------------
+# Composite naming, shared by the histogram and the graph comparisons
+# ---------------------------------------------------------------------------
+
+_UUID_SUFFIX_RE = re.compile(r"_(?:[a-z]{8,}|[0-9a-f]{8})$")
+"""Trailing random suffix on a generated composite symbol name.
+
+Two generators produce one. `coreai.graph`'s deferred-construction path draws from
+`string.ascii_lowercase` only, never digits; module externalization uses
+`uuid4().hex[:8]`, so digits are usual there. Used only as a fallback when `template_op`
+is unavailable -- which is always, on the externalization path.
+"""
+
+
+def _collect_entry_points(module: Any) -> dict[str, Any]:
+    """Collect all coreai.graph ops from a module, keyed by sym_name."""
+    entry_points: dict[str, Any] = {}
+    for op in module.body.operations:
+        if op.name != "coreai.graph":
+            continue
+        if not hasattr(op, "sym_name"):
+            continue
+        entry_points[op.sym_name.value] = op
+    return entry_points
+
+
+def _strip_uuid_suffix(name: str) -> str:
+    """
+    Strip trailing random suffix for display: 'sdpa_maskless_qxrbmzua' -> 'sdpa_maskless'.
+
+    A best-effort fallback for when the generating `GraphOp` carries no `template_op`
+    attribute (see `_composite_label`) -- pattern-matching a randomised suffix rather
+    than reading what named it. Handles both generators `_UUID_SUFFIX_RE` documents. A
+    composite created some other way, or a future generator using a different alphabet
+    or length, may not match; the name is then shown as printed, suffix and all, rather
+    than stripped incorrectly.
+    """
+    return _UUID_SUFFIX_RE.sub("", name)
+
+
+_COMPOSITE_DECL_RE = re.compile(r'composite_declaration<"([^"]+)"')
+"""The op name a `composite_decl` attribute declares.
+
+Printed as ``#coreai.composite_declaration<"rms_norm" = {input_names = ...}>``. Set when
+a module is externalized through an `ExternalizeSpec` carrying a ``composite_op_name``.
+"""
+
+
+def _composite_label(sym_name: str, entry_points: Mapping[str, Any]) -> str:
+    """
+    Human-readable name for a composite callee.
+
+    Prefers `template_op`, the pre-randomisation name the generating `GraphOp`
+    recorded verbatim alongside its randomised symbol name -- see
+    `coreai._compiler.dialects.coreai.graph._generate_fn_with_body`, which sets both
+    together. Exact and independent of the suffix's alphabet or length, unlike
+    `_strip_uuid_suffix`, which has to guess the pattern and cannot: composite names
+    are not a closed set to match against, since module externalization lets a caller
+    register one under any name it chooses.
+
+    Falls back to `composite_decl`'s declared op name next, which is the *operation* a
+    composite stands for (``rms_norm``) rather than where it sits in the module tree
+    (``layer0.attn_norm``). Two instances of one composite op then share a label, which
+    is what makes them comparable; the symbol still separates them.
+
+    Args:
+        sym_name: The composite's (possibly suffixed) symbol name.
+        entry_points: `sym_name -> GraphOp`, as `_collect_entry_points` returns.
+
+    Returns:
+        `template_op`, else the declared composite op name, else `sym_name` with a
+        best-effort suffix strip.
+
+    """
+    op = entry_points.get(sym_name)
+    if op is None:
+        return _strip_uuid_suffix(sym_name)
+    template_op = getattr(op, "template_op", None)
+    if template_op:
+        return template_op
+    declared = _declared_op_name(op)
+    return declared or _strip_uuid_suffix(sym_name)
+
+
+def _declared_op_name(graph_op: Any) -> str | None:
+    """
+    The op name a graph's `composite_decl` declares, when it carries one.
+
+    Args:
+        graph_op: The `coreai.graph` to read.
+
+    Returns:
+        The declared name, or None when the attribute is absent or unparseable.
+
+    """
+    try:
+        printed = str(graph_op.attributes["composite_decl"])
+    except (KeyError, RuntimeError):
+        return None
+    match = _COMPOSITE_DECL_RE.search(printed)
+    return match.group(1) if match is not None else None

@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pytest
 import torch
+from coreai.runtime import SpecializationOptions
 from numpy.typing import NDArray
 
 from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
@@ -424,6 +425,7 @@ async def _create_coreai_program_from_model(
 )
 async def test_coreai_program_with_inspector(
     nan_branch: str | None,
+    specialization_options: SpecializationOptions | None,
 ) -> None:
     """
     Test validator with AIProgram across NaN injection points.
@@ -441,6 +443,7 @@ async def test_coreai_program_with_inspector(
     validator = await create_validator_for_coreai_program(
         program,
         entry_point="main",
+        specialization_options=specialization_options,
     )
 
     # Run validation

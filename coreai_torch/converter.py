@@ -21,15 +21,13 @@ from coreai._compiler.ir import (
     ArrayAttr,
     Attribute,
     DictAttr,
-    InsertionPoint,
     Location,
-    Module,
     OpResultList,
     StringAttr,
     Type,
     Value,
 )
-from coreai.authoring import AIProgram
+from coreai.authoring import AIProgram, Module
 from coreai.authoring import Context as _CoreAIAuthoringContext
 from torch import Tensor
 from torch.export.exported_program import ExportedProgram
@@ -902,6 +900,10 @@ class TorchConverter:
                 with graph_op.block:
                     self._get_operation(node)
 
+            # Operation IDs and debug locations for everything just lowered, in one
+            # IR-order pass, now that the graph body is complete.
+            self._debug_info_recorder.finalize_node_operations()
+
             # Assemble outputs with resolved names
             outputs_name_value: list[tuple[str, Value]] = [
                 (resolved_name, self._values_map[fx_name])
@@ -952,6 +954,9 @@ class TorchConverter:
         It creates a Core AI module, processes staged entries (from ``add_exported_program``
         and ``add_pytorch_module`` calls), and generates graph operations.
 
+        The returned ``AIProgram`` is already optimized. There is no separate
+        optimization step to call.
+
         Staged programs persist after conversion. Call ``clear()`` to remove them.
 
         Args:
@@ -959,7 +964,7 @@ class TorchConverter:
                   If None, convert all staged programs.
 
         Returns:
-            An AIProgram containing the converted Core AI model
+            An optimized AIProgram containing the converted Core AI model
 
         Raises:
             RuntimeError: If no programs have been staged via ``add_exported_program()``
@@ -982,8 +987,11 @@ class TorchConverter:
                 f"converting {len(entries)} program(s) to Core AI"
             )
             module: Module = Module.create()
-            with self._debug_info_recorder.record_module(module):
-                with InsertionPoint(module.body):
+            # ``record_module`` must exit before ``with module`` runs the
+            # pre-compilation rewrite: the rewrite merges locations, which the
+            # debuginfo verifier rejects.
+            with module:
+                with self._debug_info_recorder.record_module(module._mlir_module):
                     for entry in bar.track(entries, description="Entries"):
                         self._init_conversion_state()
                         self.exported_program = entry.exported_program
@@ -997,20 +1005,20 @@ class TorchConverter:
                             self._export_fn = entry.export_fn
                             self._externalize_modules = entry.externalize_modules
                             self._run_externalize_pipeline_from_module()
-                            self._perform_externalization(module.context)
+                            self._perform_externalization(module._context)
 
                         # Handle externalization for pre-marked ExportedProgram path
                         elif entry._externalized_exported_programs is not None:
                             self._externalized_exported_programs = (
                                 entry._externalized_exported_programs
                             )
-                            self._perform_externalization(module.context)
+                            self._perform_externalization(module._context)
 
                         self._get_graph_op(
                             entry.entrypoint_name, primary_entrypoint=True
                         )
 
-        return AIProgram._from_mlir_module(module)
+        return AIProgram(module)
 
     def clear(self, *, entrypoints: Sequence[str] | None = None) -> None:
         """Remove staged programs. If entrypoints given, remove only those; else remove all.

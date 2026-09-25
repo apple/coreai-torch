@@ -1241,6 +1241,14 @@ def replace_conv(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
             raise ValueError(
                 f"Transposed conv3d is not yet supported, at node: {node}, name: {node.name}"
             )
+        if any(
+            op >= s and op >= d for op, s, d in zip(output_padding, stride, dilation)
+        ):
+            raise ValueError(
+                f"output padding must be smaller than either stride or dilation, got "
+                f"output_padding={output_padding}, stride={stride}, dilation={dilation}, "
+                f"at node: {node}, name: {node.name}"
+            )
         return _conv_transpose(
             x, weight, bias, stride, padding, dilation, output_padding, groups, loc
         )
@@ -3425,6 +3433,10 @@ def replace_sdpa(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
         5. (mask) attn_scores += float_mask
         6. attn_weights = softmax(attn_scores, dim=-1)
         7. output = matmul(attn_weights, value)
+
+    The composite is only used when the value head dim is provably equal to
+    the query/key head dim; otherwise (D_v != D_k, or a head dim that is
+    dynamic) the decomposition is emitted directly.
     """
 
     args = node.args
@@ -3488,66 +3500,100 @@ def replace_sdpa(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
     if attn_mask is not None and attn_mask.type.rank > 4:
         attn_mask = _sdpa_flatten_leading_batch_dims(attn_mask)
 
-    # Build composite inputs. Scale is NOT an input — it is embedded in
-    # op_attributes when a compile-time constant, otherwise defaulted to
-    # 1/sqrt(head_dim) inside the decomposition body.
-    input_names = ["query", "key", "value"]
-    if attn_mask is not None:
-        input_names.append("attn_mask")
-
-    op_attributes: dict[str, Any] = {"is_causal": False, "window_size": 0, "version": 1}
-    if scale is not None:
-        op_attributes["scale"] = scale
-
-    composite_decl = generate_composite_decl(
-        query.context,
-        "scaled_dot_product_attention",
-        input_names,
-        ["output"],
-        op_attributes,
-    )
-
-    # Capture shape/type info for the composite body closure.
+    # Capture shape/type info for the decomposition body.
     q_shape = query.type.shape
     k_shape = key.type.shape
     v_shape = value.type.shape
 
-    @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
-    def sdpa(q: Value, k: Value, v: Value, m: Value) -> Value:
-        return _sdpa_decompose(
-            q, k, v, m, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
+    if not (q_shape[3] >= 0 and v_shape[3] >= 0 and q_shape[3] == v_shape[3]):
+        # The composite op's interface requires the attention output to carry
+        # the query head dim, so it can only be used when D_v and D_k are
+        # provably equal. Otherwise — D_v != D_k (MLA-style attention), or a
+        # dynamic head dim we cannot prove equal — lower the decomposition
+        # directly.
+        result = _sdpa_decompose(
+            query,
+            key,
+            value,
+            attn_mask,
+            scale,
+            enable_gqa,
+            ele_type,
+            q_shape,
+            k_shape,
+            v_shape,
+        )
+    else:
+        # Build composite inputs. Scale is NOT an input — it is embedded in
+        # op_attributes when a compile-time constant, otherwise defaulted to
+        # 1/sqrt(head_dim) inside the decomposition body.
+        input_names = ["query", "key", "value"]
+        if attn_mask is not None:
+            input_names.append("attn_mask")
+
+        op_attributes: dict[str, Any] = {
+            "is_causal": False,
+            "window_size": 0,
+            "version": 1,
+        }
+        if scale is not None:
+            op_attributes["scale"] = scale
+
+        composite_decl = generate_composite_decl(
+            query.context,
+            "scaled_dot_product_attention",
+            input_names,
+            ["output"],
+            op_attributes,
         )
 
-    @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
-    def sdpa_maskless(q: Value, k: Value, v: Value) -> Value:
-        return _sdpa_decompose(
-            q, k, v, None, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
-        )
+        @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+        def sdpa(q: Value, k: Value, v: Value, m: Value) -> Value:
+            return _sdpa_decompose(
+                q, k, v, m, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
+            )
 
-    result = (
-        sdpa(query, key, value, attn_mask)
-        if attn_mask is not None
-        else sdpa_maskless(query, key, value)
-    )[0]
+        @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+        def sdpa_maskless(q: Value, k: Value, v: Value) -> Value:
+            return _sdpa_decompose(
+                q, k, v, None, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
+            )
+
+        result = (
+            sdpa(query, key, value, attn_mask)
+            if attn_mask is not None
+            else sdpa_maskless(query, key, value)
+        )[0]
+
+    # Output shape is the query's batch/head/seq dims with value's head dim.
+    v_head_dim = v_shape[3]
+    result_shape = [*original_query.type.shape[:-1], v_head_dim]
+    result_type = RankedTensorType.get(result_shape, ele_type)
 
     # Restore original leading batch dims if inputs were rank > 4.
     if query_rank == 4:
-        assert result.type == original_query.type, (
-            "Result type and original query type must be identical"
+        assert result.type == result_type, (
+            f"SDPA result type {result.type} must be {result_type}"
         )
         return result
     if query_rank == 3:
         result = coreai.shrink_dims(result, [1])
-        assert result.type == original_query.type, (
-            "Result type and original query type must be identical"
+        assert result.type == result_type, (
+            f"SDPA result type {result.type} must be {result_type}"
         )
         return result
-    orig_shape = coreai.get_shape(original_query)
-    result = coreai.reshape(result, orig_shape)
-    assert result.type == original_query.type, (
-        "Result type and original query type must be identical"
+
+    # Rebuild the leading batch dims from the original query, keeping value's
+    # head dim as the last one.
+    q_shape_val = coreai.get_shape(original_query)
+    leading_shape = coreai.slice_(q_shape_val, [0], [query_rank - 1], [1])
+    v_head_dim_1d = (
+        coreai.constant([v_head_dim], dtype=np.uint32)
+        if v_head_dim >= 0
+        else coreai.slice_(coreai.get_shape(value), [3], [4], [1])
     )
-    return result
+    orig_shape = coreai.concat(0, [leading_shape, v_head_dim_1d])
+    return coreai.ReshapeOp(result, orig_shape, results=[result_type]).result
 
 
 _aten_to_core_resolver: dict[str, Callable[..., Any]] = {

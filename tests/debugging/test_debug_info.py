@@ -140,7 +140,7 @@ async def test_strip_debug_info() -> None:
     # Strip debug info from the program
     strip_debug_info(coreai_program)
 
-    module_op = coreai_program._mlir_module.operation
+    module_op = coreai_program._module._mlir_module.operation
 
     # Verify module location is a valid debuginfo location
     assert _is_debuginfo_location(module_op.location)

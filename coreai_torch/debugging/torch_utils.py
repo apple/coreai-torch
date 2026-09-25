@@ -431,7 +431,7 @@ def _extract_source_identifiers_from_coreai_program(
         return WalkResult.ADVANCE
 
     # Walk the Core AI program to extract source info
-    coreai_program._mlir_module.operation.walk(extract_source_info)
+    coreai_program._module._mlir_module.operation.walk(extract_source_info)
 
     return dict(source_mappings)
 
@@ -456,7 +456,9 @@ def _extract_output_mappings_from_coreai_program(
     output_mappings = []
 
     # Use LocationAPI to get all output mappings from the module
-    output_maps = _mlir.get_all_output_maps_from_module(coreai_program._mlir_module)  # type: ignore[attr-defined]
+    output_maps = _mlir.get_all_output_maps_from_module(
+        coreai_program._module._mlir_module
+    )  # type: ignore[attr-defined]
 
     for output_map in output_maps:
         # Extract mapping fields
@@ -649,7 +651,7 @@ def get_torch_to_coreai_output_mapping(
             torch_op_id_to_identifier[torch_op_id] = identifier
         return WalkResult.ADVANCE
 
-    module = coreai_program._mlir_module
+    module = coreai_program._module._mlir_module
     module.operation.walk(collect_torch_identifiers)
 
     # Map torch identifiers to output mappings
@@ -707,7 +709,7 @@ def get_torch_to_ops_mapping(
 
         return WalkResult.ADVANCE
 
-    coreai_program._mlir_module.operation.walk(collect_ops)
+    coreai_program._module._mlir_module.operation.walk(collect_ops)
 
     return dict(mapping)
 
