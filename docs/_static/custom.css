@@ -99,6 +99,18 @@ html.dark code.docutils {
     font-weight: 600;
 }
 
+/* Allow long dotted FQNs to wrap in the sidebar instead of clipping */
+.sy-sidebar-toc,
+.sy-sidebar-toc ul,
+.sy-sidebar-toc li {
+    overflow: visible;
+}
+
+.sy-lside a {
+    white-space: normal;
+    word-break: break-word;
+}
+
 /* Reset code font in sidebar nav — prevents identifier-titled pages
  * (e.g. generate_composite_decl) from rendering in monospace */
 .sy-lside a code {
