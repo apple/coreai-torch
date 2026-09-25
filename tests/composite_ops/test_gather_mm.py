@@ -319,7 +319,7 @@ class TestTorchGatherMMConversion:
         // CHECK-SAME: output_names = ["output"]
         // CHECK: coreai.invoke @gather_mm_[[S]]
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("dynamic", [False, True])
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -471,7 +471,7 @@ class TestTorchGatherMMConversion:
         // CHECK-SAME: composite_decl = #coreai.composite_declaration<"gather_mm" = {{input_names = ["lhs", "rhs", "lhs_indices"], op_attrs = {{num_batch_axes = 0 : si64, version = 1 : si64}}, output_names = ["output"]}}>
         // CHECK: coreai.invoke @gather_mm_[[S]]
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("dynamic", [False, True])
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -636,7 +636,7 @@ class TestTorchGatherMMConversion:
         // CHECK: composite_decl = #coreai.composite_declaration<"gather_mm" = {{input_names = ["lhs", "rhs", "lhs_indices", "rhs_indices"], op_attrs = {{num_batch_axes = 0 : si64, version = 1 : si64}}, output_names = ["output"]}}>
         // CHECK: coreai.invoke @gather_mm_[[S]]
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("dynamic", [False, True])
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -831,7 +831,7 @@ class TestTorchGatherMMConversion:
         // CHECK: coreai.invoke @gather_mm_[[S0]]
         // CHECK: coreai.invoke @gather_mm_fused_[[S1]]
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("dynamic", [False, True])
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])

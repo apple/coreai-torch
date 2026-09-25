@@ -23,6 +23,7 @@ from coreai_torch.debugging.intermediates import compare_program_intermediates
 from .test_model import (
     EXAMPLE_INPUTS,
     LayerNormBlock,
+    NormMLPBlock,
     SDPAAttentionBlock,
     TinyTransformerBlock,
     get_example_inputs,
@@ -102,3 +103,39 @@ async def test_intermediates_torch_vs_coreai(
         f"No intermediates were compared for {model_cls.__name__}, so nothing was "
         f"verified. By status: {report.summary()}"
     )
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Test only runs on macOS")
+async def test_a_comparison_names_the_layer_it_came_from(
+    specialization_options: "SpecializationOptions | None",
+) -> None:
+    """
+    A divergence localised to an op id is a fact about the graph, not the model.
+
+    "``mul_3`` diverges" leaves a reader to work out which layer that is; the module
+    instance is the answer they were after, and it is what makes the report actionable.
+    """
+    exported, program = _export_and_convert(NormMLPBlock)
+    report = await compare_program_intermediates(
+        exported,
+        program,
+        get_example_inputs(NormMLPBlock),
+        specialization_options=specialization_options,
+    )
+
+    attributed = [entry for entry in report.comparisons if entry.module]
+    assert attributed, "no comparison carried a module path"
+    # Instance-qualified and outermost first, so two identical layers are told apart.
+    assert all(entry.module[0].startswith("NormMLPBlock$") for entry in attributed)
+
+    plain = report.to_dict()
+    assert "modules" in plain
+    # The tree holds the failures, so its total is the failure count -- not the whole
+    # report, which is mostly passes and entries that could not be compared.
+    filed = sum(len(entry["items"]) + _nested(entry) for entry in plain["modules"])
+    assert filed == len(report.failures)
+
+
+def _nested(node: dict) -> int:
+    """How many items sit below a serialised module node."""
+    return sum(len(child["items"]) + _nested(child) for child in node["children"])

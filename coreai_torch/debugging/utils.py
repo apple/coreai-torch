@@ -104,7 +104,7 @@ def _walk_operations(coreai_program: AIProgram) -> list[Operation]:
         The operations, parents before children.
 
     """
-    module = coreai_program._mlir_module.operation
+    module = coreai_program._module._mlir_module.operation
     return [operation for operation, _ in _walk_operation(module)]
 
 
@@ -164,6 +164,28 @@ def get_operation_locations(operation: Operation) -> list[LocationInfo]:
 
     # Dedupe while preserving order.
     return list(reversed(OrderedDict.fromkeys(locations)))
+
+
+STRUCTURAL_OPS = frozenset(
+    {
+        "builtin.module",
+        "coreai.graph",
+        "coreai.output",
+    }
+)
+"""Operations that are a program's structure rather than a computation in it.
+
+They open or close a graph, so no module produced them and none of them is a thing a
+user wrote: measured over the debugging test models, ``coreai.graph`` and
+``coreai.output`` are the *only* operations `module_paths_by_op_id` has no path for.
+A report that groups by module therefore filters these rather than growing an
+"unattributed" bucket whose entire contents are plumbing.
+
+The `coreai` dialect only. A lowered program's own graph openers live in dialects that
+are not public API, and they are also out of reach here: the tools that read this take
+an `AIProgram` as `to_coreai()` returns it, which is many passes before anything
+replaces the graphs with runtime functions.
+"""
 
 
 # ---------------------------------------------------------------------------

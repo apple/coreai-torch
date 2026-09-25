@@ -47,7 +47,7 @@ def _collect_operations(coreai_program: AIProgram) -> list[Operation]:
         operations.append(op)
         return WalkResult.ADVANCE
 
-    coreai_program._mlir_module.operation.walk(walk)
+    coreai_program._module._mlir_module.operation.walk(walk)
     return operations
 
 

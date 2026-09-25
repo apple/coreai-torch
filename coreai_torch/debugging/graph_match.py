@@ -477,7 +477,7 @@ def resource_digests(module: Any) -> dict[str, str]:
     `create_elements_attr`) to make `DIGEST` portable and retire this function.
 
     Args:
-        module: The MLIR module to read, as `program._mlir_module`.
+        module: The MLIR module to read, as `program._module._mlir_module`.
 
     Returns:
         A digest per resource blob name, empty if the module cannot be printed.

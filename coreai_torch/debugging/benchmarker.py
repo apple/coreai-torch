@@ -1338,7 +1338,7 @@ class Benchmarker(ABC):
                     self._coreai_operations[coreai_id] = op
             return WalkResult.ADVANCE
 
-        self.coreai_program._mlir_module.operation.walk(walk_operations)
+        self.coreai_program._module._mlir_module.operation.walk(walk_operations)
 
     def _build_compile_id_to_coreai_map(self: Self) -> None:
         """
