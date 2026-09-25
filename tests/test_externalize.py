@@ -4,6 +4,7 @@
 # be found in the LICENSE file or at https://opensource.org/licenses/BSD-3-Clause
 
 import math
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import cast
@@ -4102,3 +4103,177 @@ async def test_externalize_multiple_staged_entries_numerics() -> None:
     await _validate_numerics(
         coreai_program, plain_model, plain_sample, function_name="plain"
     )
+
+
+def test_call_sites_resolved_after_a_renaming_transform() -> None:
+    """A transform between sub-export and conversion may rename every node.
+
+    The call sites' names at preparation time no longer exist afterwards, so
+    a lowering keyed on them would find nothing.
+    The two call sites also check that they are matched up in graph order
+    rather than collapsed onto one.
+    """
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.norm = RMSNorm(dim=DIM)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.norm(x) + self.norm(x * 2.0)
+
+    torch.manual_seed(42)
+    model = Model().eval()
+    sample = (torch.randn(2, DIM),)
+
+    _patch_model_for_externalization(
+        model,
+        [
+            ExternalizeSpec(
+                target_class=RMSNormImpl,
+                composite_op_name="rms_norm",
+                composite_attrs=["axes", "eps", "version"],
+            )
+        ],
+    )
+    ep = torch.export.export(model, args=sample).run_decompositions(get_decomp_table())
+    externalized_exported_programs = _subexport_and_restore(model, ep)
+    assert len(externalized_exported_programs) == 2, (
+        f"expected one entry per call site, got {len(externalized_exported_programs)}"
+    )
+
+    recorded = {node.name for node in ep.graph.nodes if node.op == "call_function"}
+    # Only the call sites need renaming to invalidate their recorded names; the
+    # graph signature keys placeholders and outputs by name, so leave those alone.
+    for index, node in enumerate(ep.graph.nodes):
+        if node.op == "call_function":
+            node.name = f"renamed_{index}"
+    assert not (recorded & {node.name for node in ep.graph.nodes}), (
+        "the rename should have invalidated every recorded name"
+    )
+
+    coreai_program = (
+        TorchConverter()
+        .add_exported_program(
+            ep, _externalized_exported_programs=externalized_exported_programs
+        )
+        .to_coreai()
+    )
+
+    # Both call sites lower to their own composite graph, but the two graphs
+    # are identical, so the pre-compilation rewrite merges them into one that
+    # both invokes share.
+    check_file = """
+        // CHECK-LABEL: module {
+        // CHECK:   coreai.graph private noinline @[[NORM:norm\\.rmsnorm_impl_[0-9a-f]+]](
+        // CHECK-SAME: composite_decl = #coreai.composite_declaration<"rms_norm"
+        // CHECK:     coreai.output
+        // CHECK:   }
+        // CHECK-NOT: coreai.graph private
+        // CHECK:   coreai.graph @main(
+        // CHECK:     coreai.invoke @[[NORM]](
+        // CHECK:     coreai.invoke @[[NORM]](
+        // CHECK:     coreai.output
+        // CHECK:   }
+        // CHECK: }
+    """
+    filecheck_pattern(str(coreai_program), check_file=check_file)
+
+
+def test_mismatched_call_site_count_warns_and_falls_back() -> None:
+    """A graph that lost call sites cannot be paired by position, so
+    conversion warns that call sites may be paired with the wrong submodules.
+    """
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.norm = RMSNorm(dim=DIM)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.norm(x)
+
+    torch.manual_seed(42)
+    model = Model().eval()
+    sample = (torch.randn(2, DIM),)
+
+    _patch_model_for_externalization(model, [ExternalizeSpec(target_class=RMSNormImpl)])
+    ep = torch.export.export(model, args=sample).run_decompositions(get_decomp_table())
+    externalized_exported_programs = _subexport_and_restore(model, ep)
+
+    # Stand in for a transform that dropped a call site: one prepared
+    # submodule too many for the graph being converted. The extra one is
+    # renamed so its graph does not redefine the original's symbol.
+    (ext,) = externalized_exported_programs
+    duplicated = [ext, replace(ext, name=f"{ext.name}_extra")]
+
+    converter = TorchConverter().add_exported_program(
+        ep, _externalized_exported_programs=duplicated
+    )
+    with pytest.warns(UserWarning, match="prepared submodule"):
+        converter.to_coreai()
+
+
+def test_nested_call_sites_dispatch_per_parent_graph() -> None:
+    """A parent called twice has its body converted twice.
+
+    Each conversion of the parent's body must dispatch its nested call sites
+    from the first lowering again, in order, rather than continuing a count
+    carried over from the previous conversion.
+    """
+
+    class Inner(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = nn.Parameter(torch.ones(DIM))
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return x * self.weight
+
+    class Block(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.inner = Inner()
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.inner(x) + self.inner(x * 2.0)
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.block = Block()
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return self.block(self.block(x))
+
+    torch.manual_seed(42)
+    model = Model().eval()
+    sample = (torch.randn(2, DIM),)
+
+    coreai_program = (
+        TorchConverter()
+        .add_pytorch_module(
+            model,
+            export_fn=lambda m: torch.export.export(m, args=sample).run_decompositions(
+                get_decomp_table()
+            ),
+            externalize_modules=[Inner, Block],
+        )
+        .to_coreai()
+    )
+
+    check_file = """
+        // CHECK-LABEL: module {
+        // CHECK:   coreai.graph noinline @[[INNER0:block\\.inner_[0-9a-f]+]](
+        // CHECK:   coreai.graph noinline @[[INNER1:block\\.inner_[0-9a-f]+]](
+        // CHECK:   coreai.graph noinline @block_{{[0-9a-f]+}}(
+        // CHECK:     coreai.invoke @[[INNER0]](
+        // CHECK:     coreai.invoke @[[INNER1]](
+        // CHECK:     coreai.output
+        // CHECK:   coreai.graph noinline @block_{{[0-9a-f]+}}(
+        // CHECK:     coreai.invoke @[[INNER0]](
+        // CHECK:     coreai.invoke @[[INNER1]](
+        // CHECK:     coreai.output
+        // CHECK:   coreai.graph @main(
+    """
+    filecheck_pattern(str(coreai_program), check_file=check_file)

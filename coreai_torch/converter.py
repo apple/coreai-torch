@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
+import warnings
+from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -41,6 +42,7 @@ from ._custom_to_core import _custom_to_core_resolver
 from ._debug_locations import _DebugInfoRecorder
 from ._torch_metal_kernel import TorchMetalKernel
 from ._utils import (
+    _EXTERNALIZE_NAMESPACE,
     _NARROW_TORCH_DTYPE,
     _get_mutation_output_name,
     _get_verify_debuginfo_locations_enabled,
@@ -175,8 +177,13 @@ class TorchConverter:
 
         self._values_map: dict[str, Value] = {}
 
-        # per-node lowerings for externalized submodules, keyed by FX node name
-        self._externalized_lowerings: dict[str, Callable[..., Any]] = {}
+        # lowerings for externalized submodules, keyed by custom op name, one
+        # per call site in graph order
+        self._externalized_lowerings: defaultdict[str, list[Callable[..., Any]]] = (
+            defaultdict(list)
+        )
+        # call sites of each externalized op seen so far in the current graph
+        self._externalized_call_counts: Counter[str] = Counter()
 
         # externalized modules
         self._externalized_exported_programs: list[_ExternalizedExportedProgram] = []
@@ -397,13 +404,16 @@ class TorchConverter:
                 composite_decl=composite_decl_attr,
             )
 
-            # Register per-node lowering: node.name → coreai.invoke @graph
-            for node_name in ext.source_nodes:
-                self._externalized_lowerings[node_name] = (
-                    lambda values_map, node, loc, _gop=graph_op: get_invoke_from_graph(
-                        values_map, node, loc, _gop
-                    )
+            # Register the lowering for this call site: op → coreai.invoke @graph.
+            # Keyed by op rather than FX node name, which a pass between
+            # sub-export and conversion may change. Call sites of one op were
+            # prepared in graph order, and the depth sort above is stable, so
+            # the n-th call of an op in a graph dispatches to the n-th lowering.
+            self._externalized_lowerings[ext.op_name].append(
+                lambda values_map, node, loc, _gop=graph_op: get_invoke_from_graph(
+                    values_map, node, loc, _gop
                 )
+            )
 
         self.exported_program = whole_program
 
@@ -427,6 +437,30 @@ class TorchConverter:
         self._inputs_map = OrderedDict()
         self._outputs_map = OrderedDict()
         self._values_map = {}
+        # Reset per graph: an externalized parent with several call sites has
+        # its body converted once per call site, each calling its nested ops
+        # afresh.
+        self._externalized_call_counts = Counter()
+
+    def _warn_unused_externalized_lowerings(self) -> None:
+        """Warn when the graph just converted called an op fewer times than it
+        has prepared submodules.
+
+        Ops the graph never calls are skipped: a nested op is legitimately
+        absent from the whole-model graph.
+        """
+        for op_name, count in self._externalized_call_counts.items():
+            prepared = len(self._externalized_lowerings[op_name])
+            if count < prepared:
+                warnings.warn(
+                    f"coreai_torch.externalize: op '{op_name}' has {count} "
+                    f"call site(s) in the program being converted but "
+                    f"{prepared} prepared submodule(s), so call sites may be "
+                    f"paired with the wrong submodules. Action: convert the "
+                    f"program the submodules were prepared from, or one "
+                    f"derived from it without adding or removing call sites.",
+                    stacklevel=2,
+                )
 
     def _register_io(self) -> None:
         """
@@ -664,11 +698,23 @@ class TorchConverter:
         variantless_target: str = strip_variant_from_target(target)
         key: tuple[str, str] | str = (str(namespace), variantless_target)
 
-        if node.name in self._externalized_lowerings:
-            with self._location:
-                results = self._externalized_lowerings[node.name](
-                    self._values_map, node, self._location
+        if (
+            namespace == _EXTERNALIZE_NAMESPACE
+            and variantless_target in self._externalized_lowerings
+        ):
+            lowerings = self._externalized_lowerings[variantless_target]
+            index = self._externalized_call_counts[variantless_target]
+            self._externalized_call_counts[variantless_target] += 1
+            if index >= len(lowerings):
+                raise ValueError(
+                    f"coreai_torch.externalize: op '{variantless_target}' has "
+                    f"more call sites than the {len(lowerings)} prepared "
+                    f"submodule(s). Action: convert the program the submodules "
+                    f"were prepared from, or one derived from it without adding "
+                    f"call sites."
                 )
+            with self._location:
+                results = lowerings[index](self._values_map, node, self._location)
             if not isinstance(results, (list, tuple, OpResultList)):
                 results = [results]
 
@@ -833,6 +879,8 @@ class TorchConverter:
             ):
                 with graph_op.block:
                     self._get_operation(node)
+
+            self._warn_unused_externalized_lowerings()
 
             # Operation IDs and debug locations for everything just lowered, in one
             # IR-order pass, now that the graph body is complete.
