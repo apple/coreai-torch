@@ -141,7 +141,7 @@ def replace_avg_pool2d(
         node.args[4] if len(node.args) > 4 and node.args[4] is not None else False
     )
     count_include_pad = (
-        node.args[5] if len(node.args) > 4 and node.args[4] is not None else True
+        node.args[5] if len(node.args) > 5 and node.args[5] is not None else True
     )
     divisor_override_val = (
         int(node.args[6]) if len(node.args) > 6 and node.args[6] is not None else 0
@@ -477,7 +477,7 @@ def replace_avg_pool3d(
         node.args[4] if len(node.args) > 4 and node.args[4] is not None else False
     )
     count_include_pad = (
-        node.args[5] if len(node.args) > 4 and node.args[4] is not None else True
+        node.args[5] if len(node.args) > 5 and node.args[5] is not None else True
     )
     divisor_override_val = (
         int(node.args[6]) if len(node.args) > 6 and node.args[6] is not None else 0
