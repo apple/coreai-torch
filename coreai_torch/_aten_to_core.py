@@ -2082,7 +2082,11 @@ def replace_linalg_vector_norm(
     """Linalg vector norm: L0/L1/L2/Linf/Lp norms along specified dims."""
     x = _get_operand(values_map, node, 0)
     args = node.args
-    ord_val = args[1] if len(args) > 1 and args[1] is not None else 2.0
+    # `ord` is a Scalar in the ATen schema, so an integer spelling such as
+    # `ord=3` arrives as a Python int. Normalize it: the general p-norm branch
+    # below feeds it to broadcasting_pow, where an int would build an integer
+    # exponent constant that does not match the float operand's element type.
+    ord_val = float(args[1]) if len(args) > 1 and args[1] is not None else 2.0
     dim = args[2] if len(args) > 2 and args[2] is not None else None
     keepdim = args[3] if len(args) > 3 and args[3] is not None else False
 
@@ -2122,12 +2126,20 @@ def replace_linalg_vector_norm(
         elif ord_val == float("-inf"):
             result = coreai.reduce_min(coreai.abs_(input), dims)
         else:
-            # General p-norm: (sum(|x|^p))^(1/p)
+            # General p-norm: (sum(|x|^p))^(1/p). broadcasting_pow requires the
+            # exponent's element type to match the operand's, so build both
+            # exponents as constants of the input's element type rather than
+            # letting the Python scalar pick one.
+            element_type = input.type.element_type
             result = coreai.broadcasting_pow(
                 coreai.reduce_sum(
-                    coreai.broadcasting_pow(coreai.abs_(input), ord_val), dims
+                    coreai.broadcasting_pow(
+                        coreai.abs_(input),
+                        coreai.constant(ord_val, dtype=element_type),
+                    ),
+                    dims,
                 ),
-                1.0 / ord_val,
+                coreai.constant(1.0 / ord_val, dtype=element_type),
             )
 
         return result if keepdim else coreai.shrink_dims(result, dims)
