@@ -1262,12 +1262,24 @@ class TestConstantPadNd:
             torch.tensor([-0.5, -0.3, -0.1, -0.2]),
             torch.tensor([0.2, 0.4, 0.6, 0.8]),
         ),
+        # Integer input with float bounds: PyTorch promotes the result to the
+        # default float dtype rather than clamping in the input's dtype.
+        (torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4), -1.5, 1.5),
+        (torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4), -1.5, None),
+        (torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4), None, 1.5),
+        (
+            torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4),
+            torch.full((3, 4), -1.5),
+            torch.full((3, 4), 1.5),
+        ),
+        # Integer input with integer bounds stays integral.
+        (torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4), -2, 2),
     ],
 )
 async def test_clamp(
     x: Tensor,
-    min_bound: float | Tensor | None,
-    max_bound: float | Tensor | None,
+    min_bound: int | float | Tensor | None,
+    max_bound: int | float | Tensor | None,
     dynamic: bool,
 ) -> None:
     """Test clamp with scalar or tensor min/max bounds (clamp.default and clamp.Tensor)."""

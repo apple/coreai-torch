@@ -1045,13 +1045,19 @@ def replace_ceil(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
 
 def replace_clamp(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     x = _get_operand(values_map, node, 0)
+    # PyTorch promotes an integer operand clamped against float bounds to the
+    # default float dtype, so the working type comes from the node's own output
+    # rather than from the operand.
+    element_type = get_output_element_type_from_node(node)
+    if x.type.element_type != element_type:
+        x = coreai.cast(x, element_type)
 
     def _get_bound(arg_idx: int) -> Value:
         arg = node.args[arg_idx]
         if isinstance(arg, (int, float)):
-            return coreai.constant(float(arg), dtype=x.type.element_type)
+            return coreai.constant(float(arg), dtype=element_type)
         val = _get_operand(values_map, node, arg_idx)
-        return coreai.cast(val, x.type.element_type)
+        return coreai.cast(val, element_type)
 
     result = x
     if len(node.args) > 1 and node.args[1] is not None:
