@@ -749,6 +749,7 @@ class TorchConverter:
                         self._values_map,
                         node,
                         graph_module=self.exported_program.graph_module,
+                        user_defined_resolver=self._user_defined_torch_lowering,
                     )
             if not isinstance(results, (list, tuple, OpResultList)):
                 results = [results]

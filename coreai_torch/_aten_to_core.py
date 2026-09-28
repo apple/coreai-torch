@@ -22,6 +22,7 @@ from coreai._compiler.ir import (
 )
 
 from ._composite_declaration import generate_composite_decl
+from ._custom_to_core import _custom_to_core_resolver
 from ._type_mapping import _get_coreai_to_numpy_dtype
 from ._utils import (
     _sdpa_build_causal_mask,
@@ -3303,6 +3304,7 @@ def replace_cond(
     node: fx.Node,
     *,
     graph_module: fx.GraphModule,
+    user_defined_resolver: dict[str, Callable[..., Any]] | None = None,
 ) -> list[Value]:
     condition_node, true_graph_node, false_graph_node, branch_operands = node.args
 
@@ -3336,7 +3338,9 @@ def replace_cond(
                     operand_values,
                     graph_module,
                     _aten_to_core_resolver,
-                    {"cond": replace_cond},
+                    _higher_order_resolver,
+                    user_defined_resolver,
+                    _custom_to_core_resolver,
                 )
             )
 
@@ -3348,6 +3352,7 @@ def replace_while_loop(
     node: fx.Node,
     *,
     graph_module: fx.GraphModule,
+    user_defined_resolver: dict[str, Callable[..., Any]] | None = None,
 ) -> list[Value]:
     cond_fn_node, body_fn_node, carried_inputs, additional_inputs = node.args
 
@@ -3382,6 +3387,8 @@ def replace_while_loop(
             graph_module,
             _aten_to_core_resolver,
             _higher_order_resolver,
+            user_defined_resolver,
+            _custom_to_core_resolver,
         )[0]
         if hasattr(cond_val.type, "rank") and cond_val.type.rank > 0:
             cond_val = coreai.shrink_dims(cond_val, list(range(cond_val.type.rank)))
@@ -3396,6 +3403,8 @@ def replace_while_loop(
                 graph_module,
                 _aten_to_core_resolver,
                 _higher_order_resolver,
+                user_defined_resolver,
+                _custom_to_core_resolver,
             )
         )
 
@@ -3424,6 +3433,7 @@ def replace_yield(
     node: fx.Node,
     *,
     graph_module: fx.GraphModule,
+    user_defined_resolver: dict[str, Callable[..., Any]] | None = None,
 ) -> list[Value]:
     if len(node.users) != 0:
         raise ValueError(f"expect 0 results for _yield op, got {len(node.users)}")

@@ -1260,6 +1260,8 @@ def convert_branch_subgraph(
     graph_module: fx.GraphModule,
     aten_resolver: dict[str, Callable[..., Any]],
     higher_order_handlers: dict[str, Callable[..., list[Value]]],
+    user_defined_resolver: dict[str, Callable[..., Any]] | None = None,
+    custom_resolver: dict[str, Callable[..., Any]] | None = None,
 ) -> list[Value]:
     """Convert one branch of a torch.cond/while_loop subgraph into a list of Core AI Values.
 
@@ -1286,6 +1288,20 @@ def convert_branch_subgraph(
             output           -> collects [coreai_mul_value]
 
         The returned list is then passed directly to coreai.yield_.
+
+    Besides ``aten``/``None`` ops (via ``aten_resolver``) and nested higher-order
+    ops (via ``higher_order_handlers``), a branch may also contain:
+
+    * user-registered lowerings (e.g. custom Metal kernels in the
+      ``coreai_metal_kernels`` namespace), resolved through ``user_defined_resolver``
+      keyed by the ``"namespace::target"`` qualified name, and
+    * ``coreai``/``coreaix`` ops, resolved through ``custom_resolver`` keyed by the
+      variant-stripped target.
+
+    These mirror the dispatch order in ``Converter._handle_call_function_op`` so that
+    anything convertible at the top level of a graph is also convertible inside a
+    ``cond``/``while_loop`` branch. Both resolvers are optional; when omitted, such
+    ops raise ``ValueError`` as before.
     """
     branch_values: dict[str, Value] = {}
     output_values: list[Value] = []
@@ -1298,13 +1314,27 @@ def convert_branch_subgraph(
         elif bnode.op == "call_function":
             btarget = get_target(bnode)
             bnamespace = get_namespace(bnode)
-            if bnamespace is None or bnamespace == "aten":
+            qualified_target = f"{bnamespace}::{btarget}"
+            if user_defined_resolver is not None and (
+                qualified_target in user_defined_resolver
+            ):
+                bresults = user_defined_resolver[qualified_target](
+                    branch_values, bnode, Location.unknown()
+                )
+            elif bnamespace is None or bnamespace == "aten":
                 bresults = aten_resolver[btarget](
+                    branch_values, bnode, Location.unknown()
+                )
+            elif bnamespace in ("coreai", "coreaix") and custom_resolver is not None:
+                bresults = custom_resolver[strip_variant_from_target(btarget)](
                     branch_values, bnode, Location.unknown()
                 )
             elif bnamespace == "higher_order" and btarget in higher_order_handlers:
                 bresults = higher_order_handlers[btarget](
-                    branch_values, bnode, graph_module=graph_module
+                    branch_values,
+                    bnode,
+                    graph_module=graph_module,
+                    user_defined_resolver=user_defined_resolver,
                 )
             else:
                 raise ValueError(
