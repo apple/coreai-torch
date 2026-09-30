@@ -883,8 +883,8 @@ class TorchConverter:
 
             self._warn_unused_externalized_lowerings()
 
-            # Operation IDs and debug locations for everything just lowered, in one
-            # IR-order pass, now that the graph body is complete.
+            # Debug locations for everything just lowered, in one pass, now that the
+            # graph body is complete. Operation IDs are left to the compiler.
             self._debug_info_recorder.finalize_node_operations()
 
             # Assemble outputs with resolved names

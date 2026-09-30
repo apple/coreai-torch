@@ -204,12 +204,7 @@ def _convert(model: nn.Module, depth_input: torch.Tensor) -> object:
 def test_operation_ids_increase_in_ir_order() -> None:
     """Operation IDs follow IR order, with none missing and none repeated.
 
-    This is a *stronger* guarantee than before, not a preserved one. IDs used to be
-    assigned as each node was lowered, which is not the same as IR order: constants are
-    inserted at the top of the block rather than appended, so a chain of linears produced
-    ``[0, 3, 7, 10, ..., 1, 2, 4, 5, ...]`` when read in IR order. Assigning them in one
-    pass over the finished graph makes the numbering match the IR, which is what
-    per-node ordering was reaching for.
+    The compiler assigns them in ``to_coreai``; coreai-torch emits none of its own.
     """
     program = _convert(DeepChainModel(6), torch.randn(1, 8))
 
