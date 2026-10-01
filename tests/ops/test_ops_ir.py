@@ -2397,6 +2397,44 @@ class TestConstantPadNdIR:
             """,
         )
 
+    def test_dynamic_pad_amount(self) -> None:
+        # A symbolic (runtime) pad amount: coreai.pad takes `padding` as a tensor
+        # operand built at runtime (cast of a get_shape/concat).
+        class PadModel(nn.Module):
+            def __init__(self, make_pad) -> None:
+                super().__init__()
+                self._make_pad = make_pad
+
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.nn.functional.pad(
+                    x, self._make_pad(x), mode="constant", value=0.0
+                )
+
+        dynamic_shapes = {"x": {1: torch.export.Dim("n", min=3)}}
+
+        ir = get_ir(
+            PadModel(lambda x: (0, x.shape[-1])).eval(),
+            x=torch.rand(2, 5),
+            dynamic_shapes=dynamic_shapes,
+        )
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK: coreai.get_shape %[[ARG0:.*]] : tensor<2x?xf32>
+                // CHECK: %[[PAD:.*]] = coreai.cast %{{.*}} : tensor<4xsi32> to tensor<4xui32>
+                // CHECK: coreai.pad %[[ARG0]], %[[PAD]], %{{.*}} mode = <constant> : (tensor<2x?xf32>, tensor<4xui32>, tensor<f32>) -> tensor<?x?xf32>
+            """,
+        )
+
+        # A symbolic pad amount combined with a static-negative (crop) entry is
+        # not supported.
+        with pytest.raises(NotImplementedError, match="negative padding"):
+            get_ir(
+                PadModel(lambda x: (-1, x.shape[-1])).eval(),
+                x=torch.rand(2, 6),
+                dynamic_shapes=dynamic_shapes,
+            )
+
 
 class TestConvolutionIR:
     def test_conv2d_static(self) -> None:

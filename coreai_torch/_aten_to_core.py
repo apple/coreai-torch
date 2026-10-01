@@ -1104,6 +1104,32 @@ def replace_constant_pad_nd(
     )
     x_rank = x.type.rank
 
+    # Dynamic (symbolic) pad amounts: coreai.pad takes `padding` as a runtime
+    # tensor operand, so build it from the mix of static ints and fx.Nodes rather
+    # than the static np.array path below. Only non-negative (positive) padding is
+    # supported dynamically.
+    if any(isinstance(p, fx.Node) for p in inverted_padding):
+        # Core AI padding order: [before_dim0, after_dim0, before_dim1, ...].
+        ordered_padding: list[int | fx.Node] = [0] * (2 * x_rank)
+        for i in range(0, len(inverted_padding), 2):
+            dim = x_rank - (i // 2) - 1
+            for slot, entry in (
+                (2 * dim, inverted_padding[i]),
+                (2 * dim + 1, inverted_padding[i + 1]),
+            ):
+                if isinstance(entry, int) and entry < 0:
+                    msg = (
+                        "constant_pad_nd with a dynamic (symbolic) pad amount does"
+                        " not support negative padding (cropping); the pad amount"
+                        " must be >= 0."
+                    )
+                    raise NotImplementedError(msg)
+                ordered_padding[slot] = entry
+        padding = coreai.cast(
+            build_shape_tensor(values_map, ordered_padding), np.uint32
+        )
+        return coreai.pad(x, padding, coreai.cast(pad_value, x.type.element_type))
+
     # slice_start is always static: max(0, -pad_before).
     # slice_end entries: INT32_MAX = slice to end; >= 0 = static end;
     # < 0 = dynamic crop offset (dim_size + offset resolved at runtime).
