@@ -2740,7 +2740,7 @@ async def test_local_scalar_dense(x: Tensor, col: Tensor, dynamic: bool) -> None
     class SelectColModel(nn.Module):
         def forward(self, x: Tensor, col: Tensor) -> Tensor:
             c = col.item()
-            torch._check_is_size(c)
+            torch._check(c >= 0)
             torch._check(
                 c + 1 <= x.shape[1]
             )  # shape[1]=4 is static, provable at export time

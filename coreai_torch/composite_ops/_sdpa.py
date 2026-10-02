@@ -54,8 +54,8 @@ def _maybe_construct_attn_mask(
     attn_mask = None
     q_len = query.shape[-2]
     k_len = key.shape[-2]
-    torch._check_is_size(q_len, message="int query length >= 0")  # type: ignore[no-untyped-call]
-    torch._check_is_size(k_len, message="int key length >= 0")  # type: ignore[no-untyped-call]
+    torch._check(q_len >= 0, message="int query length >= 0")  # type: ignore[no-untyped-call]
+    torch._check(k_len >= 0, message="int key length >= 0")  # type: ignore[no-untyped-call]
     if window_size <= 0:
         # invalid window size, i.e. no window
         if is_causal and causal_variant == CausalVariant.lower_right:
@@ -63,8 +63,8 @@ def _maybe_construct_attn_mask(
             # is what we need for decoding, where when q_len != k_len
             # we have query being the latest token in sequence
             num_past_tokens = k_len - q_len
-            torch._check_is_size(
-                num_past_tokens,
+            torch._check(
+                num_past_tokens >= 0,
                 message="int number of past tokens >= 0",
             )  # type: ignore[no-untyped-call]
             # TODO: Simply use tril after PyTorch teammates fix
@@ -178,18 +178,18 @@ def _vanilla_sdpa(  # noqa: PLR0913, PLR0915
             message="GQA requires value rank == 4",
         )  # type: ignore[no-untyped-call]
         n_q_heads = query.shape[1]
-        torch._check_is_size(n_q_heads, message="int number of query heads >= 0")  # type: ignore[no-untyped-call]
+        torch._check(n_q_heads >= 0, message="int number of query heads >= 0")  # type: ignore[no-untyped-call]
         n_k_heads = key.shape[1]
-        torch._check_is_size(n_k_heads, message="int number of key heads >= 0")  # type: ignore[no-untyped-call]
+        torch._check(n_k_heads >= 0, message="int number of key heads >= 0")  # type: ignore[no-untyped-call]
         n_v_heads = value.shape[1]
-        torch._check_is_size(n_v_heads, message="int number of value heads >= 0")  # type: ignore[no-untyped-call]
+        torch._check(n_v_heads >= 0, message="int number of value heads >= 0")  # type: ignore[no-untyped-call]
 
         torch._check(
             n_q_heads % n_k_heads == 0,
             message="GQA requires number of query heads divisible by number of key heads",
         )  # type: ignore[no-untyped-call]
         k_group_size = n_q_heads // n_k_heads
-        torch._check_is_size(k_group_size, message="int key group size >= 0")  # type: ignore[no-untyped-call]
+        torch._check(k_group_size >= 0, message="int key group size >= 0")  # type: ignore[no-untyped-call]
         key = _vanilla_repeat_interleave(key, k_group_size)
 
         torch._check(
@@ -197,7 +197,7 @@ def _vanilla_sdpa(  # noqa: PLR0913, PLR0915
             message="GQA requires number of query heads divisible by number of value heads",
         )  # type: ignore[no-untyped-call]
         v_group_size = n_q_heads // n_v_heads
-        torch._check_is_size(v_group_size, message="int value group size >= 0")  # type: ignore[no-untyped-call]
+        torch._check(v_group_size >= 0, message="int value group size >= 0")  # type: ignore[no-untyped-call]
         value = _vanilla_repeat_interleave(value, v_group_size)
 
     if scale is None:
@@ -211,9 +211,9 @@ def _vanilla_sdpa(  # noqa: PLR0913, PLR0915
         # construct bool upper-left causal mask according to
         # torch.nn.functional.scaled_dot_product_attention semantics
         q_len = query.shape[-2]
-        torch._check_is_size(q_len, message="int query length >= 0")  # type: ignore[no-untyped-call]
+        torch._check(q_len >= 0, message="int query length >= 0")  # type: ignore[no-untyped-call]
         k_len = key.shape[-2]
-        torch._check_is_size(k_len, message="int key length >= 0")  # type: ignore[no-untyped-call]
+        torch._check(k_len >= 0, message="int key length >= 0")  # type: ignore[no-untyped-call]
         q_indices = torch.arange(q_len, device=query.device)
         k_indices = torch.arange(k_len, device=query.device)
         attn_mask = q_indices.unsqueeze(-1) >= k_indices.unsqueeze(0)
@@ -241,7 +241,7 @@ def _vanilla_sdpa(  # noqa: PLR0913, PLR0915
         attn_weights_with_sinks = torch.softmax(attn_scores_with_sinks, dim=-1)
         # batch size x number of query heads x query length x key length
         k_len = key.shape[-2]
-        torch._check_is_size(k_len, message="int key length >= 0")  # type: ignore[no-untyped-call]
+        torch._check(k_len >= 0, message="int key length >= 0")  # type: ignore[no-untyped-call]
         attn_weights = attn_weights_with_sinks.narrow(-1, 0, k_len)
 
     context_vector = torch.matmul(attn_weights, value)

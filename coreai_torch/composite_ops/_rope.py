@@ -69,7 +69,7 @@ def _construct_cos_and_sin(  # noqa: PLR0913
         # Tensor offset: (batch_size, 1, q_len)
         # Int offset: (q_len,)
         q_len = input.shape[-2]
-        torch._check_is_size(q_len, message="int query length >= 0")  # type: ignore[no-untyped-call]
+        torch._check(q_len >= 0, message="int query length >= 0")  # type: ignore[no-untyped-call]
         position_ids = offset + torch.arange(q_len, device=input.device)
 
     position_ids = position_ids.float()
@@ -110,7 +110,7 @@ def _determine_if_partial_rotation(input: Tensor, dims: int | None) -> tuple[boo
     # TODO: Remove this cast once mypy can infer type correctly
     rotation_dims = cast("int", rotation_dims)
 
-    torch._check_is_size(rotation_dims, message="int rotation dimension >= 0")  # type: ignore[no-untyped-call]
+    torch._check(rotation_dims >= 0, message="int rotation dimension >= 0")  # type: ignore[no-untyped-call]
     torch._check(rotation_dims >= 2, message="int rotation dimension >= 2")  # type: ignore[no-untyped-call]  # noqa: PLR2004
     torch._check(rotation_dims % 2 == 0, message="rotation dimension divisible by 2")  # type: ignore[no-untyped-call]
     return is_partial_rotation, rotation_dims
@@ -126,7 +126,7 @@ def _rope_with_cos_and_sin_impl(
     """Perform rotary positional embedding on input with given cos & sin."""
     is_partial_rotation, rotation_dims = _determine_if_partial_rotation(input, dims)
     half_dim = rotation_dims // 2
-    torch._check_is_size(half_dim, message="int embedding dimension / 2 >= 0")  # type: ignore[no-untyped-call]
+    torch._check(half_dim >= 0, message="int embedding dimension / 2 >= 0")  # type: ignore[no-untyped-call]
     # split x
     if interleaved:
         x1 = input[..., :rotation_dims:2]
@@ -171,7 +171,7 @@ def _rope_impl(  # noqa: PLR0913
     if cos is None or sin is None:
         _, rotation_dims = _determine_if_partial_rotation(input, dims)
         half_dim = rotation_dims // 2
-        torch._check_is_size(half_dim, message="int embedding dimension / 2 >= 0")  # type: ignore[no-untyped-call]
+        torch._check(half_dim >= 0, message="int embedding dimension / 2 >= 0")  # type: ignore[no-untyped-call]
         cos, sin = _construct_cos_and_sin(
             input,
             half_dim,
