@@ -34,17 +34,13 @@ calls, comparing logits and caches against eager PyTorch at every step.
 """
 
 import operator
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any
 
-import numpy as np
 import pytest
 import torch
 import torch.nn as nn
 from coreai._compiler.dialects import coreai
 from coreai.authoring import AIProgram
-from coreai.runtime import NDArray
 from torch import Tensor, fx
 from torch._higher_order_ops.auto_functionalize import (
     AutoFunctionalized,
@@ -55,7 +51,7 @@ import coreai_torch
 import coreai_torch.composite_ops
 from coreai_torch import ExternalizeSpec, TorchConverter
 
-from ..utils import _get_test_specialization_options, filecheck_pattern
+from ..utils import LLMStep, filecheck_pattern, validate_llm_decode_loop
 
 # Graph / state names match the coreai-models runner contract.
 MAIN_GRAPH_NAME = "main"
@@ -603,30 +599,31 @@ class TestMacOSStyleModelIR:
         )
 
 
-async def _run(
-    function: Any,
-    input_ids: Tensor,
-    position_ids: Tensor,
-    state: dict[str, NDArray],
-) -> dict[str, NDArray]:
-    return await function(
-        {
-            "input_ids": NDArray(input_ids.contiguous()),
-            "position_ids": NDArray(position_ids.contiguous()),
-        },
-        state=state,
-    )
-
-
-def _assert_close(
-    actual: np.ndarray, expected: Tensor, *, atol: float, rtol: float
-) -> None:
-    torch.testing.assert_close(
-        torch.from_numpy(np.asarray(actual)).float(),
-        expected.float(),
-        atol=atol,
-        rtol=rtol,
-    )
+def _generation_steps() -> list[LLMStep]:
+    """Prefill, a multi-token chunk, then single-token decodes (fixed tokens)."""
+    generator = torch.Generator().manual_seed(0)
+    query_lens = [PROMPT_LEN, CHUNK_LEN] + [1] * NUM_DECODE_STEPS
+    steps, seq_len = [], 0
+    for idx, query_len in enumerate(query_lens):
+        seq_len += query_len
+        steps.append(
+            LLMStep(
+                entrypoint=PREFILL_GRAPH_NAME if idx == 0 else MAIN_GRAPH_NAME,
+                inputs={
+                    "input_ids": torch.randint(
+                        1,
+                        VOCAB_SIZE,
+                        (1, query_len),
+                        dtype=torch.int32,
+                        generator=generator,
+                    ),
+                    "position_ids": torch.arange(seq_len, dtype=torch.int32).unsqueeze(
+                        0
+                    ),
+                },
+            )
+        )
+    return steps
 
 
 class TestMacOSStyleModelNumerics:
@@ -647,70 +644,29 @@ class TestMacOSStyleModelNumerics:
         model = _make_model(dtype)
         program = export_macos_style(model, dtype)
 
-        generator = torch.Generator().manual_seed(0)
-        prompt = torch.randint(
-            1, VOCAB_SIZE, (1, PROMPT_LEN), dtype=torch.int32, generator=generator
-        )
-        chunk = torch.randint(
-            1, VOCAB_SIZE, (1, CHUNK_LEN), dtype=torch.int32, generator=generator
-        )
-
-        # Eager reference caches, advanced in lockstep with the runtime state.
         k_ref, v_ref = KVCache.create_cache_tensors(dtype)
-        k_rt, v_rt = KVCache.create_cache_tensors(dtype)
-        state = {KEY_CACHE_NAME: NDArray(k_rt), VALUE_CACHE_NAME: NDArray(v_rt)}
 
-        def check_caches() -> None:
-            _assert_close(state[KEY_CACHE_NAME].numpy(), k_ref, atol=atol, rtol=rtol)
-            _assert_close(state[VALUE_CACHE_NAME].numpy(), v_ref, atol=atol, rtol=rtol)
+        def reference_fn(step: LLMStep) -> dict[str, Tensor]:
+            # The prefill graph is the prefill-mode trace: it only writes the cache.
+            model.prefill_mode = step.entrypoint == PREFILL_GRAPH_NAME
+            try:
+                out = model(**step.inputs, k_cache=k_ref, v_cache=v_ref)
+            finally:
+                model.prefill_mode = False
+            return {} if isinstance(out, tuple) else dict(zip(OUTPUT_NAMES, (out,)))
 
-        def positions(seq_len: int) -> Tensor:
-            return torch.arange(seq_len, dtype=torch.int32).unsqueeze(0)
+        await validate_llm_decode_loop(
+            program,
+            steps=_generation_steps(),
+            reference_fn=reference_fn,
+            reference_state={KEY_CACHE_NAME: k_ref, VALUE_CACHE_NAME: v_ref},
+            atol=atol,
+            rtol=rtol,
+        )
 
-        with TemporaryDirectory() as tmp:
-            asset = program.save_asset(Path(tmp) / "model.aimodel")
-            async with asset.executable(
-                specialization_options=_get_test_specialization_options(),
-            ) as ai_model:
-                assert set(ai_model.function_names) == {
-                    MAIN_GRAPH_NAME,
-                    PREFILL_GRAPH_NAME,
-                }
-                main = ai_model.load_function(MAIN_GRAPH_NAME)
-                prefill = ai_model.load_function(PREFILL_GRAPH_NAME)
-                assert list(main.desc.output_names) == list(OUTPUT_NAMES)
-                assert list(prefill.desc.output_names) == []
-                assert list(prefill.desc.input_names) == list(main.desc.input_names)
-                assert set(prefill.desc.state_names) == set(STATE_NAMES)
-
-                # 1. Prefill the prompt: the cache is the only product.
-                seq_len = PROMPT_LEN
-                outputs = await _run(prefill, prompt, positions(seq_len), state)
-                assert not outputs
-                model.prefill_mode = True
-                try:
-                    with torch.no_grad():
-                        assert model(prompt, positions(seq_len), k_ref, v_ref) == ()
-                finally:
-                    model.prefill_mode = False
-                assert torch.any(k_ref[..., :PROMPT_LEN, :] != 0)
-                check_caches()
-
-                # 2. Multi-token chunk at a non-zero offset, then 3. greedy decode.
-                next_ids = chunk
-                for _ in range(1 + NUM_DECODE_STEPS):
-                    seq_len += next_ids.shape[-1]
-                    outputs = await _run(main, next_ids, positions(seq_len), state)
-                    with torch.no_grad():
-                        expected = model(next_ids, positions(seq_len), k_ref, v_ref)
-                    _assert_close(
-                        outputs["logits"].numpy(), expected, atol=atol, rtol=rtol
-                    )
-                    check_caches()
-                    next_ids = expected[:, -1:].argmax(-1).to(torch.int32)
-
-        # Positions past the generated sequence were never written.
-        assert seq_len == PROMPT_LEN + CHUNK_LEN + NUM_DECODE_STEPS
+        # Not vacuous: the generated positions were written, and nothing past them.
+        seq_len = PROMPT_LEN + CHUNK_LEN + NUM_DECODE_STEPS
+        assert torch.all(k_ref[..., :seq_len, :].abs().sum(-1) != 0)
         assert torch.all(k_ref[..., seq_len:, :] == 0)
 
     def test_eager_cached_decode_matches_full_forward(self) -> None:

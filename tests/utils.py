@@ -7,7 +7,9 @@ import platform
 import shutil
 import sys
 import tempfile
+from collections.abc import Callable, Sequence
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -608,6 +610,78 @@ async def validate_numerical_output(**kwargs: Any) -> None:
                     metal_inputs=metal_inputs,
                     dump_path=dump_path,
                 )
+
+
+@dataclass(frozen=True)
+class LLMStep:
+    """One call in an LLM loop: entrypoint name and its inputs."""
+
+    entrypoint: str
+    inputs: dict[str, Tensor]
+
+
+async def validate_llm_decode_loop(
+    coreai_program: Any,
+    *,
+    steps: Sequence[LLMStep],
+    reference_fn: Callable[[LLMStep], dict[str, Tensor]],
+    reference_state: dict[str, Tensor],
+    atol: float,
+    rtol: float,
+) -> None:
+    """Run ``steps`` on one loaded program, carrying state across calls.
+
+    After each step, outputs and state must match ``reference_fn(step)`` and
+    ``reference_state``. ``reference_fn`` runs the eager model, updates
+    ``reference_state`` in place, and returns expected outputs by name.
+    """
+
+    def assert_close(actual: Any, expected: Tensor, what: str) -> None:
+        # Compare in fp32.
+        np.testing.assert_allclose(
+            np.asarray(actual.numpy(), dtype=np.float32),
+            _torch_tensor_to_numpy_array(expected.float()),
+            atol=atol,
+            rtol=rtol,
+            err_msg=what,
+        )
+
+    state = {
+        name: NDArray(_narrow_dtype(t.clone())) for name, t in reference_state.items()
+    }
+    with TemporaryDirectory() as temp_directory:
+        asset = coreai_program.save_asset(Path(temp_directory) / "model.aimodel")
+        async with asset.executable(
+            specialization_options=_get_test_specialization_options(),
+        ) as ai_model:
+            functions: dict[str, Any] = {}
+            for idx, step in enumerate(steps):
+                where = f"step {idx} ({step.entrypoint!r})"
+                if step.entrypoint not in functions:
+                    assert step.entrypoint in ai_model.function_names, (
+                        f"{where}: no such entrypoint "
+                        f"(available: {list(ai_model.function_names)})"
+                    )
+                    functions[step.entrypoint] = ai_model.load_function(step.entrypoint)
+
+                with torch.no_grad():
+                    expected = reference_fn(step)
+                rt_outputs = await functions[step.entrypoint](
+                    {
+                        name: NDArray(_narrow_dtype(t.contiguous()))
+                        for name, t in step.inputs.items()
+                    },
+                    state=state,
+                )
+
+                assert set(rt_outputs) == set(expected), (
+                    f"{where}: runtime outputs {sorted(rt_outputs)} != "
+                    f"expected {sorted(expected)}"
+                )
+                for name, tensor in expected.items():
+                    assert_close(rt_outputs[name], tensor, f"{where}: output {name!r}")
+                for name, tensor in reference_state.items():
+                    assert_close(state[name], tensor, f"{where}: state {name!r}")
 
 
 def walk_coreai_program(coreai_program):
