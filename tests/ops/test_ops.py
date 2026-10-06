@@ -506,6 +506,85 @@ async def test_avg_pool3d(
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
+class TestAvgPoolCountIncludePad:
+    """count_include_pad=False must divide by valid (non-pad) cells, not kernel volume.
+
+    Default nn.AvgPool2d uses count_include_pad=True, which the existing
+    avg_pool tests already cover. The composite body always reads the
+    count_include_pad / divisor_override graph arguments (no Python
+    if-specialize), so this class hits the non-default values of those args.
+    """
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    async def test_avg_pool2d_known_values(self, dtype: torch.dtype) -> None:
+        # 1..9 with pad=1, k=3: corners have 4 valid cells (sum 12 → 3.0),
+        # center has 9 (sum 45 → 5.0). The old lowering divided every window
+        # by 9, so corners became 1.333.
+        x = torch.tensor(
+            [[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]], dtype=dtype
+        )
+
+        class M(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.nn.functional.avg_pool2d(
+                    x, kernel_size=3, stride=1, padding=1, count_include_pad=False
+                )
+
+        await validate_numerical_output(model=M().eval(), x=x)
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    async def test_avg_pool2d_random_padded(self, dynamic: bool) -> None:
+        x = torch.rand(2, 3, 8, 8)
+
+        class M(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.nn.functional.avg_pool2d(
+                    x, kernel_size=3, stride=2, padding=1, count_include_pad=False
+                )
+
+        dynamic_shapes = (
+            {
+                "x": {
+                    0: torch.export.Dim("batch", min=1),
+                    1: torch.export.Dim("channels", min=1),
+                }
+            }
+            if dynamic
+            else None
+        )
+        await validate_numerical_output(
+            model=M().eval(), x=x, dynamic_shapes=dynamic_shapes
+        )
+
+    async def test_avg_pool2d_divisor_override_still_wins(self) -> None:
+        """ATen ignores count_include_pad when divisor_override is set."""
+        x = torch.rand(1, 1, 8, 8)
+
+        class M(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.nn.functional.avg_pool2d(
+                    x,
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                    count_include_pad=False,
+                    divisor_override=4,
+                )
+
+        await validate_numerical_output(model=M().eval(), x=x)
+
+    async def test_avg_pool3d_exclude_pad(self) -> None:
+        x = torch.rand(1, 1, 4, 4, 4)
+
+        class M(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.nn.functional.avg_pool3d(
+                    x, kernel_size=3, stride=2, padding=1, count_include_pad=False
+                )
+
+        await validate_numerical_output(model=M().eval(), x=x)
+
+
 @pytest.mark.parametrize(
     "input_shape,output_size,dtype",
     [

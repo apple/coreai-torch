@@ -63,6 +63,68 @@ from ._utils import (
 INT32_MAX: int = 2147483647
 
 
+def _avg_pool_kernel_area(kernel_size: Value, ele_type: Any, n_spatial: int) -> Value:
+    """Product of the kernel spatial sizes, as a rank-1 tensor of ``ele_type``."""
+    ks = coreai.cast(kernel_size, ele_type)
+    area = coreai.slice_(ks, [0], [1], [1])
+    for i in range(1, n_spatial):
+        area = coreai.broadcasting_mul(area, coreai.slice_(ks, [i], [i + 1], [1]))
+    return area
+
+
+def _avg_pool_divisor(
+    valid_count: Value,
+    kernel_size: Value,
+    count_include_pad: Value,
+    divisor_override: Value,
+    ele_type: Any,
+    n_spatial: int,
+) -> Value:
+    """ATen divisor: override if nonzero, else kernel volume or per-window valid count."""
+    area = _avg_pool_kernel_area(kernel_size, ele_type, n_spatial)
+    by_flag = coreai.broadcasting_where(count_include_pad, area, valid_count)
+    override_f = coreai.cast(divisor_override, ele_type)
+    use_override = coreai.broadcasting_not_equal(
+        divisor_override, coreai.constant(0, dtype=np.int32)
+    )
+    return coreai.broadcasting_where(use_override, override_f, by_flag)
+
+
+def _avg_pool_valid_count(
+    input_tensor: Value,
+    padding_nd: Value,
+    pad_value: Value,
+    padded_shape: list[int],
+    kernel_size_ui32: Value,
+    stride_ui32: Value,
+    dilation: Value,
+    pooled_ty: RankedTensorType,
+    ele_type: Any,
+    spatial_rank: int,
+) -> Value:
+    """Sum-pool a ones mask (zeros in the pad) to get valid cells per window."""
+    ones = coreai.BroadcastToOp(
+        coreai.constant(1.0, dtype=ele_type),
+        coreai.get_shape(input_tensor),
+        results=[input_tensor.type],
+    ).result
+    padded_ones = coreai.PadOp(
+        ones,
+        padding_nd,
+        pad_value,
+        Attribute.parse("#coreai.padding_mode<constant>"),
+        results=[RankedTensorType.get(padded_shape, ele_type)],
+    ).result
+    pool_cls = coreai.SumPool2dOp if spatial_rank == 2 else coreai.SumPool3dOp
+    return pool_cls(
+        padded_ones,
+        kernel_size=kernel_size_ui32,
+        strides=stride_ui32,
+        dilation=dilation,
+        results=[pooled_ty],
+    ).result
+
+
 def replace_abs(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     return coreai.abs_(_get_operand(values_map, node, 0))
 
@@ -128,7 +190,8 @@ def replace_avg_pool2d(
     Decomposition (as composite op):
         1. Pad the input with zeros according to padding parameter
         2. Apply sum_pool_2d on padded input
-        3. Divide by divisor (kernel_h * kernel_w or divisor_override)
+        3. Divide by divisor_override if set, else by kernel volume when
+           count_include_pad is true, else by the per-window valid-cell count
     """
     x = _get_operand(values_map, node, 0)
     kernel_size = node.args[1]
@@ -142,15 +205,10 @@ def replace_avg_pool2d(
         node.args[4] if len(node.args) > 4 and node.args[4] is not None else False
     )
     count_include_pad = (
-        node.args[5] if len(node.args) > 4 and node.args[4] is not None else True
+        node.args[5] if len(node.args) > 5 and node.args[5] is not None else True
     )
     divisor_override_val = (
         int(node.args[6]) if len(node.args) > 6 and node.args[6] is not None else 0
-    )
-    divisor_f = (
-        float(node.args[6])
-        if len(node.args) > 6 and node.args[6] is not None
-        else float(kernel_size[0] * kernel_size[1])
     )
     x_element_type = x.type.element_type
 
@@ -201,9 +259,8 @@ def replace_avg_pool2d(
         count_include_pad: Value,
         divisor_override: Value,
     ) -> Value:
-        # The old converter generates the body of the composite as if count_include_pad = True
-        # and ceil_mode = False at all times. This is an inaccuracy. For now we are targeting
-        # parity with the old converter and so the composite body will remain the same.
+        # ceil_mode is not consumed here: SumPool2d has no ceil_mode, so the
+        # output shape is still the floor formula computed outside the graph.
         padding_ui32 = coreai.cast(padding, np.uint32)
         pad_h = coreai.slice_(padding_ui32, [0], [1], [1])
         pad_w = coreai.slice_(padding_ui32, [1], [2], [1])
@@ -222,18 +279,38 @@ def replace_avg_pool2d(
 
         kernel_size_ui32 = coreai.cast(kernel_size, np.uint32)
         stride_ui32 = coreai.cast(stride, np.uint32)
-
-        divisor_const = coreai.constant(divisor_f, dtype=x_element_type)
+        dilation = coreai.constant([1, 1], dtype=np.uint32)
+        pooled_ty = RankedTensorType.get(pooled_shape, x_element_type)
+        pooled = coreai.SumPool2dOp(
+            padded_input,
+            kernel_size=kernel_size_ui32,
+            strides=stride_ui32,
+            # TODO: We should still use numpy array, need a fix in coreai
+            dilation=dilation,
+            results=[pooled_ty],
+        ).result
+        valid_count = _avg_pool_valid_count(
+            input_tensor,
+            padding_4d,
+            pad_value,
+            padded_shape,
+            kernel_size_ui32,
+            stride_ui32,
+            dilation,
+            pooled_ty,
+            x_element_type,
+            2,
+        )
         return coreai.broadcasting_divide(
-            coreai.SumPool2dOp(
-                padded_input,
-                kernel_size=kernel_size_ui32,
-                strides=stride_ui32,
-                # TODO: We should still use numpy array, need a fix in coreai
-                dilation=coreai.constant([1, 1], dtype=np.uint32),
-                results=[RankedTensorType.get(pooled_shape, x_element_type)],
-            ).result,
-            divisor_const,
+            pooled,
+            _avg_pool_divisor(
+                valid_count,
+                kernel_size,
+                count_include_pad,
+                divisor_override,
+                x_element_type,
+                2,
+            ),
         )
 
     kernel_size = coreai.constant(kernel_size, dtype=np.int32)
@@ -464,7 +541,8 @@ def replace_avg_pool3d(
     Decomposition (as composite op):
         1. Pad the input with zeros according to padding parameter
         2. Apply sum_pool_3d on padded input
-        3. Divide by divisor (kernel_d * kernel_h * kernel_w or divisor_override)
+        3. Divide by divisor_override if set, else by kernel volume when
+           count_include_pad is true, else by the per-window valid-cell count
     """
     x = _get_operand(values_map, node, 0)
     kernel_size = node.args[1]
@@ -478,15 +556,10 @@ def replace_avg_pool3d(
         node.args[4] if len(node.args) > 4 and node.args[4] is not None else False
     )
     count_include_pad = (
-        node.args[5] if len(node.args) > 4 and node.args[4] is not None else True
+        node.args[5] if len(node.args) > 5 and node.args[5] is not None else True
     )
     divisor_override_val = (
         int(node.args[6]) if len(node.args) > 6 and node.args[6] is not None else 0
-    )
-    divisor_f = (
-        float(node.args[6])
-        if len(node.args) > 6 and node.args[6] is not None
-        else float(kernel_size[0] * kernel_size[1] * kernel_size[2])
     )
 
     x_element_type = x.type.element_type
@@ -542,9 +615,8 @@ def replace_avg_pool3d(
         count_include_pad: Value,
         divisor_override: Value,
     ) -> Value:
-        # The old converter generates the body of the composite as if count_include_pad = True
-        # and ceil_mode = False at all times. This is an inaccuracy. For now we are targeting
-        # parity with the old converter and so the composite body will remain the same.
+        # ceil_mode is not consumed here: SumPool3d has no ceil_mode, so the
+        # output shape is still the floor formula computed outside the graph.
         padding_ui32 = coreai.cast(padding, np.uint32)
         pad_d = coreai.slice_(padding_ui32, [0], [1], [1])
         pad_h = coreai.slice_(padding_ui32, [1], [2], [1])
@@ -566,18 +638,38 @@ def replace_avg_pool3d(
 
         kernel_size_ui32 = coreai.cast(kernel_size, np.uint32)
         stride_ui32 = coreai.cast(stride, np.uint32)
-
-        divisor_const = coreai.constant(divisor_f, dtype=x_element_type)
+        dilation = coreai.constant([1, 1, 1], dtype=np.uint32)
+        pooled_ty = RankedTensorType.get(pooled_shape, x_element_type)
+        pooled = coreai.SumPool3dOp(
+            padded_input,
+            kernel_size=kernel_size_ui32,
+            strides=stride_ui32,
+            # TODO: We should still use numpy array, need a fix in coreai
+            dilation=dilation,
+            results=[pooled_ty],
+        ).result
+        valid_count = _avg_pool_valid_count(
+            input_tensor,
+            padding_5d,
+            pad_value,
+            padded_shape,
+            kernel_size_ui32,
+            stride_ui32,
+            dilation,
+            pooled_ty,
+            x_element_type,
+            3,
+        )
         return coreai.broadcasting_divide(
-            coreai.SumPool3dOp(
-                padded_input,
-                kernel_size=kernel_size_ui32,
-                strides=stride_ui32,
-                # TODO: We should still use numpy array, need a fix in coreai
-                dilation=coreai.constant([1, 1, 1], dtype=np.uint32),
-                results=[RankedTensorType.get(pooled_shape, x_element_type)],
-            ).result,
-            divisor_const,
+            pooled,
+            _avg_pool_divisor(
+                valid_count,
+                kernel_size,
+                count_include_pad,
+                divisor_override,
+                x_element_type,
+                3,
+            ),
         )
 
     kernel_size = coreai.constant(kernel_size, dtype=np.int32)
