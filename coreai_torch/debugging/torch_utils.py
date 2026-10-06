@@ -571,8 +571,8 @@ def _retarget_misattributed_mapping(
     """
     Retarget a mapping whose coreai op belongs to a different torch node.
 
-    Compiler rewrites (e.g. ``core-elide-broadcast``) can fuse a neighbour's
-    output maps into an op, but its primary source attribution stays correct.
+    Compiler rewrites can fuse a neighbour's output maps into an op, but its
+    primary source attribution stays correct.
 
     Returns:
         The mapping, pointed at the last coreai op of its own torch node, or None
