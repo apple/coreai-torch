@@ -591,7 +591,7 @@ class TestMacOSStyleModelIR:
                 // CHECK: coreai.output %{{.*}}, %{{.*}}, %[[LOGITS]] : !coreai.token, !coreai.token, tensor<1x?x64xf16>
 
                 // CHECK-LABEL: coreai.graph @prefill(
-                // CHECK-SAME: -> (!coreai.token {coreai.name = "keyCache"}, !coreai.token {coreai.name = "valueCache"}) attributes
+                // CHECK-SAME: -> (!coreai.token {coreai.name = "keyCache"}, !coreai.token {coreai.name = "valueCache"})
                 // CHECK-COUNT-4: coreai.slice_update
                 // CHECK-NOT: coreai.invoke
                 // CHECK: coreai.output %{{.*}}, %{{.*}} : !coreai.token, !coreai.token
