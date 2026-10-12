@@ -7,7 +7,9 @@ import platform
 import shutil
 import sys
 import tempfile
+from collections.abc import Callable, Sequence
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -249,14 +251,12 @@ def _export_and_convert(
     state_names: list[str] | None,
     input_names: list[str] | None,
     output_names: list[str] | None,
-    run_optimize_passes: bool,
     custom_kernels: list | None = None,
 ) -> tuple[Any, Any, list[str]]:
     """Export an nn.Module, run decompositions, and convert to a Core AI program.
 
-    Returns ``(coreai_program, exported_program, fx_output_names)``. Optimizer
-    passes run when the model has buffer/user-input mutations, the caller
-    explicitly requests it, or state_names is supplied.
+    Returns ``(coreai_program, exported_program, fx_output_names)``. ``to_coreai``
+    already applies the Core AI pre-compilation rewrites.
     """
     model.eval()
     exported_program = torch.export.export(
@@ -282,11 +282,6 @@ def _export_and_convert(
         output_names=output_names,
     )
     coreai_program = converter.to_coreai()
-
-    sig = exported_program.graph_signature
-    has_state = bool(sig.buffers_to_mutate) or bool(sig.user_inputs_to_mutate)
-    if run_optimize_passes or state_names or has_state:
-        coreai_program.optimize()
 
     output_node = next(
         n for n in exported_program.graph_module.graph.nodes if n.op == "output"
@@ -549,7 +544,6 @@ async def validate_numerical_output(**kwargs: Any) -> None:
     print_exported_graph = kwargs.pop("print_exported_graph", False)
     remove_decomps = kwargs.pop("remove_decomps", None)
     prepare_program = kwargs.pop("prepare_program", None)
-    run_optimize_passes = kwargs.pop("run_optimize_passes", False)
     state_names: list[str] | None = kwargs.pop("state_names", None)
     input_names: list[str] | None = kwargs.pop("input_names", None)
     output_names: list[str] | None = kwargs.pop("output_names", None)
@@ -573,7 +567,6 @@ async def validate_numerical_output(**kwargs: Any) -> None:
             state_names=state_names,
             input_names=input_names,
             output_names=output_names,
-            run_optimize_passes=run_optimize_passes,
             custom_kernels=custom_kernels,
         )
 
@@ -619,6 +612,78 @@ async def validate_numerical_output(**kwargs: Any) -> None:
                 )
 
 
+@dataclass(frozen=True)
+class LLMStep:
+    """One call in an LLM loop: entrypoint name and its inputs."""
+
+    entrypoint: str
+    inputs: dict[str, Tensor]
+
+
+async def validate_llm_decode_loop(
+    coreai_program: Any,
+    *,
+    steps: Sequence[LLMStep],
+    reference_fn: Callable[[LLMStep], dict[str, Tensor]],
+    reference_state: dict[str, Tensor],
+    atol: float,
+    rtol: float,
+) -> None:
+    """Run ``steps`` on one loaded program, carrying state across calls.
+
+    After each step, outputs and state must match ``reference_fn(step)`` and
+    ``reference_state``. ``reference_fn`` runs the eager model, updates
+    ``reference_state`` in place, and returns expected outputs by name.
+    """
+
+    def assert_close(actual: Any, expected: Tensor, what: str) -> None:
+        # Compare in fp32.
+        np.testing.assert_allclose(
+            np.asarray(actual.numpy(), dtype=np.float32),
+            _torch_tensor_to_numpy_array(expected.float()),
+            atol=atol,
+            rtol=rtol,
+            err_msg=what,
+        )
+
+    state = {
+        name: NDArray(_narrow_dtype(t.clone())) for name, t in reference_state.items()
+    }
+    with TemporaryDirectory() as temp_directory:
+        asset = coreai_program.save_asset(Path(temp_directory) / "model.aimodel")
+        async with asset.executable(
+            specialization_options=_get_test_specialization_options(),
+        ) as ai_model:
+            functions: dict[str, Any] = {}
+            for idx, step in enumerate(steps):
+                where = f"step {idx} ({step.entrypoint!r})"
+                if step.entrypoint not in functions:
+                    assert step.entrypoint in ai_model.function_names, (
+                        f"{where}: no such entrypoint "
+                        f"(available: {list(ai_model.function_names)})"
+                    )
+                    functions[step.entrypoint] = ai_model.load_function(step.entrypoint)
+
+                with torch.no_grad():
+                    expected = reference_fn(step)
+                rt_outputs = await functions[step.entrypoint](
+                    {
+                        name: NDArray(_narrow_dtype(t.contiguous()))
+                        for name, t in step.inputs.items()
+                    },
+                    state=state,
+                )
+
+                assert set(rt_outputs) == set(expected), (
+                    f"{where}: runtime outputs {sorted(rt_outputs)} != "
+                    f"expected {sorted(expected)}"
+                )
+                for name, tensor in expected.items():
+                    assert_close(rt_outputs[name], tensor, f"{where}: output {name!r}")
+                for name, tensor in reference_state.items():
+                    assert_close(state[name], tensor, f"{where}: state {name!r}")
+
+
 def walk_coreai_program(coreai_program):
     def walk_operations(op, indent=0):
         prefix = "  " * indent
@@ -637,7 +702,9 @@ def walk_coreai_program(coreai_program):
                     for nested_op in block.operations:
                         walk_operations(nested_op, indent + 1)
 
-    for op in coreai_program._mlir_module.operation.regions[0].blocks[0].operations:
+    for op in (
+        coreai_program._module._mlir_module.operation.regions[0].blocks[0].operations
+    ):
         walk_operations(op)
 
 
@@ -702,5 +769,4 @@ def get_ir(
             decomp_table.pop(decomp)
     program = program.run_decompositions(decomp_table)
     coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-    coreai_program.optimize()
     return str(coreai_program)

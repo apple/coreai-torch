@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import torch
 from coreai.authoring import AIProgram
-from coreai.runtime import AIModel
+from coreai.runtime import AIModel, SpecializationOptions
 
 from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
 from coreai_torch.debugging.inspector import (
@@ -22,6 +22,7 @@ from coreai_torch.debugging.inspector import (
     TorchFXInspector,
 )
 from coreai_torch.debugging.torch_utils import get_torch_to_coreai_output_mapping
+from coreai_torch.debugging.utils import _with_debug
 
 from .test_model import LinearMulAddModel, get_example_inputs
 
@@ -107,8 +108,19 @@ async def test_caching_inspector() -> None:
     sys.platform != "darwin",
     reason="Requires loading a runtime asset (AIModel.load); only supported on macOS",
 )
-async def test_coreai_inspector(simple_coreai_program: AIProgram) -> None:
-    """Test _CoreAIInspector with a deployed model."""
+async def test_coreai_inspector(
+    simple_coreai_program: AIProgram,
+    specialization_options: SpecializationOptions | None,
+) -> None:
+    """
+    Test CoreAIInspector with a deployed model.
+
+    Loaded through `_with_debug`, the same helper the library's own load sites use.
+    Loading with no options at all -- which this did -- gets a model without debug
+    info, and the inspector then returns an entry per requested operation with no
+    value in any of them. Reimplementing "options or default, debug on" here instead
+    would let the test drift from what the library actually does.
+    """
     # Get torch -> coreai mappings
     mappings = get_torch_to_coreai_output_mapping(simple_coreai_program)
 
@@ -122,7 +134,7 @@ async def test_coreai_inspector(simple_coreai_program: AIProgram) -> None:
 
         # Create asset from AIProgram and load model from asset
         asset = simple_coreai_program.save_asset(asset_path)
-        ai_model = await AIModel.load(asset.path)
+        ai_model = await AIModel.load(asset.path, _with_debug(specialization_options))
 
         # Create inspector
         inspector = CoreAIInspector(
@@ -140,11 +152,22 @@ async def test_coreai_inspector(simple_coreai_program: AIProgram) -> None:
             inputs,
         )
 
-        # Check that results contain numpy arrays
-        for result in results.values():
-            if result is None:
-                continue
+        # Check that results contain numpy arrays.
+        #
+        # Every assertion below used to sit behind `if result is None: continue`, so
+        # the only test of the `CoreAIInspector` runtime path passed whenever capture
+        # returned nothing -- and it does: under the OS framework this same call comes
+        # back with 4 results and 0 of them non-None, against 4 of 4 under the bundled
+        # runtime. Checking that something was captured is the whole point of the test.
+        captured = {
+            op_id: result for op_id, result in results.items() if result is not None
+        }
+        assert captured, (
+            f"The inspector returned {len(results)} result(s) and captured no values "
+            "at all, so nothing below was checked"
+        )
 
+        for result in captured.values():
             assert isinstance(result, list)
             assert len(result) > 0
             for item in result:

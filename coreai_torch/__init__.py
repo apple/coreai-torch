@@ -17,7 +17,11 @@ from ._composite_declaration import generate_composite_decl
 from ._decomp import get_decomp_table
 from ._torch_metal_kernel import TorchMetalKernel
 from .converter import TorchConverter
-from .externalize import ExternalizeSpec
+from .externalize import (
+    ExternalizeSpec,
+    _patch_model_for_externalization,
+    _subexport_and_restore,
+)
 
 __all__ = [
     "__version__",
@@ -27,6 +31,8 @@ __all__ = [
     "TorchMetalKernel",
     "get_decomp_table",
     "generate_composite_decl",
+    "_patch_model_for_externalization",
+    "_subexport_and_restore",
 ]
 
 _TORCH_MAX_VERSION = "2.13.0"

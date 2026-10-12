@@ -14,14 +14,8 @@ copyright = "2026, Apple Inc."
 extensions = [
     "myst_nb",
     "sphinx.ext.autodoc",
+    "sphinx_llm.txt",
 ]
-
-try:
-    import sphinx_llm  # noqa: F401
-
-    extensions.append("sphinx_llm.txt")
-except ImportError:
-    pass
 
 # MyST settings
 myst_enable_extensions = [
@@ -46,6 +40,7 @@ pygments_style = "friendly"
 
 # llms.txt / per-page Markdown generation (powers the "Copy page" / "View as
 # Markdown" affordance in the copy-page-button override).
+# Reference: https://github.com/NVIDIA/sphinx-llm
 llms_txt_description = "coreai-torch converts PyTorch models (torch.export ExportedProgram) to Core AI format."
 llms_txt_build_parallel = False
 

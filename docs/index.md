@@ -20,7 +20,6 @@ model = MyModel().eval()
 ep = torch.export.export(model, args=(torch.randn(1, 10),))
 ep = ep.run_decompositions(get_decomp_table())
 coreai_program = TorchConverter().add_exported_program(ep).to_coreai()
-coreai_program.optimize()
 ```
 
 ## Choosing your workflow

@@ -8,8 +8,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from enum import Enum
+from typing import Any, TextIO
 
 import coreai._compiler._mlir_libs._coreaiIR._bindings.mlir as _mlir
 from coreai._compiler._mlir_libs._coreaiIR._bindings.mlir import (
@@ -25,6 +27,43 @@ from coreai_torch._debug_locations import (
     _create_unknown_location_with_operation_id,
     _get_nested_operations,
 )
+
+from .table_writer import _Column, _Row, _TableSpec, _write_table
+
+# Stand-in filename for a location that carries only an operation id, with no real
+# source position behind it. Left out of a rendered summary.
+_OP_ID_PSEUDO_FILE = "op_id"
+
+
+class _Delegate(Enum):
+    """Enumerates the compute delegates an operation may be dispatched to."""
+
+    BNNS = "BNNS"
+    MPS = "MPS"
+    FALLBACK = "FALLBACK"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def from_string(cls, identifier: str) -> "_Delegate":
+        """Create a :class:`_Delegate` from its string representation.
+
+        Args:
+            identifier: The delegate identifier.
+
+        Returns:
+            The matching :class:`_Delegate` member, or
+            :attr:`_Delegate.UNKNOWN` if the string does not start with any
+            known delegate prefix.
+        """
+        identifier = identifier.lower()
+        if identifier.startswith("bnns"):
+            return cls.BNNS
+        elif identifier.startswith("mps"):
+            return cls.MPS
+        elif identifier.startswith("odix"):
+            return cls.FALLBACK
+        else:
+            return cls.UNKNOWN
 
 
 @dataclass
@@ -228,9 +267,39 @@ class Metadata:
         )
 
 
+def _format_metadata_value(value: Metadata.Value) -> str:
+    """
+    Render a metadata value as a single-line string.
+
+    Args:
+        value: Metadata value to render.
+
+    Returns:
+        Text for the value: scalars as themselves, arrays as ``[a, b]``,
+        dictionaries as ``{key: value}``, and a unit value as ``"set"``.
+
+    """
+    if value.value_type == "array" and isinstance(value.value, list):
+        return "[" + ", ".join(_format_metadata_value(v) for v in value.value) + "]"
+    if value.value_type == "dictionary" and isinstance(value.value, dict):
+        items = ", ".join(
+            f"{key}: {_format_metadata_value(v)}" for key, v in value.value.items()
+        )
+        return "{" + items + "}"
+    if value.value_type == "unit":
+        return "set"
+    return "" if value.value is None else str(value.value)
+
+
 @dataclass(frozen=True)
 class DebugInfo:
     """Represents debug information for a single operation."""
+
+    class SymbolType(str, Enum):
+        """Enumerates the kinds of symbols carried in "symbol" metadata."""
+
+        FUNCTION = "function"
+        DELEGATE = "delegate"
 
     odix_id: int
     name: str
@@ -313,6 +382,113 @@ class DebugInfo:
                 ids.append(value_field)
 
         return ids
+
+    def get_symbol_names(self, symbol_type: "DebugInfo.SymbolType") -> list[str]:
+        """
+        Get all symbol names for a given symbol type.
+
+        Collects every "symbol" metadata entry whose "type" field matches
+        *symbol_type* and returns the corresponding "value" fields. Mirrors the
+        "op_id" metadata structure, but the symbol name is a string carried in the
+        "value" field rather than an integer.
+
+        Args:
+            symbol_type: Symbol type, either
+                :attr:`DebugInfo.SymbolType.FUNCTION` or
+                :attr:`DebugInfo.SymbolType.DELEGATE`.
+
+        Returns:
+            List of symbol names matching the given type.
+
+        """
+        names: list[str] = []
+        for metadata in self.metadatas:
+            if metadata.key != "symbol":
+                continue
+
+            if metadata.value.value_type != "dictionary" or not isinstance(
+                metadata.value.value,
+                dict,
+            ):
+                continue
+
+            type_field = self._get_str_field(metadata.value.value, "type")
+            if type_field != symbol_type.value:
+                continue
+
+            name_field = self._get_str_field(metadata.value.value, "value")
+            if name_field is not None:
+                names.append(name_field)
+
+        return names
+
+    def get_symbol_name(self, symbol_type: "DebugInfo.SymbolType") -> str | None:
+        """
+        Get the symbol name for a given symbol type.
+
+        Format: metadata with key "symbol" containing dictionary
+        ``{"type": "<function|delegate>", "value": <name>}``. Mirrors the
+        :meth:`get_op_id` structure but returns the string symbol name carried in
+        the "value" field.
+
+        Args:
+            symbol_type: Symbol type, either
+                :attr:`DebugInfo.SymbolType.FUNCTION` or
+                :attr:`DebugInfo.SymbolType.DELEGATE`.
+
+        Returns:
+            Symbol name if present, None otherwise.
+
+        """
+        symbol_names = self.get_symbol_names(symbol_type=symbol_type)
+        return symbol_names[0] if len(symbol_names) > 0 else None
+
+    def get_residency(self) -> str | None:
+        """
+        Get the residency of the kernel this entry is scheduled as.
+
+        An entry describes a single scheduled kernel and records at most one
+        residency for it, so the first residency found is the placement and no
+        ordering or precedence between values applies.
+
+        An entry may name several ``coreai`` IDs when operations are fused. They
+        all became the one kernel this entry stands for and so share its
+        residency.
+
+        Returns:
+            The kernel's residency string, or ``None`` if the entry records no
+            residency.
+
+        """
+        for metadata in self.metadatas:
+            if metadata.key != "residency":
+                continue
+            if metadata.value.value_type != "string" or not isinstance(
+                metadata.value.value,
+                str,
+            ):
+                continue
+            return metadata.value.value
+
+        return None
+
+    def is_symbol(self) -> bool:
+        """
+        Whether this operation represents a symbol rather than a real op.
+
+        Returns ``True`` if the operation carries a ``"symbol"`` metadata entry of
+        any :class:`DebugInfo.SymbolType` (``function`` or ``delegate``). Such
+        entries are structural markers rather than directly schedulable Core AI
+        operations.
+
+        Returns:
+            ``True`` if a function or delegate symbol is present, else ``False``.
+
+        """
+        return any(
+            self.get_symbol_name(symbol_type) is not None
+            for symbol_type in DebugInfo.SymbolType
+        )
 
     def get_source(self) -> str | None:
         """Get source identifier if present."""
@@ -429,6 +605,130 @@ class DebugInfo:
         """
         return [m.value for m in self.metadatas if m.key == key]
 
+    def format_source_locations(self) -> str:
+        """
+        Render this operation's source locations as text.
+
+        Returns:
+            The locations as ``file:line:col``, separated by ``"; "``, or an
+            empty string when the operation records no real source location.
+
+        """
+        return "; ".join(
+            f"{location.file_name}:{location.line}:{location.column}"
+            for location in self.source_locations
+            if location.file_name != _OP_ID_PSEUDO_FILE
+        )
+
+    def metadata_keys(self) -> tuple[str, ...]:
+        """
+        Distinct metadata keys on this operation, in first-appearance order.
+
+        A key may appear more than once (e.g. one ``op_id`` per dialect level);
+        it is reported once here, and :meth:`format_metadata` joins its values.
+
+        Returns:
+            The unique metadata keys.
+
+        """
+        return tuple(dict.fromkeys(metadata.key for metadata in self.metadatas))
+
+    def op_id_levels(self) -> tuple[str, ...]:
+        """
+        Dialect levels this operation records an ``op_id`` for.
+
+        An operation carries one ``op_id`` entry per level it was traced through
+        (``torch``, ``coreai``, ``odix``, ``MPSGraph``, ...), so the levels are
+        what turn a single ``op_id`` key into one column per level.
+
+        Returns:
+            The levels, in first-appearance order.
+
+        """
+        levels: list[str] = []
+        for metadata in self.metadatas:
+            if metadata.key != "op_id":
+                continue
+            if metadata.value.value_type != "dictionary" or not isinstance(
+                metadata.value.value,
+                dict,
+            ):
+                continue
+            level = self._get_str_field(metadata.value.value, "type")
+            if level is not None and level not in levels:
+                levels.append(level)
+        return tuple(levels)
+
+    def format_op_ids(self, level: str) -> str:
+        """
+        Render this operation's ``op_id`` values for *level* as text.
+
+        Repeats are collapsed, keeping first-appearance order. An entry standing
+        for a fused kernel records one metadata block per operation it absorbed,
+        so the same id appears in several blocks. :meth:`get_op_ids` still returns
+        the raw values, since that multiplicity says how many blocks reference an
+        id.
+
+        Args:
+            level: Dialect level name (e.g. ``"torch"``, ``"coreai"``).
+
+        Returns:
+            The distinct ids separated by ``", "``, or an empty string when the
+            operation records no id for *level*.
+
+        """
+        return ", ".join(
+            str(op_id) for op_id in dict.fromkeys(self.get_op_ids(level=level))
+        )
+
+    def format_metadata(self, key: str) -> str:
+        """
+        Render every metadata value recorded under *key* as text.
+
+        Args:
+            key: Metadata key to render.
+
+        Returns:
+            The values separated by ``", "``, or an empty string when the
+            operation records no metadata under *key*.
+
+        """
+        return ", ".join(
+            _format_metadata_value(value) for value in self.get_all_metadata(key)
+        )
+
+    def to_row(
+        self,
+        metadata_keys: Sequence[str],
+        op_id_levels: Sequence[str] = (),
+    ) -> _Row:
+        """
+        Render this operation as a table row.
+
+        Args:
+            metadata_keys: Keys to emit as columns, in column order. A key this
+                operation does not carry yields an empty cell, so rows from
+                different operations stay aligned.
+            op_id_levels: Dialect levels to emit as their own columns, in column
+                order. These come before the metadata columns, and ``"op_id"``
+                should be left out of *metadata_keys* when they are used.
+
+        Returns:
+            A :class:`~coreai_torch.debugging.table_writer._Row` holding the ODIX
+            id, name, source locations, one cell per op-id level, and one cell
+            per requested metadata key.
+
+        """
+        return _Row(
+            cells=(
+                str(self.odix_id),
+                self.name,
+                self.format_source_locations(),
+                *(self.format_op_ids(level) for level in op_id_levels),
+                *(self.format_metadata(key) for key in metadata_keys),
+            ),
+        )
+
     def get_output_mappings(self, source_level: str) -> list[OutputMapping]:
         """
         Get output mappings from source level by parsing metadata.
@@ -469,6 +769,11 @@ class DebugInfoRecord:
     identifier: str
     operations: tuple[DebugInfo, ...]
 
+    @property
+    def is_fallback(self) -> bool:
+        """Whether this is a fallback record per :class:`_Delegate`."""
+        return _Delegate.from_string(self.identifier) == _Delegate.FALLBACK
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DebugInfoRecord":
         """Parse from dictionary."""
@@ -492,6 +797,153 @@ class DebugInfoRecord:
             info for info in self.operations if info.get_op_id("torch") == torch_op_id
         ]
 
+    def metadata_keys(self) -> tuple[str, ...]:
+        """
+        Union of the metadata keys carried by this record's operations.
+
+        Ordered by first appearance, so the resulting columns follow the data
+        rather than an arbitrary sort.
+
+        Returns:
+            The unique metadata keys across all operations.
+
+        """
+        return tuple(
+            dict.fromkeys(
+                key
+                for operation in self.operations
+                for key in operation.metadata_keys()
+            )
+        )
+
+    def op_id_levels(self) -> tuple[str, ...]:
+        """
+        Union of the dialect levels this record's operations record ids for.
+
+        Returns:
+            The levels (``"torch"``, ``"coreai"``, ``"odix"``, ...), ordered by
+            first appearance.
+
+        """
+        return tuple(
+            dict.fromkeys(
+                level
+                for operation in self.operations
+                for level in operation.op_id_levels()
+            )
+        )
+
+    def _build_summary(
+        self,
+        *,
+        metadata_keys: Sequence[str] | None = None,
+        op_id_levels: Sequence[str] | None = None,
+        max_operations: int | None = None,
+    ) -> _TableSpec:
+        """
+        Build the table of this record's operations without rendering it.
+
+        Each row is one operation, holding its ODIX id, name, and source
+        locations, then one ``op_id[<level>]`` cell per dialect level, then one
+        cell per remaining metadata key. Operations that do not carry a given
+        level or key leave that cell empty.
+
+        ``op_id`` is split per level rather than shown as one column: an
+        operation records one id per level it was traced through, so a single
+        column would read ``{value: 210, type: torch}, {value: 497, type:
+        coreai}`` and the ids could not be compared down a column.
+
+        Returning the spec lets a caller read the same headers and cells that
+        :meth:`write_summary` would print, instead of parsing rendered text.
+
+        Args:
+            metadata_keys: Keys to include as columns. Defaults to
+                :meth:`metadata_keys` minus ``op_id``, which is covered by
+                *op_id_levels*.
+            op_id_levels: Dialect levels to include as ``op_id[<level>]``
+                columns. Defaults to :meth:`op_id_levels`, i.e. every level in
+                this record. Pass an empty sequence to drop them.
+            max_operations: Maximum number of operations to include. Defaults to
+                all of them; when set, the caption reports how many were dropped.
+
+        Returns:
+            The :class:`~coreai_torch.debugging.table_writer._TableSpec` for this
+            record.
+
+        """
+        levels = (
+            tuple(op_id_levels) if op_id_levels is not None else self.op_id_levels()
+        )
+        if metadata_keys is not None:
+            keys = tuple(metadata_keys)
+        else:
+            # op_id is rendered as one column per level, so drop it from the
+            # generic metadata columns to avoid showing the same data twice.
+            keys = tuple(key for key in self.metadata_keys() if key != "op_id")
+
+        operations = self.operations
+        caption = None
+        if max_operations is not None and len(operations) > max_operations:
+            caption = (
+                f"showing {max_operations} of {len(operations)} operations "
+                f"(... and {len(operations) - max_operations} more)"
+            )
+            operations = operations[:max_operations]
+
+        spec = _TableSpec(
+            title=f"Debug info: {self.identifier} ({len(self.operations)} operations)",
+            columns=(
+                _Column("odix_id", justify="right"),
+                _Column("name"),
+                _Column("source locations"),
+                *(_Column(f"op_id[{level}]", justify="right") for level in levels),
+                *(_Column(key) for key in keys),
+            ),
+            caption=caption,
+            show_lines=True,
+            row_spacing=1,
+        )
+        for operation in operations:
+            spec.add(operation.to_row(keys, levels))
+        return spec
+
+    def write_summary(
+        self,
+        output: TextIO | None = None,
+        *,
+        metadata_keys: Sequence[str] | None = None,
+        op_id_levels: Sequence[str] | None = None,
+        max_operations: int | None = None,
+        width: int | None = None,
+    ) -> None:
+        """
+        Write a table of this record's operations, one column per metadata key.
+
+        Renders what :meth:`_build_summary` describes; see it for the column
+        layout. Cells wrap rather than truncate, so a row is as tall as its
+        longest value needs and no text is lost. Records carry many keys, so pass
+        a larger *width*, or a subset of *metadata_keys*, when columns end up
+        narrow.
+
+        Args:
+            output: Text stream to write the table to. Defaults to
+                ``sys.stdout`` when None.
+            metadata_keys: Keys to render as columns. See :meth:`_build_summary`.
+            op_id_levels: Dialect levels to render as ``op_id[<level>]`` columns.
+                See :meth:`_build_summary`.
+            max_operations: Maximum number of operations to list. See
+                :meth:`_build_summary`.
+            width: Console width to render at. Defaults to
+                :data:`~coreai_torch.debugging.table_writer._DEFAULT_WIDTH`.
+
+        """
+        spec = self._build_summary(
+            metadata_keys=metadata_keys,
+            op_id_levels=op_id_levels,
+            max_operations=max_operations,
+        )
+        _write_table(spec, output, width=width)
+
 
 def parse_debug_infos(debug_infos_bytes: bytes) -> list[DebugInfoRecord]:
     """
@@ -510,6 +962,193 @@ def parse_debug_infos(debug_infos_bytes: bytes) -> list[DebugInfoRecord]:
     debug_infos_data = json.loads(debug_infos_str)
 
     return [DebugInfoRecord.from_dict(item) for item in debug_infos_data]
+
+
+def _build_source_to_odix_map(
+    debug_info_records: list[DebugInfoRecord],
+    source_level: str,
+) -> dict[int, int]:
+    """
+    Build a mapping from source op ID to odix ID from fallback debug info records.
+
+    Iterates over the fallback (``"odix"``) records and extracts the source-level
+    op ID and the odix ID from each operation.
+
+    Symbol entries are included deliberately. This map answers "which odix id owns
+    this source op", not "what should be timed" -- and on the GPU path the symbol
+    entries are the only operations carrying source ids at all, so excluding them
+    leaves the map empty and every timing sample unattributable. Timing still never
+    lands on a symbol: :func:`_build_compile_id_to_coreai_map` skips them when it
+    forms groups.
+
+    Args:
+        debug_info_records: Parsed debug information containing operation mappings.
+        source_level: Dialect level to extract source op IDs from (e.g.
+            ``"coreai"``).
+
+    Returns:
+        Dictionary mapping source_op_id to odix_id.
+
+    """
+    source_to_odix: dict[int, int] = {}
+    for record in debug_info_records:
+        if not record.is_fallback:
+            continue
+        for op in record.operations:
+            for source_id in op.get_op_ids(source_level):
+                existing_odix_id = source_to_odix.get(source_id)
+                if existing_odix_id is None or existing_odix_id < op.odix_id:
+                    source_to_odix[source_id] = op.odix_id
+    return source_to_odix
+
+
+def _record_op_id_level(identifier: str) -> str | None:
+    """
+    The dialect level a record numbers its own operations in.
+
+    A record is named ``"<level>_op_id"``, so the level is what remains once that
+    suffix is removed -- ``"odix_op_id"`` numbers ``"odix"``, and a delegate record
+    numbers whatever level its own name gives.
+
+    Note the suffix is stripped rather than the name split on its first underscore:
+    a level whose name itself contains an underscore would otherwise be truncated to
+    its first word, silently selecting a different level's numbering.
+
+    Args:
+        identifier: Record identifier.
+
+    Returns:
+        The level name, or ``None`` if the identifier is not of that form.
+
+    """
+    suffix = "_op_id"
+    if not identifier.endswith(suffix) or len(identifier) == len(suffix):
+        return None
+    return identifier[: -len(suffix)]
+
+
+def _build_delegate_op_to_source_map(
+    debug_info_records: list[DebugInfoRecord],
+    source_level: str = "coreai",
+) -> dict[int, list[int]]:
+    """
+    Build a ``delegate op id -> [source op ids]`` map from the delegate records.
+
+    A delegate reports the operations in a fused dispatch using its own numbering,
+    not the source level's, so timing attributed to those ids has to be translated
+    before it names anything in the converted program. Each delegate record carries
+    both, one per operation, which is what makes the translation possible.
+
+    Args:
+        debug_info_records: Parsed debug information.
+        source_level: Dialect level to translate into (defaults to ``"coreai"``).
+
+    Returns:
+        Dictionary mapping a delegate's operation id to source-level op ids.
+
+    """
+    result: dict[int, list[int]] = {}
+    for record in debug_info_records:
+        # Fallback records number their ops in the same space the runtime reports
+        # directly, so they need no translation.
+        if record.is_fallback:
+            continue
+        level = _record_op_id_level(record.identifier)
+        if level is None:
+            continue
+        for op in record.operations:
+            # Symbols mark a function or delegate rather than schedulable work.
+            if op.is_symbol():
+                continue
+            source_ids = op.get_op_ids(source_level)
+            if not source_ids:
+                continue
+            for delegate_id in op.get_op_ids(level):
+                mapped = result.setdefault(delegate_id, [])
+                for source_id in source_ids:
+                    if source_id not in mapped:
+                        mapped.append(source_id)
+    return result
+
+
+def _build_compile_id_to_coreai_map(
+    debug_info_records: list[DebugInfoRecord],
+    source_level: str = "coreai",
+) -> dict[tuple[int, int | None], list[int]]:
+    """
+    Build a ``(odix_id, delegate_id) -> [source op ids]`` map for the profiler.
+
+    The runtime reports timing both for delegate dispatches (carrying a
+    ``delegate_id``) and for fallback-run ops (``delegate_id`` is ``None``).
+    Delegate records are processed first so each delegate op forms its own
+    per-dispatch group, keyed ``(resolved_odix_id, op.odix_id)`` where the first
+    component comes from :func:`_build_source_to_odix_map`. Fallback records then
+    cover any remaining source ops not handled by a delegate, keyed
+    ``(op.odix_id, None)``. Values are de-duplicated in first-seen order.
+
+    Args:
+        debug_info_records: Parsed debug information.
+        source_level: Dialect level for the op IDs (defaults to ``"coreai"``).
+
+    Returns:
+        Dictionary mapping ``(odix_id, delegate_id)`` to source-level op IDs.
+
+    """
+    source_to_odix_map = _build_source_to_odix_map(debug_info_records, source_level)
+    result: dict[tuple[int, int | None], list[int]] = {}
+    # Source ops already attributed to a delegate dispatch; fallback records only
+    # cover the remaining ops.
+    claimed: set[int] = set()
+
+    # Pass 1: delegate records, one per-dispatch group each.
+    for record in debug_info_records:
+        if record.is_fallback:
+            continue
+        for op in record.operations:
+            delegate_id = op.odix_id
+            for coreai_id in op.get_op_ids(source_level):
+                odix_id = source_to_odix_map.get(coreai_id)
+                if odix_id is None or coreai_id in claimed:
+                    continue
+                coreai_ids = result.setdefault((odix_id, delegate_id), [])
+                if coreai_id not in coreai_ids:
+                    coreai_ids.append(coreai_id)
+                claimed.add(coreai_id)
+
+    # Pass 2: fallback records cover the remaining ops.
+    for record in debug_info_records:
+        if not record.is_fallback:
+            continue
+        for op in record.operations:
+            # Skip symbol ops; they are structural markers, not real ops.
+            if op.is_symbol():
+                continue
+            for coreai_id in op.get_op_ids(source_level):
+                if coreai_id in claimed:
+                    continue
+                coreai_ids = result.setdefault((op.odix_id, None), [])
+                if coreai_id not in coreai_ids:
+                    coreai_ids.append(coreai_id)
+
+    return result
+
+
+def get_operation_id(operation: Operation, level: str = "coreai") -> int | None:
+    """
+    Extract an operation ID from an operation's location.
+
+    Args:
+        operation: Operation whose location carries the operation ID.
+        level: Dialect level to extract the ID for (defaults to ``"coreai"``).
+
+    Returns:
+        The operation ID for *level*, or ``None`` if no ID is present.
+
+    """
+    op_id_obj = _mlir.get_operation_id(operation.location, level)
+    if op_id_obj is None:
+        return None
+    return getattr(op_id_obj, "value", None)
 
 
 def _build_coreai_op_map(program: AIProgram) -> dict[int, "Operation"]:
@@ -532,7 +1171,7 @@ def _build_coreai_op_map(program: AIProgram) -> dict[int, "Operation"]:
             op_map[op_id.value] = operation
         return WalkResult.ADVANCE
 
-    program._mlir_module.operation.walk(_collect)
+    program._module._mlir_module.operation.walk(_collect)
     return op_map
 
 
@@ -545,7 +1184,7 @@ def strip_debug_info(program: AIProgram) -> None:
     Args:
         program: The AIProgram to strip debug info from. Modified in place.
     """
-    module = program._mlir_module
+    module = program._module._mlir_module
     module_op = module.operation
     context = module_op.context
 

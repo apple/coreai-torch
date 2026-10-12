@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Union, cast
 
@@ -28,6 +28,7 @@ from .debug_info import (
     CompilationMappings,
     OutputMapping,
     SourceInfo,
+    get_operation_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -431,7 +432,7 @@ def _extract_source_identifiers_from_coreai_program(
         return WalkResult.ADVANCE
 
     # Walk the Core AI program to extract source info
-    coreai_program._mlir_module.operation.walk(extract_source_info)
+    coreai_program._module._mlir_module.operation.walk(extract_source_info)
 
     return dict(source_mappings)
 
@@ -456,7 +457,9 @@ def _extract_output_mappings_from_coreai_program(
     output_mappings = []
 
     # Use LocationAPI to get all output mappings from the module
-    output_maps = _mlir.get_all_output_maps_from_module(coreai_program._mlir_module)  # type: ignore[attr-defined]
+    output_maps = _mlir.get_all_output_maps_from_module(
+        coreai_program._module._mlir_module
+    )  # type: ignore[attr-defined]
 
     for output_map in output_maps:
         # Extract mapping fields
@@ -560,6 +563,32 @@ def _resolve_compiled_mappings(
     return max(mappings_list, key=lambda m: m.target_op_id)
 
 
+def _retarget_misattributed_mapping(
+    mapping: OutputMapping,
+    coreai_op_id_to_torch_op_id: dict[int, int],
+    last_coreai_op_id_by_torch_op_id: dict[int, int],
+) -> OutputMapping | None:
+    """
+    Retarget a mapping whose coreai op belongs to a different torch node.
+
+    Compiler rewrites can fuse a neighbour's output maps into an op, but its
+    primary source attribution stays correct.
+
+    Returns:
+        The mapping, pointed at the last coreai op of its own torch node, or None
+        if no coreai op belongs to that node.
+
+    """
+    target_torch_op_id = coreai_op_id_to_torch_op_id.get(mapping.target_op_id)
+    if target_torch_op_id is None or target_torch_op_id == mapping.source_op_id:
+        return mapping
+
+    retargeted_op_id = last_coreai_op_id_by_torch_op_id.get(mapping.source_op_id)
+    if retargeted_op_id is None:
+        return None
+    return replace(mapping, target_op_id=retargeted_op_id)
+
+
 def _deduplicate_torch_identifiers_by_coreai_output(
     mappings: dict[str, OutputMapping],
 ) -> dict[str, OutputMapping]:
@@ -638,8 +667,11 @@ def get_torch_to_coreai_output_mapping(
         mapping for mapping in all_mappings if mapping.target_level == "coreai"
     ]
 
-    # Build mapping from torch operation IDs to identifiers
+    # Build mapping from torch operation IDs to identifiers, and each coreai op's
+    # primary torch op.
     torch_op_id_to_identifier: dict[int, str] = {}
+    coreai_op_id_to_torch_op_id: dict[int, int] = {}
+    last_coreai_op_id_by_torch_op_id: dict[int, int] = {}
 
     def collect_torch_identifiers(operation: Operation) -> WalkResult:
         """Collect torch operation IDs and their single identifier."""
@@ -647,9 +679,16 @@ def get_torch_to_coreai_output_mapping(
         if result_info is not None:
             torch_op_id, identifier = result_info
             torch_op_id_to_identifier[torch_op_id] = identifier
+            coreai_op_id = get_operation_id(operation)
+            if coreai_op_id is not None:
+                coreai_op_id_to_torch_op_id[coreai_op_id] = torch_op_id
+                last_coreai_op_id_by_torch_op_id[torch_op_id] = max(
+                    coreai_op_id,
+                    last_coreai_op_id_by_torch_op_id.get(torch_op_id, coreai_op_id),
+                )
         return WalkResult.ADVANCE
 
-    module = coreai_program._mlir_module
+    module = coreai_program._module._mlir_module
     module.operation.walk(collect_torch_identifiers)
 
     # Map torch identifiers to output mappings
@@ -658,6 +697,11 @@ def get_torch_to_coreai_output_mapping(
             mapping.source_level == "torch"
             and mapping.source_op_id in torch_op_id_to_identifier
         ):
+            mapping = _retarget_misattributed_mapping(
+                mapping, coreai_op_id_to_torch_op_id, last_coreai_op_id_by_torch_op_id
+            )
+            if mapping is None:
+                continue
             identifier = torch_op_id_to_identifier[mapping.source_op_id]
             result[identifier].append(mapping)
 
@@ -707,7 +751,7 @@ def get_torch_to_ops_mapping(
 
         return WalkResult.ADVANCE
 
-    coreai_program._mlir_module.operation.walk(collect_ops)
+    coreai_program._module._mlir_module.operation.walk(collect_ops)
 
     return dict(mapping)
 

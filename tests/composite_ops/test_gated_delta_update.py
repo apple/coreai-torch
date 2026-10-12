@@ -38,6 +38,20 @@ from ..utils import (
 )
 
 
+def _log_decay_gate(*shape: int, dtype: torch.dtype) -> torch.Tensor:
+    """
+    A decay gate, in the log space the op reads it in.
+
+    `GatedDeltaUpdate` exponentiates `g` and multiplies the recurrent state by it
+    once per timestep, so `g` has to be negative for the recurrence to contract --
+    which is why models produce it through a log-sigmoid. Drawing it from `randn`
+    instead lets `exp(g)` reach e**3, growing the state by ~20x per step: over eight
+    steps that is a factor of 2.5e10, which leaves fp16 (max 65504) as infinities and
+    the values just below it with no significant digits left to agree on.
+    """
+    return torch.nn.functional.logsigmoid(torch.randn(*shape)).to(dtype)
+
+
 class TestGatedDeltaUpdate:
     """Tests for the gated_delta_update composite operation."""
 
@@ -64,7 +78,7 @@ class TestGatedDeltaUpdate:
         query = torch.randn(batch_size, num_heads, seq_len, head_k_dim, dtype=precision)
         key = torch.randn(batch_size, num_heads, seq_len, head_k_dim, dtype=precision)
         value = torch.randn(batch_size, num_heads, seq_len, head_v_dim, dtype=precision)
-        g = torch.randn(batch_size, num_heads, seq_len, dtype=precision)
+        g = _log_decay_gate(batch_size, num_heads, seq_len, dtype=precision)
         beta = torch.randn(batch_size, num_heads, seq_len, dtype=precision)
         initial_state = torch.randn(
             batch_size,
@@ -194,7 +208,7 @@ class TestGatedDeltaUpdate:
         query = torch.randn(batch_size, num_heads, seq_len, head_k_dim, dtype=precision)
         key = torch.randn(batch_size, num_heads, seq_len, head_k_dim, dtype=precision)
         value = torch.randn(batch_size, num_heads, seq_len, head_v_dim, dtype=precision)
-        g = torch.randn(batch_size, num_heads, seq_len, dtype=precision)
+        g = _log_decay_gate(batch_size, num_heads, seq_len, dtype=precision)
         beta = torch.randn(batch_size, num_heads, seq_len, dtype=precision)
         initial_state = torch.randn(
             batch_size,
@@ -246,7 +260,7 @@ class TestGatedDeltaUpdate:
 
         // CHECK: coreai.invoke @gated_delta_update_[[S]]
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.control_flow
     @pytest.mark.flaky(reruns=3)
@@ -299,7 +313,7 @@ class TestGatedDeltaUpdate:
         value = torch.randn(
             batch_size, num_heads, runtime_seq_len, head_v_dim, dtype=precision
         )
-        g = torch.randn(batch_size, num_heads, runtime_seq_len, dtype=precision)
+        g = _log_decay_gate(batch_size, num_heads, runtime_seq_len, dtype=precision)
         beta = torch.randn(batch_size, num_heads, runtime_seq_len, dtype=precision)
         initial_state = torch.randn(
             batch_size,

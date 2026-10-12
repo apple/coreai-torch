@@ -23,6 +23,19 @@ from coreai._compiler.ir import (
     Type,
 )
 
+_REDUCED_PRECISION_FLOAT_TYPES = (
+    Float4E2M1FNType,
+    Float8E4M3FNType,
+    Float8E5M2Type,
+    Float8E8M0FNUType,
+)
+
+
+def is_reduced_precision_float(elem_type: Type) -> bool:
+    """Whether ``elem_type`` is an fp4/fp8 float type."""
+    return isinstance(elem_type, _REDUCED_PRECISION_FLOAT_TYPES)
+
+
 # Mapping of Torch dtypes to Core AI types
 TORCH_TO_COREAI_DTYPE: dict[torch.dtype, Callable[[], Type]] = {
     torch.bool: lambda: IntegerType.get_signless(1),
