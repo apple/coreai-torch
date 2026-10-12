@@ -130,11 +130,11 @@ class OutputMap:
 class DebugInfo:
     """Comprehensive debug information for an operation.
 
-    Combines operation ID, source info, file locations, output maps, and module
-    hierarchy.
+    Combines source info, file locations, output maps, and module hierarchy.
+    Core AI operation IDs are not part of it: the compiler assigns those in
+    ``to_coreai``, overwriting anything recorded here.
     """
 
-    operation_id: OperationID | None  # Operation identifier
     source: Source | None  # Source information (optional)
     file_locations: list[FileLineColLoc]  # Stack trace file locations
     output_maps: list[OutputMap]  # Output mappings between stages
@@ -177,11 +177,6 @@ def _create_debug_location_from_debug_info(
     if debug_info.source:
         source_metadata_list = _create_source_metadatas(debug_info.source, context)
         metadata_attrs.extend(source_metadata_list)
-
-    # Add operation ID metadata
-    if debug_info.operation_id:
-        op_id_metadata = _create_operation_id_metadata(debug_info.operation_id, context)
-        metadata_attrs.append(op_id_metadata)
 
     # Add output maps metadata if present
     if debug_info.output_maps:
@@ -418,21 +413,19 @@ def _create_stack_trace_file_locations(
 def _create_debug_info_from_node(
     node: fx.Node,
     source_operation_id: int,
-    operation_id: int | None,
     module_registry: _ModuleInstanceRegistry,
 ) -> DebugInfo:
     """
-    Create a DebugInfo object from a torch.fx.Node and operation ID without
-    OutputMap.
+    Create a DebugInfo object from a torch.fx.Node without OutputMap.
 
     Args:
         node: FX node containing metadata for debug info
-        operation_id: Unique operation identifier
+        source_operation_id: Torch-level ID of the FX node
         module_registry: Module instance registry for hierarchy extraction
 
     Returns:
-        DebugInfo object with operation ID, source info, file locations,
-            and module hierarchy, but with empty output_maps list
+        DebugInfo object with source info, file locations, and module
+            hierarchy, but with empty output_maps list
     """
     source = Source(id=source_operation_id, name="torch", identifiers=[node.name])
 
@@ -442,7 +435,6 @@ def _create_debug_info_from_node(
     # Extract module hierarchy/call stack
     call_stack = _get_module_hierarchy(node, module_registry)
     return DebugInfo(
-        operation_id=operation_id,
         source=source,
         file_locations=file_locations,
         output_maps=[],
@@ -759,7 +751,6 @@ class _DebugInfoRecorder:
     ):
         self.config = config
         self.module_registry = _ModuleInstanceRegistry()
-        self._operation_id = 0
         self._source_operation_id = 0
         self._debug_info_map = _DebugInfoMap()
         self._current_module: Module | None = None
@@ -809,25 +800,6 @@ class _DebugInfoRecorder:
         unknown_src = self._get_unknown_src(context)
         return _create_unknown_location(unknown_src, context, metadata_attrs)
 
-    def _get_unknown_location_with_operation_id(
-        self: Self, debug_info: DebugInfo, context: Context
-    ) -> location_attr:
-        """Create an unknown location with operation_id metadata if available.
-
-        Reuses the cached unknown_src and attaches operation ID as metadata.
-
-        Args:
-            debug_info: Debug information containing optional operation_id
-            context: Core AI context
-
-        Returns:
-            LocationAttr with cached unknown_src and operation_id metadata
-        """
-        unknown_src = self._get_unknown_src(context)
-        return _create_unknown_location_with_operation_id(
-            debug_info.operation_id, unknown_src, context
-        )
-
     def _create_operation_location(
         self: Self,
         debug_info: DebugInfo,
@@ -842,11 +814,11 @@ class _DebugInfoRecorder:
             scope: Optional scope attribute
 
         Returns:
-            location_attr with debug info, or unknown location with operation
-            ID metadata when stack traces are disabled
+            location_attr with debug info, or an unknown location when stack
+            traces are disabled
         """
         if not self.config.include_stack_trace:
-            return self._get_unknown_location_with_operation_id(debug_info, context)
+            return self._get_unknown_location(context)
         if scope is None:
             scope = UnitAttr.get(context=context)
         return _create_debug_location_from_debug_info(
@@ -928,14 +900,9 @@ class _DebugInfoRecorder:
         """
         context = graph_operation.context
 
-        # Create operation ID metadata for the graph operation
-        graph_operation_id = OperationID(type="coreai", value=self._operation_id)
-        op_id_metadata = _create_operation_id_metadata(graph_operation_id, context)
-        self._operation_id += 1
-
         if not self.config.include_stack_trace:
-            # Create unknown location with metadata if locations are disabled
-            debug_location = self._get_unknown_location(context, [op_id_metadata])
+            # Create unknown location if locations are disabled
+            debug_location = self._get_unknown_location(context)
         else:
             # Get the graph name using the helper function
             graph_name = _get_symbol_name(graph_operation, "")
@@ -978,7 +945,6 @@ class _DebugInfoRecorder:
             debug_location = location_attr(
                 src=src_location,
                 scope=subprogram,
-                metadata=[op_id_metadata],
                 context=context,
             )
 
@@ -1054,11 +1020,9 @@ class _DebugInfoRecorder:
                 continue
 
             target_debug_info = self._debug_info_map.get(target_op)
-            target_op_id = (
-                target_debug_info.operation_id.value if target_debug_info else None
-            )
-
-            if target_op_id is None:
+            # The target carries no ID: the compiler assigns Core AI operation IDs in
+            # `to_coreai`, after conversion.
+            if target_debug_info is None:
                 continue
 
             output_map = OutputMap.create_torch_mapping(
@@ -1070,6 +1034,22 @@ class _DebugInfoRecorder:
                 target_level="coreai",
             )
             target_debug_info.output_maps.append(output_map)
+
+    def reset_module_registry(self: Self) -> None:
+        """Start instance numbering again from one.
+
+        Instance counts are meant to number the instances of a class *within one
+        module hierarchy* -- ``Block$1``, ``Block$2``, ``Block$3`` for a model with
+        three of them. A submodule converted standalone is a different hierarchy:
+        its root is ``L__self__`` of that submodule's own type, not a path within
+        the model. Counting both in one sequence consumed numbers that never
+        appear in the emitted asset, so a three-block model reported
+        ``Block$2..Block$4`` and had no ``Block$1`` at all.
+
+        Called between hierarchies rather than reaching into the registry, so what
+        the numbering promises stays stated in one place.
+        """
+        self.module_registry = _ModuleInstanceRegistry()
 
     @contextmanager
     def record_module(self: Self, module: Module):
@@ -1115,7 +1095,7 @@ class _DebugInfoRecorder:
         # Set graph location first so it can be reused by block arguments
         self._set_graph_location(graph_operation)
 
-        # Ensure ALL operations in the graph have debug locations with operation IDs
+        # Ensure ALL operations in the graph have debug locations
         self._ensure_all_operations_have_debug_locations(graph_operation)
 
         # Clear debug info map (also cleans up __debug_id attributes)
@@ -1152,7 +1132,9 @@ class _DebugInfoRecorder:
     def _find_new_operations(self: Self) -> list[Operation]:
         """Find operations that were added during the current operation context.
 
-        Uses op_results to find candidate operations, then checks all nested operations.
+        Uses op_results to find candidate operations, then walks operands to
+        reach the rest of the ops the lowering emitted, then checks all nested
+        operations.
 
         Returns:
             List of newly added operations that don't have debug info yet
@@ -1167,6 +1149,18 @@ class _DebugInfoRecorder:
                 and isinstance(op, Operation)
                 and op not in seen_ops
                 and op not in self._debug_info_map
+                # Never step out of the graph. The walk below goes *up* through
+                # parents, so without this it reaches the graph op itself, and
+                # the nested-operation scan a few lines down then yields every
+                # operation in the graph -- handing the whole body the debug info
+                # of whichever node was being lowered at the time.
+                #
+                # The first node lowered is the one that pays: it collects every
+                # parameter constant materialized during graph setup. In a
+                # 100-layer model that was 701 of 712 constants, all reporting
+                # the module of the first node (`Model$1/Block$1/RMSNorm$1`), so
+                # every Linear's weight claimed to belong to the first norm.
+                and op != self._current_graph
             )
 
         operations = []
@@ -1178,13 +1172,35 @@ class _DebugInfoRecorder:
                 operations.append(op)
                 op = op.parent
 
+        # Lowering one FX node can emit a chain of operations, of which only the
+        # last produces a returned result. The rest are reachable only through
+        # operand edges, so without this they never receive the node's debug info
+        # and fall through to _ensure_all_operations_have_debug_locations, which
+        # can give them nothing but an empty location. aten.addmm is one such case:
+        # it lowers to a transpose feeding a batch matmul feeding an add, and
+        # only the add would keep its file, line and module hierarchy.
+        #
+        # Ops already carrying debug info belong to an earlier node and end the
+        # walk there, so attribution is never reassigned from one node to another.
+        queue = list(operations)
+        while queue:
+            for operand in queue.pop().operands:
+                producer = operand.owner  # a Block, for a block argument
+                if should_process_op(producer):
+                    seen_ops.add(producer)
+                    operations.append(producer)
+                    queue.append(producer)
+
         added_operations = []
         for op in operations:
             added_operations.append(op)
             for nested_op in _get_nested_operations(op):
                 added_operations.append(nested_op)
 
-        return added_operations
+        # Deduplicated but NOT sorted into IR order: doing that here meant walking every
+        # operation converted so far, once per FX node, which made conversion quadratic in
+        # graph size. `finalize_node_operations` sets their locations in a single pass instead.
+        return list(dict.fromkeys(added_operations))
 
     def _assign_debug_info_to_operations(
         self: Self,
@@ -1193,21 +1209,21 @@ class _DebugInfoRecorder:
     ) -> None:
         """Assign debug information to a list of operations.
 
+        Locations are materialized later, by :meth:`finalize_node_operations`, once
+        the graph body is complete.
+
         Args:
             operations: List of operations to assign debug info to
             base_debug_info: Base debug information to copy and modify
         """
         for operation in operations:
-            operation_id = self._operation_id
             op_debug_info = DebugInfo(
-                operation_id=OperationID(type="coreai", value=operation_id),
                 source=base_debug_info.source,
                 file_locations=base_debug_info.file_locations,
                 output_maps=[],
                 call_stack=base_debug_info.call_stack,
             )
             self._debug_info_map[operation] = op_debug_info
-            self._operation_id += 1
 
     def _process_terminating_operations(self: Self, source_operation_id: int) -> None:
         """Process terminating operations and update output maps.
@@ -1241,7 +1257,6 @@ class _DebugInfoRecorder:
         debug_info = _create_debug_info_from_node(
             node=node,
             source_operation_id=self._source_operation_id,
-            operation_id=None,
             module_registry=self.module_registry,
         )
 
@@ -1267,33 +1282,45 @@ class _DebugInfoRecorder:
             # Process terminating operations and update output maps
             self._process_terminating_operations(source_op_id)
 
-            for operation in added_operations:
-                debug_info = self._debug_info_map[operation]
-                context = operation.context
-
-                if not self.config.include_stack_trace:
-                    # Create unknown location with metadata if locations are disabled
-                    location = self._get_unknown_location_with_operation_id(
-                        debug_info, context
-                    )
-                else:
-                    # Create location based on the specified mode
-                    scope = _get_parent_scope(operation)
-                    location = self._create_operation_location(
-                        debug_info, context, scope
-                    )
-
-                set_op_location(operation, location)
-
-                # Set block argument locations using the operation's location
-                self._set_block_argument_locations(operation)
-
         self._op_results = None
+
+    def finalize_node_operations(self: Self) -> None:
+        """Materialize locations for the operations lowered into the current graph.
+
+        Done once per graph rather than once per lowered node. Resolving IR order per node
+        meant walking every operation converted so far, making conversion quadratic in graph
+        size -- and each block walk ends in a binding-level C++ exception, so the constant
+        factor is large.
+
+        No operation IDs are assigned here: the compiler numbers every operation in
+        ``to_coreai`` and would overwrite them.
+
+        Call this after the graph body is complete but *before* any pass that moves
+        operations out of the graph: an operation that has been outlined elsewhere is no
+        longer reachable from this graph and would never get its location.
+        """
+        if self._current_graph is None:
+            return
+
+        for operation in _get_nested_operations(self._current_graph):
+            debug_info = self._debug_info_map.get(operation)
+            if debug_info is None:
+                continue
+
+            scope = _get_parent_scope(operation)
+            location = self._create_operation_location(
+                debug_info, operation.context, scope
+            )
+
+            set_op_location(operation, location)
+
+            # Set block argument locations using the operation's location
+            self._set_block_argument_locations(operation)
 
     def _ensure_all_operations_have_debug_locations(
         self: Self, graph_operation: Operation
     ) -> None:
-        """Ensure all operations in the graph have debug locations with operation IDs."""
+        """Ensure all operations in the graph have debug locations."""
         context = graph_operation.context
         default_scope = UnitAttr.get(context=context)
 
@@ -1308,28 +1335,17 @@ class _DebugInfoRecorder:
 
         # Create debug info for operations that don't have it
         for operation in operations_without_debug_info:
-            # Create minimal debug info with operation ID (no source needed)
-            operation_id = self._operation_id
+            # Create minimal debug info (no source for operations without FX node)
             debug_info = DebugInfo(
-                operation_id=OperationID(type="coreai", value=operation_id),
-                source=None,  # No source for operations without FX node
+                source=None,
                 file_locations=[],
                 output_maps=[],
                 call_stack=[],
             )
             self._debug_info_map[operation] = debug_info
-            self._operation_id += 1
 
-            # Create debug location
-            if not self.config.include_stack_trace:
-                # Create unknown location with metadata if locations are disabled
-                location = self._get_unknown_location_with_operation_id(
-                    debug_info, context
-                )
-            else:
-                # Create location based on the specified mode
-                scope = _get_scope(graph_operation) or default_scope
-                location = self._create_operation_location(debug_info, context, scope)
+            scope = _get_scope(graph_operation) or default_scope
+            location = self._create_operation_location(debug_info, context, scope)
 
             set_op_location(operation, location)
 

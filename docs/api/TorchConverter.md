@@ -10,7 +10,7 @@ from coreai_torch import TorchConverter, get_decomp_table
 
 `TorchConverter` traverses the exported FX graph of a PyTorch model, maps ATen operators to Core AI operations, and emits an `AIProgram` ready for on-device execution.
 
-Load a model using `add_exported_program()` or `add_pytorch_module()`, then call `to_coreai()` to produce the artifact. Register custom lowerings with `register_torch_lowering()` for ops that have no built-in mapping, and supply Metal kernel source for compute-intensive operations with `register_custom_kernels()`.
+Load a model using `add_exported_program()` or `add_pytorch_module()`, then call `to_coreai()` to produce the artifact. The returned program is already optimized — there is no separate optimization step. Register custom lowerings with `register_torch_lowering()` for ops that have no built-in mapping, and supply Metal kernel source for compute-intensive operations with `register_custom_kernels()`.
 
 ---
 
@@ -80,7 +80,6 @@ converter = TorchConverter().add_exported_program(
     output_names=["logits"],
 )
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 ---
@@ -127,7 +126,6 @@ converter = TorchConverter().add_pytorch_module(
     ),
 )
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 ---
@@ -148,6 +146,8 @@ Converts the loaded program into a Core AI `AIProgram`. This is the main entry p
 
 **Returns:** `AIProgram` — a compiled Core AI model ready for deployment and execution.
 
+The returned program is already optimized. `AIProgram.optimize()` has been removed — there is no separate optimization step to call.
+
 **Example:**
 
 ```python
@@ -157,7 +157,6 @@ converter = TorchConverter().add_exported_program(
     output_names=["logits"],
 )
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 ---
@@ -241,15 +240,19 @@ import torch
 from coreai._compiler.dialects import coreai
 from coreai_torch._utils import get_operands
 
+
 @torch.library.custom_op("my_lib::scaled_add", mutates_args=())
 def scaled_add(x: torch.Tensor, y: torch.Tensor, scale: float) -> torch.Tensor:
     return x + scale * y
+
 
 @scaled_add.register_fake
 def _(x, y, scale):
     return torch.empty_like(x)
 
+
 converter = TorchConverter()
+
 
 @converter.register_torch_lowering("my_lib::scaled_add.default")
 def lower_scaled_add(values_map, node, loc):
@@ -259,8 +262,8 @@ def lower_scaled_add(values_map, node, loc):
     scaled_y = coreai.broadcasting_mul(y, scale_val, loc=loc)
     return coreai.broadcasting_add(x, scaled_y, loc=loc)
 
+
 coreai_program = converter.add_exported_program(exported).to_coreai()
-coreai_program.optimize()
 ```
 
 **Example — override a built-in ATen op lowering:**
@@ -272,7 +275,10 @@ from coreai_torch._utils import get_operand
 
 converter = TorchConverter()
 
-@converter.register_torch_lowering("aten::_adaptive_avg_pool2d.default", allow_override=True)
+
+@converter.register_torch_lowering(
+    "aten::_adaptive_avg_pool2d.default", allow_override=True
+)
 def lower_adaptive_avg_pool2d_static(values_map, node, loc):
     x = get_operand(values_map, node, 0, loc)
     output_h, output_w = node.args[1]
@@ -290,8 +296,8 @@ def lower_adaptive_avg_pool2d_static(values_map, node, loc):
         coreai.cast(float(kernel_h * kernel_w), x.type.element_type),
     )
 
+
 coreai_program = converter.add_exported_program(exported).to_coreai()
-coreai_program.optimize()
 ```
 
 ---
@@ -317,7 +323,12 @@ Registers one or more `TorchMetalKernel` objects so the converter can convert th
 
 ```python
 import torch
-from coreai_torch import TorchConverter, TorchMetalKernel, MetalParameter, get_decomp_table
+from coreai_torch import (
+    TorchConverter,
+    TorchMetalKernel,
+    MetalParameter,
+    get_decomp_table,
+)
 
 
 def torch_add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -339,7 +350,6 @@ converter.register_custom_kernels([kernel])
 exported = torch.export.export(model, args=example_inputs)
 exported = exported.run_decompositions(get_decomp_table())
 coreai_program = converter.add_exported_program(exported).to_coreai()
-coreai_program.optimize()
 ```
 
 See the {doc}`../guides/custom-metal-kernels` guide for a full walkthrough.
@@ -371,7 +381,6 @@ from coreai_torch import TorchConverter, get_decomp_table
 ep = torch.export.export(model, args=example_inputs)
 ep = ep.run_decompositions(get_decomp_table())
 coreai_program = TorchConverter().add_exported_program(ep).to_coreai()
-coreai_program.optimize()
 ```
 
 **With `add_pytorch_module`**:
@@ -383,13 +392,12 @@ coreai_program = (
     TorchConverter()
     .add_pytorch_module(
         model,
-        export_fn=lambda m: torch.export.export(m, args=example_inputs).run_decompositions(
-            coreai_torch.get_decomp_table()
-        ),
+        export_fn=lambda m: torch.export.export(
+            m, args=example_inputs
+        ).run_decompositions(coreai_torch.get_decomp_table()),
     )
     .to_coreai()
 )
-coreai_program.optimize()
 ```
 
 ---
@@ -457,6 +465,7 @@ class Linear(nn.Module):
     def forward(self, x):
         return self.fc(x)
 
+
 ep = torch.export.export(Linear().eval(), args=(torch.randn(1, 8),))
 ep = ep.run_decompositions(get_decomp_table())
 
@@ -464,7 +473,7 @@ TorchConverter().add_exported_program(
     ep,
     input_names=["features"],
     output_names=["logits"],
-).to_coreai().optimize()
+).to_coreai()
 ```
 
 **Stateful model** — all three parameters:
@@ -473,15 +482,16 @@ TorchConverter().add_exported_program(
 class KVCache(nn.Module):
     def __init__(self):
         super().__init__()
-        self.register_buffer("kv_cache", torch.zeros(1, 4))   # state[0]
-        self.register_buffer("pos_idx", torch.zeros(1))       # state[1]
+        self.register_buffer("kv_cache", torch.zeros(1, 4))  # state[0]
+        self.register_buffer("pos_idx", torch.zeros(1))  # state[1]
 
     def forward(self, x, y, z):
-        self.kv_cache.add_(x)       # buffer mutation
-        self.pos_idx.add_(1)        # buffer mutation
-        y.mul_(2)                   # state[2]: mutated user input
+        self.kv_cache.add_(x)  # buffer mutation
+        self.pos_idx.add_(1)  # buffer mutation
+        y.mul_(2)  # state[2]: mutated user input
         # non-mutated: x -> input[0], z -> input[1]
         return self.kv_cache + y, z * 3
+
 
 ep = torch.export.export(
     KVCache().eval(),
@@ -494,7 +504,7 @@ TorchConverter().add_exported_program(
     state_names=["kv_cache", "pos_idx", "y_state"],
     input_names=["query", "context"],
     output_names=["attn_out", "scaled"],
-).to_coreai().optimize()
+).to_coreai()
 ```
 
 The converter applies these names to the graph's inputs and outputs: mutated buffers and mutated user inputs become model state (in `state_names` order), followed by the non-mutated `input_names` and the returned `output_names`.

@@ -692,17 +692,9 @@ class TestAtan2:
         await validate_numerical_output(model=model, y=y, x=x)
 
 
-@pytest.mark.parametrize(
-    "x",
-    [
-        torch.rand(2, 3, 8, 8),
-        torch.rand(2, 3, 8, 8, dtype=torch.float16),  # fp16
-    ],
-)
-@pytest.mark.parametrize(
-    "dynamic_dims", [tuple(), (0,), (2,), (3,), (0, 2), (0, 3), (0, 2, 3)]
-)
-async def test_batchnorm(x: Tensor, dynamic_dims: tuple[int]) -> None:
+class TestBatchNorm:
+    """Tests for native_batch_norm → coreai batch_norm composite."""
+
     class BatchNormModel(nn.Module):
         def __init__(self) -> None:
             super().__init__()
@@ -711,10 +703,47 @@ async def test_batchnorm(x: Tensor, dynamic_dims: tuple[int]) -> None:
         def forward(self, x: Tensor) -> Tensor:
             return self.bn(x)
 
-    model = BatchNormModel().eval()
-    dim_names = {0: "batch", 1: "channels", 2: "height", 3: "width"}
-    dynamic_shapes = make_dynamic_shapes(x={d: dim_names[d] for d in dynamic_dims})
-    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+    @pytest.mark.parametrize(
+        "x",
+        [
+            torch.rand(2, 3, 8, 8),
+            torch.rand(2, 3, 8, 8, dtype=torch.float16),  # fp16
+        ],
+    )
+    @pytest.mark.parametrize(
+        "dynamic_dims", [tuple(), (0,), (2,), (3,), (0, 2), (0, 3), (0, 2, 3)]
+    )
+    async def test_basic(self, x: Tensor, dynamic_dims: tuple[int]) -> None:
+        model = self.BatchNormModel().eval()
+        dim_names = {0: "batch", 1: "channels", 2: "height", 3: "width"}
+        dynamic_shapes = make_dynamic_shapes(x={d: dim_names[d] for d in dynamic_dims})
+        await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+    @pytest.mark.parametrize(
+        "running_var, running_mean, weight",
+        [
+            # running_var past the fp16 max (65504) becomes inf when the params are
+            # downcast before the sqrt, which silently zeroes the whole output.
+            ([1e6, 2e5, 9e4], [0.0, 1.0, -2.0], [2000.0, 1000.0, 500.0]),
+            # Tiny variances make eps and the param mantissas precision-critical.
+            ([1e-6, 4e-5, 2.0], [0.5, -0.25, 100.0], [1.0, 2.0, 0.5]),
+        ],
+    )
+    async def test_fp16_input_fp32_params(
+        self,
+        running_var: list[float],
+        running_mean: list[float],
+        weight: list[float],
+    ) -> None:
+        """An fp16 activation with fp32 params must be computed in fp32."""
+        model = self.BatchNormModel().eval()
+        model.bn.running_var.data = torch.tensor(running_var)
+        model.bn.running_mean.data = torch.tensor(running_mean)
+        model.bn.weight.data = torch.tensor(weight)
+        model.bn.bias.data = torch.tensor([0.0, 1.0, -1.0])
+
+        x = (torch.rand(2, 3, 4, 4) * 2 - 1).half()
+        await validate_numerical_output(model=model, x=x)
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
@@ -1210,6 +1239,35 @@ class TestConstantPadNd:
         dynamic_shapes = self._dynamic_shapes(x) if dynamic else None
         await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
+    @pytest.mark.parametrize("value", [0.0, 7.0])
+    @pytest.mark.parametrize(
+        "make_pad",
+        [
+            lambda x: (0, x.shape[-1]),  # pad last dim by its own (dynamic) size
+            lambda x: (0, 0, 0, x.shape[0]),  # pad 2nd-to-last dim by dim0's size
+        ],
+        ids=["pad-last", "pad-dim-2"],
+    )
+    async def test_dynamic_pad_amount(self, make_pad, value: float) -> None:
+        """Pad amount is a runtime value (symbolic ``fx.Node``), not a compile-time
+        constant, so ``coreai.pad`` receives a runtime padding tensor rather than a
+        constant. Covers padding the last and 2nd-to-last dims.
+        """
+
+        class PadModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.nn.functional.pad(
+                    x, make_pad(x), mode="constant", value=value
+                )
+
+        x = torch.rand(2, 5)
+        dynamic_shapes = {
+            "x": {0: torch.export.Dim("b", min=1), 1: torch.export.Dim("n", min=1)}
+        }
+        await validate_numerical_output(
+            model=PadModel().eval(), x=x, dynamic_shapes=dynamic_shapes
+        )
+
 
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
@@ -1233,12 +1291,24 @@ class TestConstantPadNd:
             torch.tensor([-0.5, -0.3, -0.1, -0.2]),
             torch.tensor([0.2, 0.4, 0.6, 0.8]),
         ),
+        # Integer input with float bounds: PyTorch promotes the result to the
+        # default float dtype rather than clamping in the input's dtype.
+        (torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4), -1.5, 1.5),
+        (torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4), -1.5, None),
+        (torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4), None, 1.5),
+        (
+            torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4),
+            torch.full((3, 4), -1.5),
+            torch.full((3, 4), 1.5),
+        ),
+        # Integer input with integer bounds stays integral.
+        (torch.arange(-6, 6, dtype=torch.int32).reshape(3, 4), -2, 2),
     ],
 )
 async def test_clamp(
     x: Tensor,
-    min_bound: float | Tensor | None,
-    max_bound: float | Tensor | None,
+    min_bound: int | float | Tensor | None,
+    max_bound: int | float | Tensor | None,
     dynamic: bool,
 ) -> None:
     """Test clamp with scalar or tensor min/max bounds (clamp.default and clamp.Tensor)."""
@@ -1540,6 +1610,8 @@ class TestConvolution:
             (2, 4, 3, (1, 1), (2, 2), (2, 2), (0, 0), 1, False),
             # ConvTranspose2d: With output_padding
             (1, 1, 3, (2, 2), (1, 1), (1, 1), (1, 1), 1, False),
+            # ConvTranspose2d: output_padding permitted by dilation, not stride
+            (2, 4, 3, (1, 1), (0, 0), (3, 3), (2, 2), 1, False),
             # ConvTranspose2d: Grouped convolution
             (4, 4, 3, (2, 2), (1, 1), (1, 1), (0, 0), 2, False),
             # ConvTranspose1d: Basic case
@@ -1622,6 +1694,26 @@ class TestConvolution:
         else:
             dynamic_shapes = None
         await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+    @pytest.mark.parametrize(
+        "stride, dilation, output_padding",
+        [
+            ((1, 2), (1, 1), (1, 1)),
+            ((2, 1), (1, 1), (1, 1)),
+        ],
+    )
+    def test_conv_transpose_invalid_output_padding(
+        self, stride: Any, dilation: Any, output_padding: Any
+    ) -> None:
+        """output_padding must be < stride or < dilation in every spatial dim."""
+        model = nn.ConvTranspose2d(
+            2, 2, 3, stride=stride, dilation=dilation, output_padding=output_padding
+        ).eval()
+        ep = torch.export.export(
+            model, args=(torch.rand(2, 2, 8, 8),)
+        ).run_decompositions()
+        with pytest.raises(ValueError, match="output padding must be smaller"):
+            TorchConverter().add_exported_program(ep).to_coreai()
 
     @pytest.mark.parametrize(
         "is_1d, output_padding",
@@ -1712,106 +1804,165 @@ class TestCopy:
         )
 
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("x", [torch.rand(2, 2)])
-@pytest.mark.parametrize("y", [torch.rand(2, 2)])
-async def test_div(x: Tensor, y: Tensor, dynamic: bool) -> None:
-    class DivModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
+class TestDiv:
+    """Test suite for aten.div.Tensor / div.Scalar / div.Tensor_mode /
+    true_divide.Tensor → coreai.broadcasting_divide conversion."""
 
-        def forward(self, x: Tensor, y: Tensor) -> Tensor:
-            return x / y
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize("x", [torch.rand(2, 2)])
+    @pytest.mark.parametrize("y", [torch.rand(2, 2)])
+    async def test_div(self, x: Tensor, y: Tensor, dynamic: bool) -> None:
+        class DivModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
 
-    model = DivModel().eval()
-    if dynamic:
-        dims = _all_dims_dynamic(x)
-        dynamic_shapes = {"x": dims, "y": dims}
-    else:
-        dynamic_shapes = None
-    await validate_numerical_output(
-        model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return x / y
+
+        model = DivModel().eval()
+        if dynamic:
+            dims = _all_dims_dynamic(x)
+            dynamic_shapes = {"x": dims, "y": dims}
+        else:
+            dynamic_shapes = None
+        await validate_numerical_output(
+            model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+        )
+
+    @pytest.mark.parametrize(
+        "x,y",
+        [
+            (
+                torch.tensor([7, -7, 3, 1], dtype=torch.int32),
+                torch.tensor([2, 2, 2, 4], dtype=torch.int32),
+            ),
+            (
+                torch.tensor([1, 2, 3, 4], dtype=torch.int64),
+                torch.tensor([3, 3, 3, 3], dtype=torch.int64),
+            ),
+        ],
     )
+    async def test_div_integer_promotes_to_float(self, x: Tensor, y: Tensor) -> None:
+        """aten.div.Tensor on integer operands must promote to float before dividing."""
 
+        class DivModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return x / y
 
-@pytest.mark.parametrize(
-    "x,y",
-    [
-        # Float tensors - mixed positive/negative values
-        (
-            torch.tensor([[3.5, -7.2], [-2.8, 9.1]]),
-            torch.tensor([[2.0, 3.0], [2.0, -4.0]]),
-        ),
-        # Larger tensors
-        (
-            torch.rand(3, 4) * 10 - 5,
-            torch.rand(3, 4) * 4 + 0.5,
-        ),  # Avoid division by values near zero
-        # Broadcasting case
-        (torch.rand(2, 3, 4) * 10 - 5, torch.rand(1, 3, 1) * 4 + 0.5),
-    ],
-)
-@pytest.mark.parametrize("rounding_mode", [None, "floor", "trunc"])
-async def test_div_tensor_mode(x: Tensor, y: Tensor, rounding_mode: str | None) -> None:
-    """Test division with different rounding modes.
+        model = DivModel().eval()
+        await validate_numerical_output(model=model, x=x, y=y)
 
-    aten.div.Tensor_mode(input, other, rounding_mode) supports:
-        - None: True division (standard floating-point division)
-        - "floor": Floor division (rounds toward negative infinity)
-        - "trunc": Truncated division (rounds toward zero)
-    """
+    async def test_div_scalar_integer_promotes_to_float(self) -> None:
+        """aten.div.Scalar on an integer tensor must promote to float before dividing."""
+        x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
 
-    class DivTensorModeModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
+        class DivScalarModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return x / 4
 
-        def forward(self, x: Tensor, y: Tensor) -> Tensor:
-            return torch.div(x, y, rounding_mode=rounding_mode)
+        await validate_numerical_output(model=DivScalarModel().eval(), x=x)
 
-    model = DivTensorModeModel().eval()
-    await validate_numerical_output(model=model, x=x, y=y)
+    async def test_true_divide_integer_promotes_to_float(self) -> None:
+        """aten.true_divide.Tensor on integer operands must promote to float before dividing."""
+        x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
+        y = torch.tensor([2, 2, 2, 4], dtype=torch.int32)
 
+        class TrueDivideModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.true_divide(x, y)
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize(
-    "x,y",
-    [
-        (torch.rand(2, 3) + 0.1, torch.rand(2, 3) + 0.1),
-        (torch.rand(3, 4, 5) + 0.1, torch.rand(3, 4, 5) + 0.1),
-        (torch.rand(4) + 0.1, torch.rand(4) + 0.1),
-        # FP16
-        (
-            torch.rand(2, 3, dtype=torch.float16) + 0.1,
-            torch.rand(2, 3, dtype=torch.float16) + 0.1,
-        ),
-    ],
-)
-async def test_true_divide(x: Tensor, y: Tensor, dynamic: bool) -> None:
-    class TrueDivideModel(nn.Module):
-        def forward(self, x: Tensor, y: Tensor) -> Tensor:
-            return torch.true_divide(x, y)
+        await validate_numerical_output(model=TrueDivideModel().eval(), x=x, y=y)
 
-    model = TrueDivideModel().eval()
-    if dynamic:
-        dims = _all_dims_dynamic(x)
-        dynamic_shapes = {"x": dims, "y": dims}
-    else:
-        dynamic_shapes = None
-    await validate_numerical_output(
-        model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+    async def test_div_tensor_mode_none_integer_promotes_to_float(self) -> None:
+        """aten.div.Tensor_mode with rounding_mode=None on integer operands must
+        promote to float before dividing, matching aten.div.Tensor semantics."""
+        x = torch.tensor([7, -7, 3, 1], dtype=torch.int32)
+        y = torch.tensor([2, 2, 2, 4], dtype=torch.int32)
+
+        class DivTensorModeModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.div(x, y, rounding_mode=None)
+
+        await validate_numerical_output(model=DivTensorModeModel().eval(), x=x, y=y)
+
+    @pytest.mark.parametrize(
+        "x,y",
+        [
+            # Float tensors - mixed positive/negative values
+            (
+                torch.tensor([[3.5, -7.2], [-2.8, 9.1]]),
+                torch.tensor([[2.0, 3.0], [2.0, -4.0]]),
+            ),
+            # Larger tensors
+            (
+                torch.rand(3, 4) * 10 - 5,
+                torch.rand(3, 4) * 4 + 0.5,
+            ),  # Avoid division by values near zero
+            # Broadcasting case
+            (torch.rand(2, 3, 4) * 10 - 5, torch.rand(1, 3, 1) * 4 + 0.5),
+        ],
     )
+    @pytest.mark.parametrize("rounding_mode", [None, "floor", "trunc"])
+    async def test_div_tensor_mode(
+        self, x: Tensor, y: Tensor, rounding_mode: str | None
+    ) -> None:
+        """Test division with different rounding modes.
 
+        aten.div.Tensor_mode(input, other, rounding_mode) supports:
+            - None: True division (standard floating-point division)
+            - "floor": Floor division (rounds toward negative infinity)
+            - "trunc": Truncated division (rounds toward zero)
+        """
 
-@pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("x", [torch.rand(2, 3) + 0.1, torch.rand(3, 4, 5) + 0.1])
-async def test_true_divide_scalar(x: Tensor, dynamic: bool) -> None:
-    class TrueDivideScalarModel(nn.Module):
-        def forward(self, x: Tensor) -> Tensor:
-            return torch.true_divide(x, 2.0)
+        class DivTensorModeModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
 
-    model = TrueDivideScalarModel().eval()
-    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
-    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.div(x, y, rounding_mode=rounding_mode)
+
+        model = DivTensorModeModel().eval()
+        await validate_numerical_output(model=model, x=x, y=y)
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize(
+        "x,y",
+        [
+            (torch.rand(2, 3) + 0.1, torch.rand(2, 3) + 0.1),
+            (torch.rand(3, 4, 5) + 0.1, torch.rand(3, 4, 5) + 0.1),
+            (torch.rand(4) + 0.1, torch.rand(4) + 0.1),
+            # FP16
+            (
+                torch.rand(2, 3, dtype=torch.float16) + 0.1,
+                torch.rand(2, 3, dtype=torch.float16) + 0.1,
+            ),
+        ],
+    )
+    async def test_true_divide(self, x: Tensor, y: Tensor, dynamic: bool) -> None:
+        class TrueDivideModel(nn.Module):
+            def forward(self, x: Tensor, y: Tensor) -> Tensor:
+                return torch.true_divide(x, y)
+
+        model = TrueDivideModel().eval()
+        if dynamic:
+            dims = _all_dims_dynamic(x)
+            dynamic_shapes = {"x": dims, "y": dims}
+        else:
+            dynamic_shapes = None
+        await validate_numerical_output(
+            model=model, x=x, y=y, dynamic_shapes=dynamic_shapes
+        )
+
+    @pytest.mark.parametrize("dynamic", [False, True])
+    @pytest.mark.parametrize("x", [torch.rand(2, 3) + 0.1, torch.rand(3, 4, 5) + 0.1])
+    async def test_true_divide_scalar(self, x: Tensor, dynamic: bool) -> None:
+        class TrueDivideScalarModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.true_divide(x, 2.0)
+
+        model = TrueDivideScalarModel().eval()
+        dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+        await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
@@ -2244,6 +2395,41 @@ async def test_full(
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
+@pytest.mark.parametrize("fill_value", [0.0, 1.0, 2.0])
+async def test_full_fp8(fill_value: float, dtype: torch.dtype, dynamic: bool) -> None:
+    """Numerically validate fp8 ``torch.full``."""
+
+    class FullFp8Model(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return torch.full(x.shape, fill_value, dtype=dtype).to(torch.float32) + x
+
+    x = torch.zeros(2, 32, dtype=torch.float32)
+    model = FullFp8Model().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
+@pytest.mark.parametrize("fill_value", [0.0, 1.0, 2.0])
+async def test_full_like_fp8(
+    fill_value: float, dtype: torch.dtype, dynamic: bool
+) -> None:
+    """Numerically validate fp8 ``torch.full_like`` (splat constant path)."""
+
+    class FullLikeFp8Model(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            fp8 = x.to(dtype)
+            return torch.full_like(fp8, fill_value).to(torch.float32) + x
+
+    x = torch.zeros(2, 32, dtype=torch.float32)
+    model = FullLikeFp8Model().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("x", [torch.rand(2, 2), torch.rand(3, 4, 5)])
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 async def test_gelu(x: Tensor, approximate: str, dynamic: bool) -> None:
@@ -2512,7 +2698,6 @@ class TestLayerNorm:
             model=model,
             x=x,
             dynamic_shapes=make_dynamic_shapes(x=dynamic_dims),
-            run_optimize_passes=True,
         )
 
 
@@ -2555,7 +2740,7 @@ async def test_local_scalar_dense(x: Tensor, col: Tensor, dynamic: bool) -> None
     class SelectColModel(nn.Module):
         def forward(self, x: Tensor, col: Tensor) -> Tensor:
             c = col.item()
-            torch._check_is_size(c)
+            torch._check(c >= 0)
             torch._check(
                 c + 1 <= x.shape[1]
             )  # shape[1]=4 is static, provable at export time
@@ -2918,6 +3103,70 @@ async def test_mean(
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
+    "x,dim,keepdim,target_dtype",
+    [
+        # mean.default: global mean (dim=None), int32 input → float32 output.
+        # torch promotes the operand to the requested dtype BEFORE averaging.
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), None, False, torch.float32),
+        (
+            torch.randint(-5, 5, (2, 3, 4), dtype=torch.int32),
+            None,
+            False,
+            torch.float32,
+        ),
+        # mean.dim: reduce along specific dimensions, int32 input → float32.
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), 1, False, torch.float32),
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), 0, True, torch.float32),
+        (
+            torch.randint(-5, 5, (2, 3, 4), dtype=torch.int32),
+            [0, 2],
+            False,
+            torch.float32,
+        ),
+        (
+            torch.randint(-5, 5, (2, 3, 4), dtype=torch.int32),
+            [0, 2],
+            True,
+            torch.float32,
+        ),
+        # dtype-agnostic: root cause is independent of the specific int operand
+        # dtype or the specific float target dtype.
+        (torch.randint(0, 10, (3, 4), dtype=torch.int64), 1, False, torch.float32),
+        (torch.randint(0, 10, (3, 4), dtype=torch.int32), None, False, torch.float16),
+    ],
+)
+async def test_mean_dtype_kwarg_integer(
+    x: Tensor,
+    dim: int | list[int] | None,
+    keepdim: bool,
+    target_dtype: torch.dtype,
+    dynamic: bool,
+) -> None:
+    """Regression: torch.mean(x, dtype=...) on an integer tensor must promote the
+    operand to the requested dtype before averaging, not crash at conversion time.
+
+    Covers both aten.mean.default (dim=None) and aten.mean.dim (dim=...) with an
+    explicit float dtype kwarg on an integer operand — the operand must be cast to
+    the output element type before reduce_mean, mirroring sum's dtype handling.
+    Parametrized across int32/int64 operands and float32/float16 targets since the
+    root cause is dtype-agnostic (the cast was simply never attempted)."""
+
+    class MeanDtypeModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+
+        def forward(self, x: Tensor) -> Tensor:
+            if dim is None:
+                return torch.mean(x, dtype=target_dtype)
+            return torch.mean(x, dim=dim, keepdim=keepdim, dtype=target_dtype)
+
+    model = MeanDtypeModel().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("x", [torch.rand(2, 2)])
 @pytest.mark.parametrize("y", [torch.rand(2, 2)])
 async def test_minimum(x: Tensor, y: Tensor, dynamic: bool) -> None:
@@ -3001,6 +3250,86 @@ async def test_min_dim(
     model = MinDimModel().eval()
     dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+class TestMinDimArgminDtypeExtremes:
+    """min.dim argmin indices must be correct even at dtype-extremal minima.
+
+    Core AI has argmax but not argmin, so ``replace_min_dim`` derives the
+    argmin index by reversing the order of ``x`` and taking ``argmax``. The
+    reversal must be exact at the extremes of the input dtype's range:
+
+      * uint8 minimum ``0`` — a plain ``-x`` (i.e. ``x * -1``) negation maps
+        ``0`` to ``0`` rather than the top of the unsigned range, so the true
+        minimum stops being the argmax.
+      * int8 minimum ``-128`` — ``-128 * -1`` overflows the signed range and
+        (under wrapping arithmetic) lands back on ``-128``.
+
+    Both were previously wrong on interpreter/cpu/gpu. The fix reverses integer
+    inputs with the bitwise complement ``~x`` (a strictly decreasing bijection
+    over the whole integer range that never overflows), leaving the exact float
+    negation path untouched. Ground truth is ``torch.min(x, dim=...)``.
+    """
+
+    class MinDimModel(nn.Module):
+        def __init__(self, dim: int, keepdim: bool) -> None:
+            super().__init__()
+            self.dim = dim
+            self.keepdim = keepdim
+
+        def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+            return torch.min(x, dim=self.dim, keepdim=self.keepdim)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    @pytest.mark.parametrize(
+        "values,dtype",
+        [
+            # uint8: true minimum is 0 (bottom of the unsigned range).
+            ([3, 1, 0, 5], torch.uint8),
+            # Signed dtypes at their exact minimum (INT_MIN), which overflows
+            # under the old ``x * -1`` negation trick.
+            ([3, 1, -128, 5], torch.int8),
+            ([3, 1, -(2**15), 5], torch.int16),
+            ([3, 1, -(2**31), 5], torch.int32),
+            # NOTE: coreai-torch narrows int64 inputs to int32 at the graph
+            # boundary, so the exercisable extreme for the int64 dtype *path*
+            # is int32's minimum (a true int64 min of -2**63 would be
+            # truncated at that boundary, unrelated to this argmin fix).
+            ([3, 1, -(2**31), 5], torch.int64),
+        ],
+    )
+    async def test_dtype_min_value(
+        self, values: list[int], dtype: torch.dtype, keepdim: bool
+    ) -> None:
+        x = torch.tensor(values, dtype=dtype)
+        model = self.MinDimModel(dim=0, keepdim=keepdim).eval()
+        await validate_numerical_output(model=model, x=x)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    @pytest.mark.parametrize(
+        "values,dtype",
+        [
+            # Duplicate minima at the dtype extreme: torch returns the FIRST
+            # index (index 0 here), which the reversal must preserve.
+            ([-128, -128, 5], torch.int8),
+            ([0, 0, 5], torch.uint8),
+        ],
+    )
+    async def test_duplicate_minima_first_index(
+        self, values: list[int], dtype: torch.dtype, keepdim: bool
+    ) -> None:
+        x = torch.tensor(values, dtype=dtype)
+        # Sanity-check the ground-truth tie-break we are asserting against.
+        assert int(torch.min(x, dim=0).indices) == 0
+        model = self.MinDimModel(dim=0, keepdim=keepdim).eval()
+        await validate_numerical_output(model=model, x=x)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    async def test_float_path_untouched(self, keepdim: bool) -> None:
+        # Float negation is exact/no-overflow; confirm it still validates.
+        x = torch.tensor([3.0, 1.0, -5.0, 2.0], dtype=torch.float32)
+        model = self.MinDimModel(dim=0, keepdim=keepdim).eval()
+        await validate_numerical_output(model=model, x=x)
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
@@ -3365,11 +3694,13 @@ class TestRepeat:
                 // CHECK-LABEL: coreai.graph @main
                 // CHECK-SAME:    %arg0: tensor<2x3xf32>
                 // CHECK-SAME:    %arg1: tensor<?x8xf32>
-                // CHECK:         %[[SHAPE:.+]] = coreai.get_shape %arg1 : tensor<?x8xf32> -> tensor<2xui32>
-                // CHECK:         %[[SLICE:.+]] = coreai.slice %[[SHAPE]]
-                // CHECK-SAME:      -> tensor<1xui32>
                 // CHECK:         %[[ONE:.+]] = coreai.constant dense<1> : tensor<1xui32>
-                // CHECK:         %[[DIMS:.+]] = coreai.concat {{.*}}, %{{.+}}, %[[ONE]]
+                // CHECK:         %[[SHAPE:.+]] = coreai.get_shape %arg1 : tensor<?x8xf32> -> tensor<2xui32>
+                // CHECK:         %[[SHAPE_SI32:.+]] = coreai.cast %[[SHAPE]] : tensor<2xui32> to tensor<2xsi32>
+                // CHECK:         %[[SLICE:.+]] = coreai.slice %[[SHAPE_SI32]]
+                // CHECK-SAME:      -> tensor<1xsi32>
+                // CHECK:         %[[BATCH:.+]] = coreai.cast %[[SLICE]] : tensor<1xsi32> to tensor<1xui32>
+                // CHECK:         %[[DIMS:.+]] = coreai.concat {{.*}}, %[[BATCH]], %[[ONE]]
                 // CHECK-SAME:      -> tensor<2xui32>
                 // CHECK:         %[[OUT:.+]] = coreai.tile %arg0, %[[DIMS]]
                 // CHECK:         coreai.output %[[OUT]]
@@ -3574,7 +3905,6 @@ class TestRound:
         self._rewrite_to_overload_packet(program)
 
         coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-        coreai_program.optimize()
         # The bare ``aten.round`` target must reach ``coreai.round`` —
         # not produce a different op or fail with ``Unsupported ATen op``.
         # Shape and element type must pass through unchanged.
@@ -3649,7 +3979,6 @@ class TestView:
         # with the diagnostic ``expected the same element type for all
         # inputs to concat``.
         coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-        coreai_program.optimize()
         # The fix's job is to normalise every entry of the view shape
         # ``[1, 1024, h, w]`` to the same canonical rank-1 si32 form
         # before the dim-vector concat. The check below pins:
@@ -3677,8 +4006,9 @@ class TestView:
                 // CHECK:         %[[SHAPE:.+]] = coreai.concat {{.*}} : (tensor<si32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<4xsi32>
                 //
                 // Final reshape uses that shape vector to produce the 4-D output.
-                // (After optimize() the inner ``view(1, 1024, -1)`` is fused
-                // away, so the reshape applies directly to %arg0.):
+                // (The pre-compilation rewrite fuses the inner
+                // ``view(1, 1024, -1)`` away, so the reshape applies directly
+                // to %arg0.):
                 // CHECK:         %[[OUT:.+]] = coreai.reshape %[[ARG0]], %[[SHAPE]] : (tensor<1x1024x?x?xf16>, tensor<4xsi32>) -> tensor<1x1024x?x?xf16>
                 // CHECK:         coreai.output %[[OUT]]
             """,
@@ -4571,15 +4901,16 @@ class TestMaskedScatter:
                 // CHECK-SAME:    %arg0: tensor<2x3xf32>
                 // CHECK-SAME:    %arg1: tensor<2x3xi1>
                 // CHECK-SAME:    %arg2: tensor<6xf32>
-                // CHECK:         %[[SF:.+]] = coreai.reshape %arg0, %{{.+}} : (tensor<2x3xf32>, tensor<1xsi32>) -> tensor<6xf32>
-                // CHECK:         %[[MF:.+]] = coreai.reshape %arg1, %{{.+}} : (tensor<2x3xi1>, tensor<1xsi32>) -> tensor<6xi1>
-                // CHECK:         %[[VF:.+]] = coreai.reshape %arg2, %{{.+}} : (tensor<6xf32>, tensor<1xsi32>) -> tensor<6xf32>
+                // CHECK:         %[[SF:.+]] = coreai.reshape %arg0, %{{.+}} : (tensor<2x3xf32>, tensor<1xui32>) -> tensor<6xf32>
+                // CHECK:         %[[MF:.+]] = coreai.reshape %arg1, %{{.+}} : (tensor<2x3xi1>, tensor<1xui32>) -> tensor<6xi1>
                 // CHECK:         %[[MI:.+]] = coreai.cast %[[MF]] : tensor<6xi1> to tensor<6xsi32>
                 // CHECK:         %[[CS:.+]] = coreai.scan %[[MI]], %{{.+}}, %{{.+}} combiner = <sum> : (tensor<6xsi32>, tensor<ui32>, tensor<i1>) -> tensor<6xsi32>
                 // CHECK:         %[[IDX:.+]] = coreai.decomposable.broadcasting_sub %[[CS]], %{{.+}} : (tensor<6xsi32>, tensor<si32>) -> tensor<6xsi32>
-                // CHECK:         %[[G:.+]] = coreai.gather_along_axis %[[VF]] at %[[IDX]] along %{{.+}} : (tensor<6xf32>, tensor<6xsi32>, tensor<si32>) to tensor<6xf32>
+                // The src reshape is a no-op on a 1-D input, so the rewrite
+                // folds it away and the gather reads %arg2 directly.
+                // CHECK:         %[[G:.+]] = coreai.gather_along_axis %arg2 at %[[IDX]] along %{{.+}} : (tensor<6xf32>, tensor<6xsi32>, tensor<si32>) to tensor<6xf32>
                 // CHECK:         %[[W:.+]] = coreai.decomposable.broadcasting_where %[[MF]], %[[G]], %[[SF]] : (tensor<6xi1>, tensor<6xf32>, tensor<6xf32>) -> tensor<6xf32>
-                // CHECK:         %[[OUT:.+]] = coreai.reshape %[[W]], %{{.+}} : (tensor<6xf32>, tensor<2xsi32>) -> tensor<2x3xf32>
+                // CHECK:         %[[OUT:.+]] = coreai.reshape %[[W]], %{{.+}} : (tensor<6xf32>, tensor<2xui32>) -> tensor<2x3xf32>
                 // CHECK:         coreai.output %[[OUT]]
             """,
         )
@@ -4602,7 +4933,6 @@ class TestMaskedScatter:
             str(coreai_program),
             check_file="""
                 // CHECK-LABEL: coreai.graph @main
-                // CHECK:       coreai.reshape
                 // CHECK:       coreai.reshape
                 // CHECK:       coreai.reshape
                 // CHECK:       coreai.cast {{.+}} to tensor<{{.*}}xsi32>
@@ -6107,7 +6437,6 @@ class TestUpsampleNearest2d:
         # Convert must not raise. Pre-fix this raised ``ValueError:
         # Operation creation failed`` from ``coreai.concat``.
         coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-        coreai_program.optimize()
         # The output_shape concat must take three rank-1 si32 operands —
         # the (N, C) slice from x's get_shape, plus normalised out_h and
         # out_w. Pre-fix, out_h/out_w arrived as rank-1 f32 (from
@@ -6280,7 +6609,6 @@ class TestUpsampleBilinear2d:
         # Convert must not raise. Pre-fix this raised ``ValueError:
         # Operation creation failed`` from ``coreai.concat``.
         coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-        coreai_program.optimize()
         # Same shape concat as the nearest case; only the interpolation
         # mode tag differs. The fix is in the shape-build path so it
         # applies identically here.
@@ -7431,6 +7759,130 @@ class TestSDPA:
             dynamic_shapes=dynamic_shapes,
             remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
             **kwargs,
+        )
+
+    @pytest.mark.parametrize("v_head_dim", [24, 48])
+    @pytest.mark.parametrize("mask_cfg", ["gen_causal", "pass_mask", "maskless"])
+    @pytest.mark.parametrize("batch_leading_dims", [tuple(), (1, 1)])
+    @pytest.mark.parametrize("dynamic", [False, True])
+    async def test_sdpa_value_head_dim_differs(
+        self,
+        v_head_dim: int,
+        mask_cfg: str,
+        batch_leading_dims: tuple[int, ...],
+        dynamic: bool,
+    ) -> None:
+        """D_v != D_k (MLA-style): the output head dim comes from value."""
+        is_causal = mask_cfg == "gen_causal"
+        batch_size, q_heads, kv_heads = 2, 8, 2
+        q_len, max_ctx_len, qk_head_dim = 4, 16, 32
+
+        class SDPAModule(nn.Module):
+            def forward(self, query, key, value, attn_mask=None):
+                if attn_mask is not None:
+                    return nn.functional.scaled_dot_product_attention(
+                        query, key, value, attn_mask, enable_gqa=True
+                    )
+                return nn.functional.scaled_dot_product_attention(
+                    query, key, value, is_causal=is_causal, enable_gqa=True
+                )
+
+        q = torch.randn(*batch_leading_dims, batch_size, q_heads, q_len, qk_head_dim)
+        k = torch.randn(
+            *batch_leading_dims, batch_size, kv_heads, max_ctx_len, qk_head_dim
+        )
+        v = torch.randn(
+            *batch_leading_dims, batch_size, kv_heads, max_ctx_len, v_head_dim
+        )
+        attn_mask = (
+            None
+            if is_causal or mask_cfg == "maskless"
+            else (
+                torch.ones(*batch_leading_dims, 1, q_len, max_ctx_len) * float("-inf")
+            ).tril()
+        )
+
+        model = SDPAModule().eval()
+        assert model(q, k, v, attn_mask).shape[-1] == v_head_dim
+
+        dynamic_shapes = None
+        if dynamic:
+            # batch lives at dim offset, q_len/max_ctx_len at dim offset + 2.
+            offset = len(batch_leading_dims)
+            dynamic_shapes = {
+                "query": {offset: torch.export.Dim.DYNAMIC},
+                "key": {offset: torch.export.Dim.DYNAMIC},
+                "value": {offset: torch.export.Dim.DYNAMIC},
+            }
+            if attn_mask is not None:
+                dynamic_shapes["attn_mask"] = {}
+
+        kwargs: dict[str, Any] = {"query": q, "key": k, "value": v}
+        if attn_mask is not None:
+            kwargs["attn_mask"] = attn_mask
+
+        await validate_numerical_output(
+            model=model,
+            dynamic_shapes=dynamic_shapes,
+            remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
+            **kwargs,
+        )
+
+    @pytest.mark.parametrize("with_mask", [False, True])
+    async def test_sdpa_rank3_value_head_dim_differs(self, with_mask: bool) -> None:
+        """Rank-3 (B, S, E) SDPA with a value head dim of its own."""
+        batch_size, q_len, seq_len, qk_head_dim, v_head_dim = 2, 5, 7, 16, 24
+
+        class SDPAModule(nn.Module):
+            def forward(
+                self,
+                query: Tensor,
+                key: Tensor,
+                value: Tensor,
+                attn_mask: Tensor | None = None,
+            ) -> Tensor:
+                if attn_mask is not None:
+                    return nn.functional.scaled_dot_product_attention(
+                        query, key, value, attn_mask
+                    )
+                return nn.functional.scaled_dot_product_attention(query, key, value)
+
+        kwargs: dict[str, Any] = {
+            "query": torch.rand(batch_size, q_len, qk_head_dim),
+            "key": torch.rand(batch_size, seq_len, qk_head_dim),
+            "value": torch.rand(batch_size, seq_len, v_head_dim),
+        }
+        if with_mask:
+            kwargs["attn_mask"] = torch.tril(
+                torch.ones((q_len, seq_len), dtype=torch.bool),
+                diagonal=seq_len - q_len,
+            )
+
+        await validate_numerical_output(
+            model=SDPAModule().eval(),
+            remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
+            **kwargs,
+        )
+
+    async def test_sdpa_dynamic_head_dim(self) -> None:
+        """A dynamic head dim is not provably equal to D_v — lowered directly."""
+
+        class SDPAModule(nn.Module):
+            def forward(self, query: Tensor, key: Tensor, value: Tensor) -> Tensor:
+                return nn.functional.scaled_dot_product_attention(query, key, value)
+
+        head_dim = torch.export.Dim("head_dim", min=8, max=64)
+        await validate_numerical_output(
+            model=SDPAModule().eval(),
+            query=torch.rand(2, 4, 3, 32),
+            key=torch.rand(2, 4, 5, 32),
+            value=torch.rand(2, 4, 5, 32),
+            dynamic_shapes={
+                "query": {3: head_dim},
+                "key": {3: head_dim},
+                "value": {3: head_dim},
+            },
+            remove_decomps=[torch.ops.aten.scaled_dot_product_attention.default],
         )
 
 

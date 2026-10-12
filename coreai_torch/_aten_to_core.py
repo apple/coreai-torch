@@ -22,6 +22,7 @@ from coreai._compiler.ir import (
 )
 
 from ._composite_declaration import generate_composite_decl
+from ._custom_to_core import _custom_to_core_resolver
 from ._type_mapping import _get_coreai_to_numpy_dtype
 from ._utils import (
     _sdpa_build_causal_mask,
@@ -32,11 +33,13 @@ from ._utils import (
     build_slice_index_array,
     convert_branch_subgraph,
     expand_boolean_indices,
+    get_dim_size_int32,
     get_output_element_type_from_node,
     get_promoted_type,
     get_target,
     get_tensor_shape_at_index,
     get_tensor_type,
+    make_uniform_constant,
     prepare_compute_type_for_norm,
     process_expanded_indices,
     process_indices_with_transpose,
@@ -706,16 +709,27 @@ def replace_batch_norm(
     def batch_norm(
         input: Value, gamma: Value, beta: Value, mean: Value, variance: Value
     ) -> Value:
+        # Match ATen: compute in fp32 and narrow only the result. Downcasting
+        # the fp32 params to fp16 loses precision and overflows to inf.
+        input_compute, compute_type, needs_downcast = prepare_compute_type_for_norm(
+            input, ele_type, loc
+        )
+
         eps_casted = coreai.constant(node.args[6])
 
-        eps_casted = coreai.cast(eps_casted, ele_type)
+        def to_compute_type(v: Value) -> Value:
+            if v.type.element_type == compute_type:
+                return v
+            return coreai.cast(v, compute_type)
+
+        eps_casted = to_compute_type(eps_casted)
 
         expand_dims = [0] + list(
             range(2, x_type.rank)
         )  # expand [C] to [1, C, 1, ...] for broadcasting
 
         def expand_and_cast(v: Value) -> Value:
-            return coreai.cast(coreai.expand_dims(v, expand_dims), ele_type)
+            return to_compute_type(coreai.expand_dims(v, expand_dims))
 
         weight, bias, running_mean, running_var = (
             expand_and_cast(v) for v in [gamma, beta, mean, variance]
@@ -724,12 +738,15 @@ def replace_batch_norm(
         # ((x - mean) / sqrt(var + eps)) * weight + bias
         std = coreai.sqrt(coreai.broadcasting_add(running_var, eps_casted))
         normalized = coreai.broadcasting_divide(
-            coreai.broadcasting_sub(input, running_mean), std
+            coreai.broadcasting_sub(input_compute, running_mean), std
         )
 
-        return coreai.broadcasting_add(
+        result = coreai.broadcasting_add(
             coreai.broadcasting_mul(normalized, weight), bias
         )
+        if needs_downcast:
+            result = coreai.cast(result, ele_type)
+        return result
 
     # In inference mode, outputs[1] and [2] are empty placeholder tensors (shape [0]).
     np_dtype = _get_coreai_to_numpy_dtype()[ele_type]
@@ -810,8 +827,6 @@ def replace_binary_ops(
         "add.Tensor": coreai.broadcasting_add,
         "add.Scalar": coreai.broadcasting_add,
         "add": coreai.broadcasting_add,
-        "div.Tensor": coreai.broadcasting_divide,
-        "div.Scalar": coreai.broadcasting_divide,
         "maximum.default": coreai.broadcasting_maximum,
         "minimum.default": coreai.broadcasting_minimum,
         "fmod.Tensor": coreai.broadcasting_modulo,
@@ -876,13 +891,20 @@ def replace_div_tensor_mode(
         else (node.args[2] if len(node.args) > 2 else None)
     )
 
+    if rounding_mode is None:
+        # True divide: integer operands must promote to the node's float
+        # output type before dividing, not the generic same-kind-stays-integer
+        # promotion rule used by "floor"/"trunc" below.
+        result_type = get_output_element_type_from_node(node)
+        return coreai.broadcasting_divide(
+            coreai.cast(x, result_type), coreai.cast(y, result_type)
+        )
+
     promoted_type = get_promoted_type(x.type, y.type)
     casted_x = coreai.cast(x, promoted_type)
     casted_y = coreai.cast(y, promoted_type)
 
-    if rounding_mode is None:
-        return coreai.broadcasting_divide(casted_x, casted_y)
-    elif rounding_mode == "floor":
+    if rounding_mode == "floor":
         return coreai.broadcasting_floor_divide(casted_x, casted_y)
     elif rounding_mode == "trunc":
         # Integer division already truncates toward zero, so a plain divide
@@ -1024,13 +1046,19 @@ def replace_ceil(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
 
 def replace_clamp(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     x = _get_operand(values_map, node, 0)
+    # PyTorch promotes an integer operand clamped against float bounds to the
+    # default float dtype, so the working type comes from the node's own output
+    # rather than from the operand.
+    element_type = get_output_element_type_from_node(node)
+    if x.type.element_type != element_type:
+        x = coreai.cast(x, element_type)
 
     def _get_bound(arg_idx: int) -> Value:
         arg = node.args[arg_idx]
         if isinstance(arg, (int, float)):
-            return coreai.constant(float(arg), dtype=x.type.element_type)
+            return coreai.constant(float(arg), dtype=element_type)
         val = _get_operand(values_map, node, arg_idx)
-        return coreai.cast(val, x.type.element_type)
+        return coreai.cast(val, element_type)
 
     result = x
     if len(node.args) > 1 and node.args[1] is not None:
@@ -1075,6 +1103,32 @@ def replace_constant_pad_nd(
         float(node.args[2]) if len(node.args) > 2 and node.args[2] is not None else 0.0
     )
     x_rank = x.type.rank
+
+    # Dynamic (symbolic) pad amounts: coreai.pad takes `padding` as a runtime
+    # tensor operand, so build it from the mix of static ints and fx.Nodes rather
+    # than the static np.array path below. Only non-negative (positive) padding is
+    # supported dynamically.
+    if any(isinstance(p, fx.Node) for p in inverted_padding):
+        # Core AI padding order: [before_dim0, after_dim0, before_dim1, ...].
+        ordered_padding: list[int | fx.Node] = [0] * (2 * x_rank)
+        for i in range(0, len(inverted_padding), 2):
+            dim = x_rank - (i // 2) - 1
+            for slot, entry in (
+                (2 * dim, inverted_padding[i]),
+                (2 * dim + 1, inverted_padding[i + 1]),
+            ):
+                if isinstance(entry, int) and entry < 0:
+                    msg = (
+                        "constant_pad_nd with a dynamic (symbolic) pad amount does"
+                        " not support negative padding (cropping); the pad amount"
+                        " must be >= 0."
+                    )
+                    raise NotImplementedError(msg)
+                ordered_padding[slot] = entry
+        padding = coreai.cast(
+            build_shape_tensor(values_map, ordered_padding), np.uint32
+        )
+        return coreai.pad(x, padding, coreai.cast(pad_value, x.type.element_type))
 
     # slice_start is always static: max(0, -pad_before).
     # slice_end entries: INT32_MAX = slice to end; >= 0 = static end;
@@ -1221,6 +1275,14 @@ def replace_conv(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
             raise ValueError(
                 f"Transposed conv3d is not yet supported, at node: {node}, name: {node.name}"
             )
+        if any(
+            op >= s and op >= d for op, s, d in zip(output_padding, stride, dilation)
+        ):
+            raise ValueError(
+                f"output padding must be smaller than either stride or dilation, got "
+                f"output_padding={output_padding}, stride={stride}, dilation={dilation}, "
+                f"at node: {node}, name: {node.name}"
+            )
         return _conv_transpose(
             x, weight, bias, stride, padding, dilation, output_padding, groups, loc
         )
@@ -1320,7 +1382,7 @@ def replace_embedding(
 def replace_empty(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     # torch.empty is lowered to zeros for deterministic behavior
     shape = node.args[0]
-    np_dtype = _get_coreai_to_numpy_dtype()[get_output_element_type_from_node(node)]
+    elem_type = get_output_element_type_from_node(node)
     # With dynamic shapes, dims come from sym_size.int nodes rather than static ints.
     if any(isinstance(s, fx.Node) for s in shape):
         shape_tensor = build_shape_tensor(values_map, shape)
@@ -1328,11 +1390,11 @@ def replace_empty(values_map: dict[str, Value], node: fx.Node, loc: Location) ->
         rank = len(shape)
         # Explicit result type preserves static dims in the IR type.
         return coreai.BroadcastToOp(
-            coreai.constant(np.zeros([1] * rank, np_dtype)),
+            make_uniform_constant([1] * rank, 0, elem_type),
             coreai.cast(shape_tensor, np.uint32),
             results=[get_tensor_type(node.meta["val"])],
         ).result
-    return coreai.constant(np.zeros(shape, np_dtype))
+    return make_uniform_constant(shape, 0, elem_type)
 
 
 def replace_sym_size_int(
@@ -1341,9 +1403,7 @@ def replace_sym_size_int(
     """aten.sym_size.int(tensor, dim) -> size of tensor along dim as a shape-[1] tensor."""
     tensor = values_map[node.args[0].name]
     dim = node.args[1]
-    return coreai.cast(
-        coreai.slice_(coreai.get_shape(tensor), [dim], [dim + 1], [1]), dtype=np.int32
-    )
+    return get_dim_size_int32(tensor, dim)
 
 
 def replace_sym_min(
@@ -1463,16 +1523,18 @@ def replace_floor_divide(
 
 def replace_full(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     shape = node.args[0]
-    np_dtype = _get_coreai_to_numpy_dtype()[get_output_element_type_from_node(node)]
+    elem_type = get_output_element_type_from_node(node)
+    fill_value = node.args[1]
+
     if any(isinstance(s, fx.Node) for s in shape):
         shape_tensor = build_shape_tensor(values_map, shape)
         rank = len(shape)
         return coreai.BroadcastToOp(
-            coreai.constant(np.full([1] * rank, node.args[1], np_dtype)),
+            make_uniform_constant([1] * rank, fill_value, elem_type),
             coreai.cast(shape_tensor, np.uint32),
             results=[get_tensor_type(node.meta["val"])],
         ).result
-    return coreai.constant(np.full(shape, node.args[1], np_dtype))
+    return make_uniform_constant(shape, fill_value, elem_type)
 
 
 def replace_full_like(
@@ -1480,8 +1542,9 @@ def replace_full_like(
 ) -> Value:
     x = _get_operand(values_map, node, 0)
     target_type = get_tensor_type(node.meta["val"])
-    # Use target element type to avoid mismatched int64 input / int32 output.
-    fill_val = coreai.constant(node.args[1], dtype=target_type.element_type)
+    # Use target element type to avoid mismatched int64 input / int32 output,
+    # and to handle fp4/fp8 via a splat constant.
+    fill_val = make_uniform_constant([], node.args[1], target_type.element_type)
     if any(d < 0 for d in x.type.shape):
         return coreai.BroadcastToOp(
             fill_val,
@@ -1675,9 +1738,7 @@ def replace_group_norm(
     @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
     def group_norm(input: Value, weight: Value, bias: Value) -> Value:
         # Reshape to [B, G, C//G, -1] for per-group normalization.
-        batch_dim = coreai.cast(
-            coreai.slice_(coreai.get_shape(input), [0], [1], [1]), dtype=np.int32
-        )
+        batch_dim = get_dim_size_int32(input, 0)
         reshape_target = coreai.concat(0, [batch_dim, [group, C // group, -1]])
         reshaped_input = coreai.reshape(input, reshape_target)
         reshaped_input_compute, compute_type, use_fp32_stats = (
@@ -1951,11 +2012,11 @@ def replace_layer_norm(
     bias = None if node.args[3] is None else _get_operand(values_map, node, 3)
     eps = node.args[4]
 
-    numel = int(np.prod(normalized_shape))
+    # Identity gamma/beta keep normalized_shape to match the declared `axes`.
     if weight is None:
-        weight = coreai.constant([1.0] * numel, dtype=np.float32)
+        weight = coreai.constant(np.ones(normalized_shape, dtype=np.float32))
     if bias is None:
-        bias = coreai.constant([0.0] * numel, dtype=np.float32)
+        bias = coreai.constant(np.zeros(normalized_shape, dtype=np.float32))
 
     input_rank = x.type.rank
     input_ele_type = x.type.element_type
@@ -2003,11 +2064,7 @@ def replace_layer_norm(
         weight = coreai.cast(gamma, input_ele_type)
         bias = coreai.cast(beta, input_ele_type)
 
-        # Reshape for multi-dim normalized_shape (e.g. [32] → [4, 8]).
-        if len(normalized_shape) > 1:
-            weight = coreai.reshape(weight, list(normalized_shape))
-            bias = coreai.reshape(bias, list(normalized_shape))
-
+        # gamma/beta always arrive shaped like normalized_shape.
         # Broadcast gamma/beta to match the norm output shape.
         norm_shape = coreai.get_shape(norm)
         w_shape = coreai.constant(list(normalized_shape), dtype=np.uint32)
@@ -2247,6 +2304,9 @@ def replace_mean_default(
 ) -> Value:
     """Computes global mean across all dimensions, returning a scalar tensor."""
     x = _get_operand(values_map, node, 0)
+    target_type = get_output_element_type_from_node(node)
+    if x.type.element_type != target_type:
+        x = coreai.cast(x, target_type)
     all_dims = list(range(x.type.rank))
     return coreai.shrink_dims(coreai.reduce_mean(x, all_dims), all_dims)
 
@@ -2256,6 +2316,9 @@ def replace_mean_dim(
 ) -> Value:
     """Computes mean along specified dimensions."""
     x, axes = _get_operands(values_map, node, [0, 1])
+    target_type = get_output_element_type_from_node(node)
+    if x.type.element_type != target_type:
+        x = coreai.cast(x, target_type)
     keepdim = len(node.args) >= 3 and bool(node.args[2])
     result = coreai.reduce_mean(x, axes)
     return result if keepdim else coreai.shrink_dims(result, axes)
@@ -2311,11 +2374,22 @@ def replace_min_dim(
     dim = dim + x.type.rank if dim < 0 else dim
 
     min_values = coreai.reduce_min(x, [dim])
+
+    element_type = x.type.element_type
+    is_integer = isinstance(element_type, IntegerType)
+    is_bool = element_type == IntegerType.get_signless(1)
+    if is_integer and not is_bool:
+        # ~x == x ^ ALL_ONES; -1 has all bits set in two's complement. Bitwise
+        # complement is a strictly order-reversing bijection over the whole
+        # integer range (no overflow), so argmax(~x) == argmin(x).
+        reversed_x = coreai.broadcasting_bitwise_xor(
+            x, coreai.constant(-1, dtype=element_type)
+        )
+    else:
+        reversed_x = coreai.broadcasting_mul(x, coreai.constant(-1, dtype=element_type))
+
     argmin_indices = coreai.cast(
-        coreai.argmax(
-            coreai.broadcasting_mul(x, coreai.constant(-1, dtype=x.type.element_type)),
-            dim,
-        ),
+        coreai.argmax(reversed_x, dim),
         np.int32,
     )
 
@@ -2562,9 +2636,7 @@ def replace_select_int(
 
     if index < 0 and x.type.shape[dim] < 0:
         # Negative index with unknown dim size: resolve the actual index at runtime.
-        dim_size = coreai.cast(
-            coreai.slice_(coreai.get_shape(x), [dim], [dim + 1], [1]), dtype=np.int32
-        )
+        dim_size = get_dim_size_int32(x, dim)
         actual = coreai.broadcasting_add(dim_size, coreai.constant([index]))
         actual_p1 = coreai.broadcasting_add(actual, coreai.constant([1]))
         start_parts = [actual if i == dim else [0] for i in range(rank)]
@@ -3258,6 +3330,7 @@ def replace_cond(
     node: fx.Node,
     *,
     graph_module: fx.GraphModule,
+    user_defined_resolver: dict[str, Callable[..., Any]] | None = None,
 ) -> list[Value]:
     condition_node, true_graph_node, false_graph_node, branch_operands = node.args
 
@@ -3291,7 +3364,9 @@ def replace_cond(
                     operand_values,
                     graph_module,
                     _aten_to_core_resolver,
-                    {"cond": replace_cond},
+                    _higher_order_resolver,
+                    user_defined_resolver,
+                    _custom_to_core_resolver,
                 )
             )
 
@@ -3303,6 +3378,7 @@ def replace_while_loop(
     node: fx.Node,
     *,
     graph_module: fx.GraphModule,
+    user_defined_resolver: dict[str, Callable[..., Any]] | None = None,
 ) -> list[Value]:
     cond_fn_node, body_fn_node, carried_inputs, additional_inputs = node.args
 
@@ -3337,6 +3413,8 @@ def replace_while_loop(
             graph_module,
             _aten_to_core_resolver,
             _higher_order_resolver,
+            user_defined_resolver,
+            _custom_to_core_resolver,
         )[0]
         if hasattr(cond_val.type, "rank") and cond_val.type.rank > 0:
             cond_val = coreai.shrink_dims(cond_val, list(range(cond_val.type.rank)))
@@ -3351,6 +3429,8 @@ def replace_while_loop(
                 graph_module,
                 _aten_to_core_resolver,
                 _higher_order_resolver,
+                user_defined_resolver,
+                _custom_to_core_resolver,
             )
         )
 
@@ -3379,6 +3459,7 @@ def replace_yield(
     node: fx.Node,
     *,
     graph_module: fx.GraphModule,
+    user_defined_resolver: dict[str, Callable[..., Any]] | None = None,
 ) -> list[Value]:
     if len(node.users) != 0:
         raise ValueError(f"expect 0 results for _yield op, got {len(node.users)}")
@@ -3398,6 +3479,10 @@ def replace_sdpa(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
         5. (mask) attn_scores += float_mask
         6. attn_weights = softmax(attn_scores, dim=-1)
         7. output = matmul(attn_weights, value)
+
+    The composite is only used when the value head dim is provably equal to
+    the query/key head dim; otherwise (D_v != D_k, or a head dim that is
+    dynamic) the decomposition is emitted directly.
     """
 
     args = node.args
@@ -3461,66 +3546,100 @@ def replace_sdpa(values_map: dict[str, Value], node: fx.Node, loc: Location) -> 
     if attn_mask is not None and attn_mask.type.rank > 4:
         attn_mask = _sdpa_flatten_leading_batch_dims(attn_mask)
 
-    # Build composite inputs. Scale is NOT an input — it is embedded in
-    # op_attributes when a compile-time constant, otherwise defaulted to
-    # 1/sqrt(head_dim) inside the decomposition body.
-    input_names = ["query", "key", "value"]
-    if attn_mask is not None:
-        input_names.append("attn_mask")
-
-    op_attributes: dict[str, Any] = {"is_causal": False, "window_size": 0, "version": 1}
-    if scale is not None:
-        op_attributes["scale"] = scale
-
-    composite_decl = generate_composite_decl(
-        query.context,
-        "scaled_dot_product_attention",
-        input_names,
-        ["output"],
-        op_attributes,
-    )
-
-    # Capture shape/type info for the composite body closure.
+    # Capture shape/type info for the decomposition body.
     q_shape = query.type.shape
     k_shape = key.type.shape
     v_shape = value.type.shape
 
-    @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
-    def sdpa(q: Value, k: Value, v: Value, m: Value) -> Value:
-        return _sdpa_decompose(
-            q, k, v, m, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
+    if not (q_shape[3] >= 0 and v_shape[3] >= 0 and q_shape[3] == v_shape[3]):
+        # The composite op's interface requires the attention output to carry
+        # the query head dim, so it can only be used when D_v and D_k are
+        # provably equal. Otherwise — D_v != D_k (MLA-style attention), or a
+        # dynamic head dim we cannot prove equal — lower the decomposition
+        # directly.
+        result = _sdpa_decompose(
+            query,
+            key,
+            value,
+            attn_mask,
+            scale,
+            enable_gqa,
+            ele_type,
+            q_shape,
+            k_shape,
+            v_shape,
+        )
+    else:
+        # Build composite inputs. Scale is NOT an input — it is embedded in
+        # op_attributes when a compile-time constant, otherwise defaulted to
+        # 1/sqrt(head_dim) inside the decomposition body.
+        input_names = ["query", "key", "value"]
+        if attn_mask is not None:
+            input_names.append("attn_mask")
+
+        op_attributes: dict[str, Any] = {
+            "is_causal": False,
+            "window_size": 0,
+            "version": 1,
+        }
+        if scale is not None:
+            op_attributes["scale"] = scale
+
+        composite_decl = generate_composite_decl(
+            query.context,
+            "scaled_dot_product_attention",
+            input_names,
+            ["output"],
+            op_attributes,
         )
 
-    @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
-    def sdpa_maskless(q: Value, k: Value, v: Value) -> Value:
-        return _sdpa_decompose(
-            q, k, v, None, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
-        )
+        @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+        def sdpa(q: Value, k: Value, v: Value, m: Value) -> Value:
+            return _sdpa_decompose(
+                q, k, v, m, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
+            )
 
-    result = (
-        sdpa(query, key, value, attn_mask)
-        if attn_mask is not None
-        else sdpa_maskless(query, key, value)
-    )[0]
+        @coreai.graph(private=True, no_inline=True, composite_decl=composite_decl)
+        def sdpa_maskless(q: Value, k: Value, v: Value) -> Value:
+            return _sdpa_decompose(
+                q, k, v, None, scale, enable_gqa, ele_type, q_shape, k_shape, v_shape
+            )
+
+        result = (
+            sdpa(query, key, value, attn_mask)
+            if attn_mask is not None
+            else sdpa_maskless(query, key, value)
+        )[0]
+
+    # Output shape is the query's batch/head/seq dims with value's head dim.
+    v_head_dim = v_shape[3]
+    result_shape = [*original_query.type.shape[:-1], v_head_dim]
+    result_type = RankedTensorType.get(result_shape, ele_type)
 
     # Restore original leading batch dims if inputs were rank > 4.
     if query_rank == 4:
-        assert result.type == original_query.type, (
-            "Result type and original query type must be identical"
+        assert result.type == result_type, (
+            f"SDPA result type {result.type} must be {result_type}"
         )
         return result
     if query_rank == 3:
         result = coreai.shrink_dims(result, [1])
-        assert result.type == original_query.type, (
-            "Result type and original query type must be identical"
+        assert result.type == result_type, (
+            f"SDPA result type {result.type} must be {result_type}"
         )
         return result
-    orig_shape = coreai.get_shape(original_query)
-    result = coreai.reshape(result, orig_shape)
-    assert result.type == original_query.type, (
-        "Result type and original query type must be identical"
+
+    # Rebuild the leading batch dims from the original query, keeping value's
+    # head dim as the last one.
+    q_shape_val = coreai.get_shape(original_query)
+    leading_shape = coreai.slice_(q_shape_val, [0], [query_rank - 1], [1])
+    v_head_dim_1d = (
+        coreai.constant([v_head_dim], dtype=np.uint32)
+        if v_head_dim >= 0
+        else coreai.slice_(coreai.get_shape(value), [3], [4], [1])
     )
-    return result
+    orig_shape = coreai.concat(0, [leading_shape, v_head_dim_1d])
+    return coreai.ReshapeOp(result, orig_shape, results=[result_type]).result
 
 
 _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
@@ -3571,8 +3690,8 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "cos.default": replace_unary_ops,
     "cosh.default": replace_unary_ops,
     "cumsum.default": replace_cumsum,
-    "div.Scalar": replace_binary_ops,
-    "div.Tensor": replace_binary_ops,
+    "div.Scalar": replace_truediv,
+    "div.Tensor": replace_truediv,
     "div.Tensor_mode": replace_div_tensor_mode,
     "embedding.default": replace_embedding,
     "empty.default": replace_empty,
@@ -3702,7 +3821,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "truediv": replace_truediv,
     "to.dtype": replace_to_dtype,
     "topk.default": replace_topk,
-    "true_divide.Tensor": replace_binary_ops,
+    "true_divide.Tensor": replace_truediv,
     "trunc.default": replace_trunc,
     "trunc": replace_trunc,
     "unsqueeze.default": replace_unsqueeze,

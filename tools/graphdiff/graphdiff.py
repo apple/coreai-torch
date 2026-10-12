@@ -510,7 +510,7 @@ def _count_edges_by_type(
     return sum(1 for e in edges if graph[e[0]][e[1]].get("edge_type") == edge_type)
 
 
-def _compute_op_diff_details(
+def _compute_coreai_op_diff_details(
     src_id: int, tgt_id: int, source_graph: nx.DiGraph, target_graph: nx.DiGraph
 ) -> tuple[_OpDiffType, str]:
     src_operands = _count_edges_by_type(source_graph, src_id, "operand", "in")
@@ -561,7 +561,7 @@ def _compute_op_diff_details(
         return _compute_torch_op_diff_details(
             src_id, tgt_id, source_graph, target_graph
         )
-    return _compute_op_diff_details(src_id, tgt_id, source_graph, target_graph)
+    return _compute_coreai_op_diff_details(src_id, tgt_id, source_graph, target_graph)
 
 
 # ---------------------------------------------------------------------------

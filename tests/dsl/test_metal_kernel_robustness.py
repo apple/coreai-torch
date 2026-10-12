@@ -264,35 +264,49 @@ class TestKernelInteractionWithOtherOps:
 class TestKernelInControlFlow:
     """Custom kernels inside ``torch.cond`` branches.
 
-    The converter currently routes branch bodies through
-    :func:`coreai_torch._utils.convert_branch_subgraph`, which is wired with
-    ``_aten_to_core_resolver`` only and does **not** receive the
-    user-defined torch lowerings registered by
-    :meth:`TorchConverter.register_custom_kernels`. Calling a custom kernel
-    inside a ``cond`` branch therefore raises ``unsupported op in branch``.
+    The converter now threads user-defined torch lowerings (and the
+    ``coreai``/``coreaix`` resolver) through ``replace_cond`` /
+    ``replace_while_loop`` into :func:`coreai_torch._utils.convert_branch_subgraph`,
+    so a custom kernel inside a branch resolves instead of raising
+    ``unsupported op in branch``. That dispatch fix is unit-tested in
+    ``tests/test_branch_dispatch.py``.
 
-    This is a real bug — fixing it requires threading user lowerings
-    through ``replace_cond`` / ``replace_while_loop``. The test below pins
-    the current behavior so the regression is visible and is upgraded to a
-    passing assertion once the converter is fixed.
+    Exercising it end to end through ``torch.export`` is still blocked upstream:
+    a ``torch.library.custom_op`` whose fake implementation returns a fresh
+    tensor cannot be traced inside a ``torch.cond`` branch through
+    ``run_decompositions`` on the pinned torch (it raises "Attempting to use
+    FunctionalTensor on its own"), and an identity fake instead trips
+    ``torch.cond``'s no-aliasing rule at export. The test below pins that
+    remaining upstream gap; once torch can trace it, this ``xfail`` flips to a
+    failure and should become a passing assertion (the converter half already
+    works).
     """
 
     @staticmethod
     @pytest.mark.xfail(
         reason=(
-            "Custom kernels inside torch.cond branches are not yet supported "
-            "by the converter — replace_cond does not thread user-defined "
-            "lowerings into convert_branch_subgraph. See "
-            "coreai_torch/_aten_to_core.py::replace_cond and "
-            "coreai_torch/_utils.py::convert_branch_subgraph."
+            "Custom kernel inside a torch.cond branch cannot be traced through "
+            "torch.export.run_decompositions on the pinned torch (FunctionalTensor "
+            "error re-functionalizing the custom-op fake inside cond). The converter "
+            "dispatch fix itself is covered by tests/test_branch_dispatch.py."
         ),
         strict=True,
     )
     def test_kernel_inside_cond_branch() -> None:
-        """Conversion should succeed once cond plumbs custom lowerings."""
-        kernel = _identity_kernel(
+        """Conversion should succeed once torch can trace the kernel in a branch."""
+
+        def torch_defn(x: torch.Tensor) -> torch.Tensor:
+            # Non-aliasing (mirrors the kernel body `y = 2*x`); an identity
+            # torch_defn would instead fail torch.cond's aliasing check.
+            return x * 2
+
+        kernel = TorchMetalKernel(
             "robustness_cond_branch",
+            input_names=["x"],
+            result_names=["output"],
             src="output[id] = x[id] + x[id];",
+            torch_defn=torch_defn,
+            metal_params=[MetalParameter("id", "uint", "thread_position_in_grid")],
         )
 
         class Model(torch.nn.Module):
@@ -306,7 +320,7 @@ class TestKernelInControlFlow:
                     )
 
                 def false_branch(t: torch.Tensor) -> torch.Tensor:
-                    return t
+                    return t + 1.0
 
                 return torch.cond(x.sum() > 0, true_branch, false_branch, [x])
 

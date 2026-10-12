@@ -24,6 +24,12 @@ CHAR_BIT = 8  # number of bits in a byte
 QUANTIZATION_SUPPORT_NBITS = (2, 4, 8)
 PALETTIZATION_SUPPORT_NBITS = (1, 2, 3, 4, 6, 8)
 
+_FLOAT8_DTYPES: tuple[torch.dtype, ...] = (
+    torch.float8_e4m3fn,
+    torch.float8_e5m2,
+    torch.float8_e8m0fnu,
+)
+
 # Sub-byte integer dtypes (int4, uint4, int2, uint2) exist in torch 2.7.0 but
 # torch.iinfo does not support them. Map dtype → (is_signed, nbits) for manual
 # bounds computation as a fallback.
@@ -259,6 +265,8 @@ def _inject_subbyte_in_quant(program: ExportedProgram) -> ExportedProgram:  # no
                 # When there is no explicit nbits info stored, we infer it by quantized data range.
                 quantized_data: torch.Tensor = program.state_dict[input_spec.target]
                 if torch.is_floating_point(quantized_data):
+                    if quantized_data.dtype in _FLOAT8_DTYPES:
+                        continue
                     warning_msg = f'Cannot infer nbits: The quantized data "{input_spec.target}" in state_dict is not integer. Will just use it as-is.'
                     logger.warning(warning_msg)
                     continue

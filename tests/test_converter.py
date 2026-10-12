@@ -298,12 +298,12 @@ class TestRegisterTorchLoweringIntegration:
 # ---------------------------------------------------------------------------
 
 
-class TestConvertToCoreaiNoOptimization:
-    """to_coreai is a pure conversion step — optimization passes must not run."""
+class TestConvertToCoreaiIR:
+    """to_coreai emits Core AI IR with the pre-compilation rewrites already applied."""
 
     @pytest.mark.ir
-    def test_cast_chain_preserved_until_optimize(self) -> None:
-        """si32→f32→f16 chain survives to_coreai and fuses to si32→f16 after optimize_coreai."""
+    def test_cast_chain_fused(self) -> None:
+        """An si32→f32→f16 chain is fused into a single si32→f16 cast by to_coreai."""
 
         class CastChainModel(nn.Module):
             def forward(self, x: Tensor) -> Tensor:
@@ -312,16 +312,6 @@ class TestConvertToCoreaiNoOptimization:
         x = torch.randint(0, 10, (3, 4), dtype=torch.int32)
         program = torch.export.export(CastChainModel(), args=(x,)).run_decompositions()
         coreai_program = TorchConverter().add_exported_program(program).to_coreai()
-
-        filecheck_pattern(
-            str(coreai_program),
-            check_file="""
-                // CHECK: coreai.cast %{{.*}} : tensor<3x4xsi32> to tensor<3x4xf32>
-                // CHECK: coreai.cast %{{.*}} : tensor<3x4xf32> to tensor<3x4xf16>
-            """,
-        )
-
-        coreai_program.optimize()
 
         filecheck_pattern(
             str(coreai_program),
@@ -397,8 +387,9 @@ class TestConvertToCoreaiNoOptimization:
     def test_const_folding_hook_prevents_cast_folding(self) -> None:
         """register_should_const_folding_hook can suppress constant folding for specific ops.
 
-        Without the hook, optimize_coreai folds cast(constant(7, si32), f32) into a single
-        float constant.  A hook returning False for coreai.cast keeps both ops intact.
+        Without the hook, the pre-compilation rewrite run by ``to_coreai`` folds
+        cast(constant(7, si32), f32) into a single float constant. A hook
+        returning False for coreai.cast keeps both ops intact.
         """
 
         class ConstCastModel(nn.Module):
@@ -412,13 +403,15 @@ class TestConvertToCoreaiNoOptimization:
         program = torch.export.export(
             ConstCastModel(), args=(torch.rand(1),)
         ).run_decompositions()
-        coreai_program = TorchConverter().add_exported_program(program).to_coreai()
 
+        # The hook has to be installed on the converter's context before
+        # to_coreai runs the rewrite.
+        converter = TorchConverter()
         register_should_const_folding_hook(
             callable=lambda op: op.name != "coreai.cast",
-            context=coreai_program._mlir_module.context,
+            context=converter.context._mlir_context,
         )
-        coreai_program.optimize()
+        coreai_program = converter.add_exported_program(program).to_coreai()
 
         filecheck_pattern(
             str(coreai_program),

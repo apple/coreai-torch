@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, auto
 from typing import Any, Union, cast
 
 import coreai
@@ -20,26 +20,44 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
-from .debug_info import DebugInfoRecord, parse_debug_infos
+from .debug_info import (
+    DebugInfo,
+    DebugInfoRecord,
+    _build_compile_id_to_coreai_map,
+    parse_debug_infos,
+)
 from .torch_utils import _TorchFXNodeValueInterpreter
 
 logger = logging.getLogger(__name__)
 
 
-def _running_under_pytest() -> bool:
-    """Return True if the code is currently executing within a pytest run."""
-    return "PYTEST_CURRENT_TEST" in os.environ
+def _uses_os_framework() -> bool:
+    """
+    Whether the OS Core AI framework is selected, rather than the bundled one.
+
+    Read from the environment because the choice is made there, before anything in
+    this package is imported. A default OS-framework install that does not set the
+    variable reads as False here.
+    """
+    return "USE_OS_COREAI" in os.environ
 
 
 async def _wait_for_async_callbacks() -> None:
     """
     Wait for asynchronously-invoked intermediate capture callbacks to complete.
 
-    TODO: This sleep is a temporary workaround. The intermediate capture
-    callbacks are invoked asynchronously and may not have completed by the
-    time inference returns. Skipped under pytest to avoid slowing tests.
+    Only the OS framework invokes them asynchronously; against the bundled runtime
+    they have run by the time inference returns, so the wait is pure latency there.
+
+    TODO: this sleep is a workaround. There is no signal that the callbacks have
+    finished, so the duration is a guess -- too short silently drops captures, and
+    the only symptom is an operation reporting no value.
+
+    Gating this on whether tests are running rather than on the framework would skip it
+    in exactly the case that needs it, and the tests would then exercise something other
+    than what runs in production.
     """
-    if _running_under_pytest():
+    if not _uses_os_framework():
         return
     await asyncio.sleep(5.0)
 
@@ -63,36 +81,165 @@ class _CompiledIdMappings:
     all_compiled_ids: list[tuple[int, int | None]]
 
 
-def _build_source_to_odix_map(
+# Resolve a source op id to an odix id through `_build_delegate_to_odix_map` below, which
+# identifies the delegate call positively. Selecting the highest matching odix id instead
+# lands on an arbitrary sibling of the call, and asking the runtime for that returns
+# nothing. `debug_info` exports a similarly-named helper that reads fallback records; it
+# answers a different question and is not a substitute.
+
+
+def _build_delegate_to_odix_map(
     debug_info_records: list[DebugInfoRecord],
     source_level: str,
-) -> dict[int, int]:
+) -> dict[tuple[int, str], int]:
     """
-    Build a mapping from source op ID to odix ID from odix debug info records.
+    Map each delegate op ID to the odix instruction that calls that delegate.
 
-    Iterates over all ``"odix"`` records and extracts the source-level
-    op ID and the ``"odix"`` op ID from each operation's metadata.
+    This is what the runtime needs to be asked for. Every odix instruction belonging
+    to one delegate region carries the *same* source op IDs -- for a small model that
+    is a dozen entries with an identical list -- and only the call among them produces
+    an output. Resolving a source ID to an odix ID by taking the highest matching
+    ``odix_id`` therefore lands on an arbitrary sibling (a ``load_imm``, a
+    ``set_context``), and asking the runtime for that instruction returns nothing at
+    all: the callback is never invoked and every intermediate comes back ``None``. It
+    only appears to work when the call happens to be the highest-numbered instruction
+    of its region, which varies between compilations.
+
+    The call is identified positively rather than by position: it carries a
+    ``delegate`` symbol *and* an output mapping. Which delegate region a call belongs
+    to is then decided by the source IDs it covers, so a model with several delegate
+    regions maps each delegate to its own call.
+
+    The key includes the record identifier because a delegate op ID is only unique
+    within its own record -- two delegates can each number an operation ``2``.
 
     Args:
-        debug_info_records: Parsed debug information containing
-            operation mappings.
-        source_level: Dialect level to extract source op IDs from
-            (e.g., ``"coreai"``). Defaults to ``"coreai"``.
+        debug_info_records: Parsed debug information containing operation mappings.
+        source_level: Dialect level to extract source op IDs from (e.g. ``"coreai"``).
+
     Returns:
-        Dictionary mapping source_op_id to odix_id.
+        Dictionary mapping ``(delegate_op_id, record_identifier)`` to the calling
+        odix ID.
 
     """
-    source_to_odix: dict[int, int] = {}
+    # Delegate calls, as (odix_id, the source ids that region covers).
+    delegate_calls: list[tuple[int, frozenset[int]]] = []
     for record in debug_info_records:
         if not record.identifier.startswith("odix"):
             continue
         for op in record.operations:
-            source_ids = op.get_op_ids(source_level)
-            for source_id in source_ids:
-                existing_odix_id = source_to_odix.get(source_id)
-                if existing_odix_id is None or existing_odix_id < op.odix_id:
-                    source_to_odix[source_id] = op.odix_id
-    return source_to_odix
+            if op.get_symbol_name(DebugInfo.SymbolType.DELEGATE) is None:
+                continue
+            if not op.get_output_mappings(source_level=source_level):
+                continue
+            delegate_calls.append((op.odix_id, frozenset(op.get_op_ids(source_level))))
+
+    delegate_to_odix: dict[tuple[int, str], int] = {}
+    for record in debug_info_records:
+        if record.identifier.startswith("odix"):
+            continue
+        for op in record.operations:
+            operation_ids = frozenset(op.get_op_ids(source_level))
+            for mapping in op.get_output_mappings(source_level=source_level):
+                # Each mapping is matched on the operation's own ids plus its own source
+                # id, and nothing carried over from the mappings before it. Accumulating
+                # into one set makes the delegate a mapping resolves to depend on the
+                # order they are iterated: a later mapping can match a region only
+                # because an earlier one contributed the id that overlapped it.
+                source_ids = operation_ids | {mapping.source_op_id}
+                # The delegate's own op id is the mapping target for these records.
+                for odix_id, covered in delegate_calls:
+                    if source_ids & covered:
+                        delegate_to_odix[(mapping.target_op_id, record.identifier)] = (
+                            odix_id
+                        )
+                        break
+    return delegate_to_odix
+
+
+class MissingValue:
+    """Why an operation has no value, and what a caller can conclude from it.
+
+    A namespace rather than a bare pair of module-level types, matching `Comparator.Status`
+    and `SearchStrategy.ValidationResult` elsewhere: `MissingValue.Reason` and
+    `MissingValue.Explanation` read as one concept at the call site.
+    """
+
+    class Reason(Enum):
+        """Why no value came back for an operation.
+
+        A category on its own -- "no value" -- does not say whether that is expected. These
+        do, and they are separate members because the two call for opposite responses.
+        """
+
+        MERGED_INTO_ANOTHER_OPERATION = auto()
+        """This operation's work happens inside another operation, which does have a value.
+
+        The value is not separately observable, but it is not unaccounted for: the
+        containing operation is named in `observable_op_id`, so comparing *that* covers
+        this one's arithmetic. Expected -- a covered gap rather than an open one.
+
+        Named for what a caller can conclude rather than for the transform that caused it.
+        On Core AI this is a fusion, but the same situation arises from any lowering that
+        computes several source operations in one step."""
+
+        NO_PRODUCER_FOUND = auto()
+        """Nothing in the compiled program produces this value.
+
+        Not merged into anything, so it was removed or lost: eliminated during lowering, or
+        its output mapping is missing. Unlike the above, no other operation's comparison
+        covers it, so this is an open gap and worth investigating."""
+
+    @dataclass(frozen=True)
+    class Explanation:
+        """Why one operation has no value, in a form both code and people can read."""
+
+        op_id: int
+        """The operation whose value is missing."""
+
+        reason: "MissingValue.Reason"
+        """Machine-readable cause; switch on this rather than parsing `describe()`."""
+
+        merged_with: tuple[int, ...] = ()
+        """Every operation computed together with this one, including itself. Empty when
+        nothing produces the value."""
+
+        observable_op_id: int | None = None
+        """The one of `merged_with` whose value *is* available -- the operation to compare
+        in order to cover this one. None when nothing produces the value."""
+
+        def to_dict(self) -> dict[str, Any]:
+            """
+            Return the explanation as plain values.
+
+            `describe()` is included: it is the sentence a reader acts on, and
+            rebuilding it from `reason` means reimplementing the rules here.
+
+            Returns:
+                The cause, machine-readable and as prose.
+
+            """
+            return {
+                "op_id": self.op_id,
+                "reason": self.reason.value,
+                "merged_with": list(self.merged_with),
+                "observable_op_id": self.observable_op_id,
+                "describe": self.describe(),
+            }
+
+        def describe(self) -> str:
+            """A one-line explanation for a human reader."""
+            if self.reason is MissingValue.Reason.MERGED_INTO_ANOTHER_OPERATION:
+                others = [i for i in self.merged_with if i != self.op_id]
+                return (
+                    f"coreai {self.op_id}: computed together with {others}; the observable "
+                    f"value belongs to coreai {self.observable_op_id}, so comparing that "
+                    "operation covers this one"
+                )
+            return (
+                f"coreai {self.op_id}: nothing in the compiled program produces this "
+                "value -- removed during lowering, or its output mapping is missing"
+            )
 
 
 def _build_compile_identifiers_map(
@@ -108,8 +255,9 @@ def _build_compile_identifiers_map(
     *source_level*.  When duplicates target the same source output, the
     highest ``target_op_id`` wins.  For odix records
     (``identifier.startswith("odix")``), ``target_op_id`` is the
-    ``odix_id``; for all other records it is the ``delegate_id``, and
-    the true ``odix_id`` is resolved via ``_build_source_to_odix_map``.
+    ``odix_id``; for all other records it is the ``delegate_id``, and the
+    calling odix instruction is resolved via
+    :func:`_build_delegate_to_odix_map`.
 
     Args:
         debug_info_records: Parsed debug information containing
@@ -122,7 +270,7 @@ def _build_compile_identifiers_map(
         ``_MappingKey``.
 
     """
-    source_to_odix_map = _build_source_to_odix_map(debug_info_records, source_level)
+    delegate_to_odix_map = _build_delegate_to_odix_map(debug_info_records, source_level)
     result: dict[tuple[int, int], _MappingKey] = {}
 
     for record in debug_info_records:
@@ -130,10 +278,14 @@ def _build_compile_identifiers_map(
 
         for op in record.operations:
             for mapping in op.get_output_mappings(source_level=source_level):
-                # For delegate records, resolve odix_id via the
-                # source-to-odix lookup or the op's own odix metadata.
+                # For delegate records, the odix id is the instruction that calls
+                # this delegate -- not whichever instruction of the region happens
+                # to carry the same source ids and the highest odix id, which is
+                # usually not the one that produces an output.
                 if not is_odix:
-                    odix_id = source_to_odix_map.get(mapping.source_op_id)
+                    odix_id = delegate_to_odix_map.get(
+                        (mapping.target_op_id, record.identifier)
+                    )
                     if odix_id is None:
                         continue
 
@@ -196,11 +348,6 @@ def _create_operation_mappings(
     """
     Create reverse mappings from compiled identifiers back to source outputs.
 
-    Filters *compile_map* to the requested *op_ids* and inverts the
-    direction: the returned ``target_to_source_output_map`` is keyed by
-    ``_MappingKey`` (compiled side) and valued by
-    ``(source_op_id, source_output_idx)``.
-
     Args:
         op_ids: Source operation IDs to include.
         compile_map: Pre-built map from
@@ -219,10 +366,15 @@ def _create_operation_mappings(
         if source_op_id not in requested:
             continue
         all_compiled_ids.append((mapping_key.odix_id, mapping_key.delegate_id))
-        target_to_source_output_map[mapping_key] = (
-            source_op_id,
-            source_output_idx,
-        )
+        # Keep the terminal. Assigning unconditionally let the last operation iterated
+        # win, which is dictionary order and so neither stable nor meaningful: for one
+        # model it named the bias add, for another the reshape beside it.
+        existing = target_to_source_output_map.get(mapping_key)
+        if existing is None or source_op_id > existing[0]:
+            target_to_source_output_map[mapping_key] = (
+                source_op_id,
+                source_output_idx,
+            )
 
     return _CompiledIdMappings(target_to_source_output_map, all_compiled_ids)
 
@@ -545,7 +697,24 @@ class TorchFXInspector(Inspector):
             callback=capture_callback,
         )
 
-        interpreter.run(inputs)
+        # Accept the same shape of inputs as CoreAIInspector, which requires a
+        # name -> array dict. Without this the two inspectors in a Comparator need
+        # different input objects for the same comparison -- and a dict handed to the FX
+        # interpreter arrives as a single positional argument, failing deep inside the
+        # traced graph with an error that names neither inputs nor this class.
+        def _as_tensor(value: Any) -> Any:
+            """Adapt one input to what an FX graph needs: a torch tensor."""
+            if isinstance(value, np.ndarray):
+                return torch.from_numpy(value)
+            return value
+
+        if isinstance(inputs, dict):
+            positional = [_as_tensor(value) for value in inputs.values()]
+        elif isinstance(inputs, (tuple, list)):
+            positional = [_as_tensor(value) for value in inputs]
+        else:
+            positional = [_as_tensor(inputs)]
+        interpreter.run(*positional)
 
         for node_name in op_ids:
             if node_name not in results:
@@ -624,6 +793,62 @@ class CoreAIInspector(Inspector):
             self._debug_info_records,
             self._source_level,
         )
+
+    def explain_missing(self, op_id: int) -> MissingValue.Explanation:
+        """Say why no value came back for *op_id*.
+
+        Distinguishes an operation whose work happens inside another -- covered, because
+        comparing that one covers this -- from one nothing produces, which is an open gap.
+
+        Args:
+            op_id: The source operation whose value is missing.
+
+        Returns:
+            The explanation, with a machine-readable `reason`.
+
+        """
+        for members in self._coreai_ids_by_compile_id().values():
+            if op_id not in members:
+                continue
+            # A group of one is not a merge. Every operation belongs to some compiled
+            # dispatch, so membership alone says nothing: treating it as evidence names
+            # an operation as merged into itself, with an empty list of partners.
+            if len(members) < 2:
+                break
+            # The terminal of a group is the operation whose value the kernel computes, so
+            # it is not merged *into* anything -- the others are merged into it. If its
+            # value is missing the cause is elsewhere, and claiming a merge would send a
+            # reader looking for a containing operation that does not exist.
+            observable = max(members)
+            if op_id == observable:
+                break
+            return MissingValue.Explanation(
+                op_id=op_id,
+                reason=MissingValue.Reason.MERGED_INTO_ANOTHER_OPERATION,
+                merged_with=tuple(members),
+                # The highest id is the terminal because operation ids are assigned in
+                # dataflow order, so a consumer always outranks the values it consumes.
+                # That was an unverified assumption when this was written -- and false for
+                # any FX node expanding into a chain, which was numbered result-first --
+                # until the numbering was fixed to follow IR order.
+                observable_op_id=observable,
+            )
+        return MissingValue.Explanation(
+            op_id=op_id,
+            reason=MissingValue.Reason.NO_PRODUCER_FOUND,
+        )
+
+    def _coreai_ids_by_compile_id(self) -> dict[tuple[int, int | None], list[int]]:
+        """Which source operations share each compiled dispatch.
+
+        Built from the debug info records rather than by inverting `_compile_map`. That map
+        is keyed by source operations that *have* an output mapping, and an operation
+        absorbed into a fusion has none -- which is exactly why its value is missing. So
+        inverting it can never find the ops this needs to explain: it reported every
+        absorbed operation as belonging to no kernel. The records carry the
+        absorbed ids through each fused location's `fusedWith` list.
+        """
+        return _build_compile_id_to_coreai_map(self._debug_info_records, "coreai")
 
     def _build_mapping_and_compile_ids(
         self,

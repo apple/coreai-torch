@@ -1112,7 +1112,7 @@ class TestTorchRoPEConversion:
         // CHECK-SAME: output_names = ["output"]
         // CHECK: coreai.invoke @rope_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("scale", [1.0, 2.0])
     @pytest.mark.parametrize("base", [10000.0, 10.0])
@@ -1253,7 +1253,7 @@ class TestTorchRoPEConversion:
         // CHECK-SAME: output_names = ["output"]
         // CHECK: coreai.invoke @rope_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("dims", [None, 2, 8])
     @pytest.mark.parametrize("interleaved", [True, False])
@@ -1391,7 +1391,7 @@ class TestTorchRoPEConversion:
         // CHECK-SAME: composite_decl = #coreai.composite_declaration<"rope" =
         // CHECK: coreai.invoke @rope_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("dims", [None, 2, 8])
     @pytest.mark.parametrize("interleaved", [True, False])
@@ -1529,7 +1529,7 @@ class TestTorchRoPEConversion:
         // CHECK-SAME: output_names = ["output"]
         // CHECK: coreai.invoke @rope_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("dims", [None, 2, 8])
     @pytest.mark.parametrize("interleaved", [True, False])
@@ -1664,7 +1664,7 @@ class TestTorchRoPEConversion:
         // CHECK-SAME: output_names = ["output"]
         // CHECK: coreai.invoke @rope_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
 
     @pytest.mark.parametrize("dims", [None, 2, 8])
     @pytest.mark.parametrize("interleaved", [True, False])
@@ -1775,7 +1775,7 @@ class TestTorchRoPEConversionDetails:
 
         # Verify that cos/sin operations are performed in fp32 and then cast to fp16
         # This confirms the fix for precision handling
-        coreai_module_str = str(converted_program._mlir_module)
+        coreai_module_str = str(converted_program._module._mlir_module)
 
         # Use more flexible patterns that match various IR formats
         cos_pattern = r"coreai\.cos.*?f32"
@@ -1866,4 +1866,4 @@ class TestTorchRoPEConversionDetails:
         // CHECK-SAME: composite_decl = #coreai.composite_declaration<"rope"
         // CHECK: coreai.invoke @rope_[[S]](
         """
-        filecheck_pattern(str(converted_program._mlir_module), check_file=truth)
+        filecheck_pattern(str(converted_program._module._mlir_module), check_file=truth)
