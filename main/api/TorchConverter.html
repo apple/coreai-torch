@@ -9,7 +9,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=9454f7d5" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=05f3bbaf" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=bc932304" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -258,7 +258,7 @@ data-aria-dark="Switch to auto color mode">
 </span></pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> traverses the exported FX graph of a PyTorch model, maps ATen operators to Core AI operations, and emits an <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code> ready for on-device execution.</p>
-<p>Load a model using <code class="docutils literal notranslate"><span class="pre">add_exported_program()</span></code> or <code class="docutils literal notranslate"><span class="pre">add_pytorch_module()</span></code>, then call <code class="docutils literal notranslate"><span class="pre">to_coreai()</span></code> to produce the artifact. Register custom lowerings with <code class="docutils literal notranslate"><span class="pre">register_torch_lowering()</span></code> for ops that have no built-in mapping, and supply Metal kernel source for compute-intensive operations with <code class="docutils literal notranslate"><span class="pre">register_custom_kernels()</span></code>.</p>
+<p>Load a model using <code class="docutils literal notranslate"><span class="pre">add_exported_program()</span></code> or <code class="docutils literal notranslate"><span class="pre">add_pytorch_module()</span></code>, then call <code class="docutils literal notranslate"><span class="pre">to_coreai()</span></code> to produce the artifact. The returned program is already optimized — there is no separate optimization step. Register custom lowerings with <code class="docutils literal notranslate"><span class="pre">register_torch_lowering()</span></code> for ops that have no built-in mapping, and supply Metal kernel source for compute-intensive operations with <code class="docutils literal notranslate"><span class="pre">register_custom_kernels()</span></code>.</p>
 </section>
 <hr class="docutils" />
 <section id="constructor">
@@ -348,7 +348,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="11">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"logits"</span><span class="p">],</span>
 </span><span data-line="12"><span class="p">)</span>
 </span><span data-line="13"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="14"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </section>
@@ -428,7 +427,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="8">    <span class="p">),</span>
 </span><span data-line="9"><span class="p">)</span>
 </span><span data-line="10"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="11"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </section>
@@ -460,6 +458,7 @@ data-aria-dark="Switch to auto color mode">
 </table>
 </div>
 <p><strong>Returns:</strong> <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code> — a compiled Core AI model ready for deployment and execution.</p>
+<p>The returned program is already optimized. <code class="docutils literal notranslate"><span class="pre">AIProgram.optimize()</span></code> has been removed — there is no separate optimization step to call.</p>
 <p><strong>Example:</strong></p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span>
 </span><span data-line="2">    <span class="n">exported</span><span class="p">,</span>
@@ -467,7 +466,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="4">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"logits"</span><span class="p">],</span>
 </span><span data-line="5"><span class="p">)</span>
 </span><span data-line="6"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="7"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </section>
@@ -614,7 +612,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="26">
 </span><span data-line="27">
 </span><span data-line="28"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">exported</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="29"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 <p><strong>Example — override a built-in ATen op lowering:</strong></p>
@@ -647,7 +644,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="27">
 </span><span data-line="28">
 </span><span data-line="29"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">exported</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="30"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </section>
@@ -709,7 +705,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="26"><span class="n">exported</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_inputs</span><span class="p">)</span>
 </span><span data-line="27"><span class="n">exported</span> <span class="o">=</span> <span class="n">exported</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
 </span><span data-line="28"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">exported</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="29"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 <p>See the <a class="reference internal" href="../guides/custom-metal-kernels.html"><span class="doc">Custom Metal Kernels</span></a> guide for a full walkthrough.</p>
@@ -735,7 +730,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="4"><span class="n">ep</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">example_inputs</span><span class="p">)</span>
 </span><span data-line="5"><span class="n">ep</span> <span class="o">=</span> <span class="n">ep</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
 </span><span data-line="6"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">ep</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="7"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 <p><strong>With <code class="docutils literal notranslate"><span class="pre">add_pytorch_module</span></code></strong>:</p>
@@ -751,7 +745,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="10">    <span class="p">)</span>
 </span><span data-line="11">    <span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
 </span><span data-line="12"><span class="p">)</span>
-</span><span data-line="13"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </section>
@@ -884,7 +877,7 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="14">    <span class="n">ep</span><span class="p">,</span>
 </span><span data-line="15">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"features"</span><span class="p">],</span>
 </span><span data-line="16">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"logits"</span><span class="p">],</span>
-</span><span data-line="17"><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span><span data-line="17"><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
 </span></pre></div>
 </div>
 <p><strong>Stateful model</strong> — all three parameters:</p>
@@ -913,7 +906,7 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="23">    <span class="n">state_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"kv_cache"</span><span class="p">,</span> <span class="s2">"pos_idx"</span><span class="p">,</span> <span class="s2">"y_state"</span><span class="p">],</span>
 </span><span data-line="24">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"query"</span><span class="p">,</span> <span class="s2">"context"</span><span class="p">],</span>
 </span><span data-line="25">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"attn_out"</span><span class="p">,</span> <span class="s2">"scaled"</span><span class="p">],</span>
-</span><span data-line="26"><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+</span><span data-line="26"><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
 </span></pre></div>
 </div>
 <p>The converter applies these names to the graph’s inputs and outputs: mutated buffers and mutated user inputs become model state (in <code class="docutils literal notranslate"><span class="pre">state_names</span></code> order), followed by the non-mutated <code class="docutils literal notranslate"><span class="pre">input_names</span></code> and the returned <code class="docutils literal notranslate"><span class="pre">output_names</span></code>.</p>
@@ -972,5 +965,6 @@ data-aria-dark="Switch to auto color mode">
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../_static/shibuya.js?v=50760d75"></script>
+      <script src="../_static/sidebar-wrap.js?v=1515cd75"></script>
       <script src="../_static/copy-page-button.js?v=d5e0191b"></script></body>
 </html>

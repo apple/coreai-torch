@@ -53,8 +53,7 @@
     "ep = ep.run_decompositions(get_decomp_table())\n",
     "\n",
     "converter = TorchConverter().add_exported_program(ep)\n",
-    "coreai_program = converter.to_coreai()\n",
-    "coreai_program.optimize()"
+    "coreai_program = converter.to_coreai()"
    ]
   },
   {
@@ -98,8 +97,7 @@
     "        coreai_torch.get_decomp_table()\n",
     "    ),\n",
     ")\n",
-    "coreai_program = converter.to_coreai()\n",
-    "coreai_program.optimize()"
+    "coreai_program = converter.to_coreai()"
    ]
   },
   {
@@ -177,8 +175,7 @@
     "        )\n",
     "    ],\n",
     ")\n",
-    "coreai_program = converter.to_coreai()\n",
-    "coreai_program.optimize()"
+    "coreai_program = converter.to_coreai()"
    ]
   },
   {

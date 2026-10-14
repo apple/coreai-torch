@@ -102,7 +102,6 @@ converter.add_exported_program(
     output_names=["result"],
 )
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 ---

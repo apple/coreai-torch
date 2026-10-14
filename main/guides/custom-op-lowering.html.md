@@ -103,7 +103,6 @@ coreai_program = converter.add_exported_program(
     input_names=["x", "y"],
     output_names=["result"],
 ).to_coreai()
-coreai_program.optimize()
 ```
 
 ### Step 6 — Inspect the generated CoreAI graph
@@ -164,7 +163,6 @@ def lower_adaptive_avg_pool2d_static(values_map, node, loc):
 
 
 coreai_program = converter.add_exported_program(pool_exported).to_coreai()
-coreai_program.optimize()
 ```
 
 ---

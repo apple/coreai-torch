@@ -102,7 +102,6 @@ converter = TorchConverter().add_pytorch_module(
     ],
 )
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 Each instance is externalized using its own attribute values, so two instances configured differently are preserved as distinct composite ops.

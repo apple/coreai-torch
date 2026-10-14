@@ -56,6 +56,7 @@ This call is required when using `add_exported_program()`. Skipping it will leav
 ## Convert
 
 `TorchConverter` walks the FX graph node-by-node and emits CoreAI operations, returning a `AIProgram`.
+The returned program is already optimized; there is no separate optimization step to call.
 
 ```ipython3
 from coreai_torch import TorchConverter
@@ -66,7 +67,6 @@ coreai_program = converter.add_exported_program(
     input_names=["x"],
     output_names=["out"],
 ).to_coreai()
-coreai_program.optimize()
 ```
 
 ## Compile and Run
@@ -143,7 +143,6 @@ coreai_program = (
     )
     .to_coreai()
 )
-coreai_program.optimize()
 ```
 
 Compile and run the same way as above:
@@ -186,7 +185,6 @@ coreai_program = (
     )
     .to_coreai()
 )
-coreai_program.optimize()
 ```
 
 This uses `add_pytorch_module` to wrap export and conversion in one call. See [Conversion Workflows](../guides/conversion-workflows.md) for all options.

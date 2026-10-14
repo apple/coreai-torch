@@ -160,8 +160,7 @@
     "    exported,\n",
     "    input_names=[\"x\", \"y\"],\n",
     "    output_names=[\"result\"],\n",
-    ").to_coreai()\n",
-    "coreai_program.optimize()"
+    ").to_coreai()"
    ]
   },
   {
@@ -241,8 +240,7 @@
     "    )\n",
     "\n",
     "\n",
-    "coreai_program = converter.add_exported_program(pool_exported).to_coreai()\n",
-    "coreai_program.optimize()"
+    "coreai_program = converter.add_exported_program(pool_exported).to_coreai()"
    ]
   },
   {

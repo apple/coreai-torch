@@ -9,7 +9,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=9454f7d5" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=05f3bbaf" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=bc932304" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -300,7 +300,8 @@ data-aria-dark="Switch to auto color mode">
 </section>
 <section id="convert">
 <h2>Convert<a class="headerlink" href="#convert" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> walks the FX graph node-by-node and emits CoreAI operations, returning a <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> walks the FX graph node-by-node and emits CoreAI operations, returning a <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code>.
+The returned program is already optimized; there is no separate optimization step to call.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">TorchConverter</span>
@@ -311,7 +312,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="6">    <span class="n">input_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">],</span>
 </span><span data-line="7">    <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"out"</span><span class="p">],</span>
 </span><span data-line="8"><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="9"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </div>
@@ -393,7 +393,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="16">    <span class="p">)</span>
 </span><span data-line="17">    <span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
 </span><span data-line="18"><span class="p">)</span>
-</span><span data-line="19"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </div>
@@ -440,7 +439,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="15">    <span class="p">)</span>
 </span><span data-line="16">    <span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
 </span><span data-line="17"><span class="p">)</span>
-</span><span data-line="18"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </div>
@@ -508,5 +506,6 @@ data-aria-dark="Switch to auto color mode">
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../_static/shibuya.js?v=50760d75"></script>
+      <script src="../_static/sidebar-wrap.js?v=1515cd75"></script>
       <script src="../_static/copy-page-button.js?v=d5e0191b"></script></body>
 </html>

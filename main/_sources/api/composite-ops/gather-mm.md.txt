@@ -114,7 +114,6 @@ coreai_program = (
     )
     .to_coreai()
 )
-coreai_program.optimize()
 ```
 
 **Fused projections (`num_batch_axes=1`):**

@@ -60,7 +60,6 @@ from coreai_torch.debugging.validator import create_validator_for_coreai_program
 # Convert to Core AI
 converter = TorchConverter().add_exported_program(exported_program)
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 
 # Create validator
 validator = await create_validator_for_coreai_program(coreai_program, "main")
@@ -160,6 +159,82 @@ else:
     write_diff(diff, diff.source_graph, diff.target_graph, max_items=20)
 ```
 
+### Which layer changed
+
+**Use when:** A structural diff told you *something* changed and you need to know **where** — which layer, and which line of your model.
+
+`compute_changes` takes the same two programs and reports each differing operation
+against the module instance and source line it came from, so a diff of thousands of
+operations reads as a handful of layers:
+
+```python
+from coreai_torch.debugging.changes import compute_changes
+
+result = compute_changes(before_program, after_program)
+
+# Totals plus per-module counts, hotspot first.
+result.write_summary()
+```
+
+```text
+        9 change(s): 7 added, 0 removed, 2 modified
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━┳━━━━━━━┓
+┃ Module                     ┃ Added ┃ Removed ┃ Modified ┃ Total ┃ Share ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━┩
+│ ExtraLayerModel$1/Linear$3 │     6 │       0 │        0 │     6 │   67% │
+│ ExtraLayerModel$1/Linear$4 │     0 │       0 │        2 │     2 │   22% │
+│ ExtraLayerModel$1          │     1 │       0 │        0 │     1 │   11% │
+└────────────────────────────┴───────┴─────────┴──────────┴───────┴───────┘
+```
+
+Module names identify *instances* (`Linear$3`, not `Linear`), so two structurally
+identical layers are told apart — which operation names cannot do.
+
+Then drill into one layer once you know which to ask about:
+
+```python
+for change in result.changes_in("ExtraLayerModel$1/Linear$4"):
+    where = change.attribution.source
+    print(f"{change.change.value}: {change.op_name} at {where.filename}:{where.line}")
+```
+
+A module matches everything under it, so `"Block$2"` includes `"Block$2/Linear$1"`.
+
+For a programmatic caller, `to_dict()` gives the same report as plain values — counts
+first, then the module tree with each change nested under the module it happened in:
+
+```python
+import json
+
+print(json.dumps(result.to_dict(), indent=2))
+```
+
+:::{note}
+Attribution comes from the stack traces `TorchConverter.Mode.DEBUG` records, which is
+the default mode. Converted with stack traces off, changes are still reported but every
+one files under `<unknown>`.
+:::
+
+### Grouping any finding by module
+
+`compute_changes` is one consumer of a general rollup. Any tool holding op ids can name
+the layer they came from:
+
+```python
+from coreai_torch.debugging.modules import attributions_by_op_id, build_module_tree
+
+attributions = attributions_by_op_id(program)
+print(attributions[12].label)  # 'Model$1/Block$2/Linear$1'
+print(attributions[12].source)  # LocationInfo(filename='model.py', line=41, col=8)
+
+# Group your own findings the same way every report does.
+tree = build_module_tree(
+    (attributions[op_id].module, finding) for op_id, finding in my_findings.items()
+)
+for root in tree:
+    print(root.name, len(root.all_items()))
+```
+
 
 ## Performance profiling
 
@@ -184,6 +259,43 @@ for name, module in module_timings.items():
     print(f"{name}: {module.aggregated_op_stats.average:.3f}ms avg")
 ```
 
+## Every report groups the same way
+
+`by_module()` is on the comparison reports too, so "which layer" is one call whatever
+you were measuring — and always the same shape:
+
+```python
+# Which layer moved off a device
+diff = await compare_compute_plans(before_program, after_program)
+for node in diff.by_module():
+    print(f"{node.name}: {len(node.all_items())} operation(s) moved")
+
+# Which layer diverges numerically
+report = await compare_program_intermediates(exported_program, program, inputs)
+for node in report.by_module():
+    print(f"{node.name}: {len(node.all_items())} failing")
+
+# Which layer changed structurally
+changes = compute_changes(before_program, after_program)
+changes.write_summary()
+```
+
+Each entry also carries its own `module` path, so you can group or filter without the
+tree:
+
+```python
+for entry in report.failures:
+    print("/".join(entry.module), entry.max_diff)
+```
+
+:::{note}
+`ComputePlanDiff.by_module()` covers *moves*, and `IntermediatesReport.by_module()`
+covers *failures* — the entries each report exists to draw attention to. Additions and
+removals are `compute_changes`' question, and a report over a real model is mostly
+passing entries that would bury the handful that matter. Group `changes` or
+`comparisons` yourself for the full picture.
+:::
+
 ## Custom validation
 
 **Use when:** You need to check for specific conditions beyond NaN/infinity (e.g., value ranges, specific patterns).
@@ -207,9 +319,15 @@ result = await validator.check(check_large_values, inputs=example_input)
 Choose how to search through operations:
 
 ```python
-from coreai_torch.debugging.search_strategy import LevelOrderStrategy
+from coreai_torch.debugging.search_strategy import (
+    ExhaustiveStrategy,
+    LevelOrderStrategy,
+)
 
-# Binary search (default - fastest for finding first issue)
+# Exhaustive (default) - one batch, one model execution per side, reports every issue
+strategy = ExhaustiveStrategy(graph)
+
+# Bisection - narrows by depth to the first failing level
 strategy = LevelOrderStrategy.bisection(graph, batch_size=10)
 
 # Top-down (systematic from inputs to outputs)
@@ -218,6 +336,11 @@ strategy = LevelOrderStrategy.top_down(graph)
 # Adaptive (automatically selects best approach)
 strategy = LevelOrderStrategy.auto(graph)
 ```
+
+Every batch a strategy yields costs a full model execution on *both* sides, so
+narrowing only pays when capturing a value is more expensive than a run — very large
+intermediates, or an early exit that skips most of the graph. Otherwise the default
+`ExhaustiveStrategy` is both cheaper and more complete.
 
 ### Batch size
 ```python

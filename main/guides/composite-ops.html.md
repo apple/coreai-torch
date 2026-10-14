@@ -51,7 +51,6 @@ coreai_program = (
     )
     .to_coreai()
 )
-coreai_program.optimize()
 ```
 
 The converter preserves each matching submodule instance as a named composite op carrying its attributes, so the compiler can recognize and optimize it.
@@ -119,7 +118,6 @@ coreai_program = (
     )
     .to_coreai()
 )
-coreai_program.optimize()
 ```
 
 ### Verify numerical correctness

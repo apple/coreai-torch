@@ -31,7 +31,6 @@ ep = ep.run_decompositions(get_decomp_table())
 
 converter = TorchConverter().add_exported_program(ep)
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 **When to use:** You need full control over the export pipeline, or you already have an exported program from another tool.
@@ -60,7 +59,6 @@ converter = TorchConverter().add_pytorch_module(
     ),
 )
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 **When to use:** You have an `nn.Module` and want to pass it directly. Required if you need externalization; otherwise equivalent to `add_exported_program()`.
@@ -124,7 +122,6 @@ converter = TorchConverter().add_pytorch_module(
     ],
 )
 coreai_program = converter.to_coreai()
-coreai_program.optimize()
 ```
 
 **When to use:** Mark performance-critical building blocks (RMSNorm, RoPE, SDPA, and similar) so the compiler can optimize them as recognized operations.

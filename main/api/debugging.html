@@ -9,7 +9,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=9454f7d5" />
     <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
-    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=05f3bbaf" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=bc932304" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -177,9 +177,12 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#core-ai-inspector">Core AI inspector</a></li>
 <li><a class="reference internal" href="#structural-graph-analysis">Structural graph analysis</a><ul>
 <li><a class="reference internal" href="#graph-difference-analysis">Graph difference analysis</a></li>
+<li><a class="reference internal" href="#which-layer-changed">Which layer changed</a></li>
+<li><a class="reference internal" href="#grouping-any-finding-by-module">Grouping any finding by module</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#performance-profiling">Performance profiling</a></li>
+<li><a class="reference internal" href="#every-report-groups-the-same-way">Every report groups the same way</a></li>
 <li><a class="reference internal" href="#custom-validation">Custom validation</a></li>
 <li><a class="reference internal" href="#configuration">Configuration</a><ul>
 <li><a class="reference internal" href="#search-strategies">Search strategies</a></li>
@@ -313,13 +316,12 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span><span data-line="3"><span class="c1"># Convert to Core AI</span>
 </span><span data-line="4"><span class="n">converter</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">exported_program</span><span class="p">)</span>
 </span><span data-line="5"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="6"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
-</span><span data-line="7">
-</span><span data-line="8"><span class="c1"># Create validator</span>
-</span><span data-line="9"><span class="n">validator</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_validator_for_coreai_program</span><span class="p">(</span><span class="n">coreai_program</span><span class="p">,</span> <span class="s2">"main"</span><span class="p">)</span>
-</span><span data-line="10">
-</span><span data-line="11"><span class="c1"># Check for issues</span>
-</span><span data-line="12"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check_for_nans</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)})</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="c1"># Create validator</span>
+</span><span data-line="8"><span class="n">validator</span> <span class="o">=</span> <span class="k">await</span> <span class="n">create_validator_for_coreai_program</span><span class="p">(</span><span class="n">coreai_program</span><span class="p">,</span> <span class="s2">"main"</span><span class="p">)</span>
+</span><span data-line="9">
+</span><span data-line="10"><span class="c1"># Check for issues</span>
+</span><span data-line="11"><span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">validator</span><span class="o">.</span><span class="n">check_for_nans</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)})</span>
 </span></pre></div>
 </div>
 </section>
@@ -409,6 +411,72 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span></pre></div>
 </div>
 </section>
+<section id="which-layer-changed">
+<h3>Which layer changed<a class="headerlink" href="#which-layer-changed" title="Link to this heading">¶</a></h3>
+<p><strong>Use when:</strong> A structural diff told you <em>something</em> changed and you need to know <strong>where</strong> — which layer, and which line of your model.</p>
+<p><code class="docutils literal notranslate"><span class="pre">compute_changes</span></code> takes the same two programs and reports each differing operation
+against the module instance and source line it came from, so a diff of thousands of
+operations reads as a handful of layers:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.changes</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_changes</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">result</span> <span class="o">=</span> <span class="n">compute_changes</span><span class="p">(</span><span class="n">before_program</span><span class="p">,</span> <span class="n">after_program</span><span class="p">)</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="c1"># Totals plus per-module counts, hotspot first.</span>
+</span><span data-line="6"><span class="n">result</span><span class="o">.</span><span class="n">write_summary</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">        9 change(s): 7 added, 0 removed, 2 modified
+</span><span data-line="2">┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━┳━━━━━━━┓
+</span><span data-line="3">┃ Module                     ┃ Added ┃ Removed ┃ Modified ┃ Total ┃ Share ┃
+</span><span data-line="4">┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━┩
+</span><span data-line="5">│ ExtraLayerModel$1/Linear$3 │     6 │       0 │        0 │     6 │   67% │
+</span><span data-line="6">│ ExtraLayerModel$1/Linear$4 │     0 │       0 │        2 │     2 │   22% │
+</span><span data-line="7">│ ExtraLayerModel$1          │     1 │       0 │        0 │     1 │   11% │
+</span><span data-line="8">└────────────────────────────┴───────┴─────────┴──────────┴───────┴───────┘
+</span></pre></div>
+</div>
+<p>Module names identify <em>instances</em> (<code class="docutils literal notranslate"><span class="pre">Linear$3</span></code>, not <code class="docutils literal notranslate"><span class="pre">Linear</span></code>), so two structurally
+identical layers are told apart — which operation names cannot do.</p>
+<p>Then drill into one layer once you know which to ask about:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">for</span> <span class="n">change</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">changes_in</span><span class="p">(</span><span class="s2">"ExtraLayerModel$1/Linear$4"</span><span class="p">):</span>
+</span><span data-line="2">    <span class="n">where</span> <span class="o">=</span> <span class="n">change</span><span class="o">.</span><span class="n">attribution</span><span class="o">.</span><span class="n">source</span>
+</span><span data-line="3">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">change</span><span class="o">.</span><span class="n">change</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">change</span><span class="o">.</span><span class="n">op_name</span><span class="si">}</span><span class="s2"> at </span><span class="si">{</span><span class="n">where</span><span class="o">.</span><span class="n">filename</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">where</span><span class="o">.</span><span class="n">line</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>A module matches everything under it, so <code class="docutils literal notranslate"><span class="pre">&quot;Block$2&quot;</span></code> includes <code class="docutils literal notranslate"><span class="pre">&quot;Block$2/Linear$1&quot;</span></code>.</p>
+<p>For a programmatic caller, <code class="docutils literal notranslate"><span class="pre">to_dict()</span></code> gives the same report as plain values — counts
+first, then the module tree with each change nested under the module it happened in:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(),</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+</span></pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Attribution comes from the stack traces <code class="docutils literal notranslate"><span class="pre">TorchConverter.Mode.DEBUG</span></code> records, which is
+the default mode. Converted with stack traces off, changes are still reported but every
+one files under <code class="docutils literal notranslate"><span class="pre">&lt;unknown&gt;</span></code>.</p>
+</div>
+</section>
+<section id="grouping-any-finding-by-module">
+<h3>Grouping any finding by module<a class="headerlink" href="#grouping-any-finding-by-module" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">compute_changes</span></code> is one consumer of a general rollup. Any tool holding op ids can name
+the layer they came from:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.modules</span><span class="w"> </span><span class="kn">import</span> <span class="n">attributions_by_op_id</span><span class="p">,</span> <span class="n">build_module_tree</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="n">attributions</span> <span class="o">=</span> <span class="n">attributions_by_op_id</span><span class="p">(</span><span class="n">program</span><span class="p">)</span>
+</span><span data-line="4"><span class="nb">print</span><span class="p">(</span><span class="n">attributions</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>  <span class="c1"># 'Model$1/Block$2/Linear$1'</span>
+</span><span data-line="5"><span class="nb">print</span><span class="p">(</span><span class="n">attributions</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span><span class="o">.</span><span class="n">source</span><span class="p">)</span>  <span class="c1"># LocationInfo(filename='model.py', line=41, col=8)</span>
+</span><span data-line="6">
+</span><span data-line="7"><span class="c1"># Group your own findings the same way every report does.</span>
+</span><span data-line="8"><span class="n">tree</span> <span class="o">=</span> <span class="n">build_module_tree</span><span class="p">(</span>
+</span><span data-line="9">    <span class="p">(</span><span class="n">attributions</span><span class="p">[</span><span class="n">op_id</span><span class="p">]</span><span class="o">.</span><span class="n">module</span><span class="p">,</span> <span class="n">finding</span><span class="p">)</span> <span class="k">for</span> <span class="n">op_id</span><span class="p">,</span> <span class="n">finding</span> <span class="ow">in</span> <span class="n">my_findings</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+</span><span data-line="10"><span class="p">)</span>
+</span><span data-line="11"><span class="k">for</span> <span class="n">root</span> <span class="ow">in</span> <span class="n">tree</span><span class="p">:</span>
+</span><span data-line="12">    <span class="nb">print</span><span class="p">(</span><span class="n">root</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">root</span><span class="o">.</span><span class="n">all_items</span><span class="p">()))</span>
+</span></pre></div>
+</div>
+</section>
 </section>
 <section id="performance-profiling">
 <h2>Performance profiling<a class="headerlink" href="#performance-profiling" title="Link to this heading">¶</a></h2>
@@ -431,6 +499,40 @@ operation-level debug metadata is preserved and available to these tools:</p>
 </span></pre></div>
 </div>
 </section>
+<section id="every-report-groups-the-same-way">
+<h2>Every report groups the same way<a class="headerlink" href="#every-report-groups-the-same-way" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">by_module()</span></code> is on the comparison reports too, so “which layer” is one call whatever
+you were measuring — and always the same shape:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Which layer moved off a device</span>
+</span><span data-line="2"><span class="n">diff</span> <span class="o">=</span> <span class="k">await</span> <span class="n">compare_compute_plans</span><span class="p">(</span><span class="n">before_program</span><span class="p">,</span> <span class="n">after_program</span><span class="p">)</span>
+</span><span data-line="3"><span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">diff</span><span class="o">.</span><span class="n">by_module</span><span class="p">():</span>
+</span><span data-line="4">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">node</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">all_items</span><span class="p">())</span><span class="si">}</span><span class="s2"> operation(s) moved"</span><span class="p">)</span>
+</span><span data-line="5">
+</span><span data-line="6"><span class="c1"># Which layer diverges numerically</span>
+</span><span data-line="7"><span class="n">report</span> <span class="o">=</span> <span class="k">await</span> <span class="n">compare_program_intermediates</span><span class="p">(</span><span class="n">exported_program</span><span class="p">,</span> <span class="n">program</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span>
+</span><span data-line="8"><span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">report</span><span class="o">.</span><span class="n">by_module</span><span class="p">():</span>
+</span><span data-line="9">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">node</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">all_items</span><span class="p">())</span><span class="si">}</span><span class="s2"> failing"</span><span class="p">)</span>
+</span><span data-line="10">
+</span><span data-line="11"><span class="c1"># Which layer changed structurally</span>
+</span><span data-line="12"><span class="n">changes</span> <span class="o">=</span> <span class="n">compute_changes</span><span class="p">(</span><span class="n">before_program</span><span class="p">,</span> <span class="n">after_program</span><span class="p">)</span>
+</span><span data-line="13"><span class="n">changes</span><span class="o">.</span><span class="n">write_summary</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p>Each entry also carries its own <code class="docutils literal notranslate"><span class="pre">module</span></code> path, so you can group or filter without the
+tree:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">report</span><span class="o">.</span><span class="n">failures</span><span class="p">:</span>
+</span><span data-line="2">    <span class="nb">print</span><span class="p">(</span><span class="s2">"/"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">module</span><span class="p">),</span> <span class="n">entry</span><span class="o">.</span><span class="n">max_diff</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">ComputePlanDiff.by_module()</span></code> covers <em>moves</em>, and <code class="docutils literal notranslate"><span class="pre">IntermediatesReport.by_module()</span></code>
+covers <em>failures</em> — the entries each report exists to draw attention to. Additions and
+removals are <code class="docutils literal notranslate"><span class="pre">compute_changes</span></code>’ question, and a report over a real model is mostly
+passing entries that would bury the handful that matter. Group <code class="docutils literal notranslate"><span class="pre">changes</span></code> or
+<code class="docutils literal notranslate"><span class="pre">comparisons</span></code> yourself for the full picture.</p>
+</div>
+</section>
 <section id="custom-validation">
 <h2>Custom validation<a class="headerlink" href="#custom-validation" title="Link to this heading">¶</a></h2>
 <p><strong>Use when:</strong> You need to check for specific conditions beyond NaN/infinity (e.g., value ranges, specific patterns).</p>
@@ -450,18 +552,28 @@ operation-level debug metadata is preserved and available to these tools:</p>
 <section id="search-strategies">
 <h3>Search strategies<a class="headerlink" href="#search-strategies" title="Link to this heading">¶</a></h3>
 <p>Choose how to search through operations:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.search_strategy</span><span class="w"> </span><span class="kn">import</span> <span class="n">LevelOrderStrategy</span>
-</span><span data-line="2">
-</span><span data-line="3"><span class="c1"># Binary search (default - fastest for finding first issue)</span>
-</span><span data-line="4"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">bisection</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kn">from</span><span class="w"> </span><span class="nn">coreai_torch.debugging.search_strategy</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span data-line="2">    <span class="n">ExhaustiveStrategy</span><span class="p">,</span>
+</span><span data-line="3">    <span class="n">LevelOrderStrategy</span><span class="p">,</span>
+</span><span data-line="4"><span class="p">)</span>
 </span><span data-line="5">
-</span><span data-line="6"><span class="c1"># Top-down (systematic from inputs to outputs)</span>
-</span><span data-line="7"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">top_down</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
+</span><span data-line="6"><span class="c1"># Exhaustive (default) - one batch, one model execution per side, reports every issue</span>
+</span><span data-line="7"><span class="n">strategy</span> <span class="o">=</span> <span class="n">ExhaustiveStrategy</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
 </span><span data-line="8">
-</span><span data-line="9"><span class="c1"># Adaptive (automatically selects best approach)</span>
-</span><span data-line="10"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">auto</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
+</span><span data-line="9"><span class="c1"># Bisection - narrows by depth to the first failing level</span>
+</span><span data-line="10"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">bisection</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+</span><span data-line="11">
+</span><span data-line="12"><span class="c1"># Top-down (systematic from inputs to outputs)</span>
+</span><span data-line="13"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">top_down</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
+</span><span data-line="14">
+</span><span data-line="15"><span class="c1"># Adaptive (automatically selects best approach)</span>
+</span><span data-line="16"><span class="n">strategy</span> <span class="o">=</span> <span class="n">LevelOrderStrategy</span><span class="o">.</span><span class="n">auto</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
 </span></pre></div>
 </div>
+<p>Every batch a strategy yields costs a full model execution on <em>both</em> sides, so
+narrowing only pays when capturing a value is more expensive than a run — very large
+intermediates, or an early exit that skips most of the graph. Otherwise the default
+<code class="docutils literal notranslate"><span class="pre">ExhaustiveStrategy</span></code> is both cheaper and more complete.</p>
 </section>
 <section id="batch-size">
 <h3>Batch size<a class="headerlink" href="#batch-size" title="Link to this heading">¶</a></h3>
@@ -588,5 +700,6 @@ operation-level debug metadata is preserved and available to these tools:</p>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../_static/shibuya.js?v=50760d75"></script>
+      <script src="../_static/sidebar-wrap.js?v=1515cd75"></script>
       <script src="../_static/copy-page-button.js?v=d5e0191b"></script></body>
 </html>

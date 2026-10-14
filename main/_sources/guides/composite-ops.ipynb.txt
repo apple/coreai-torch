@@ -72,7 +72,6 @@
     "    )\n",
     "    .to_coreai()\n",
     ")\n",
-    "coreai_program.optimize()\n",
     "```\n",
     "\n",
     "The converter preserves each matching submodule instance as a named composite op carrying its attributes, so the compiler can recognize and optimize it.\n"
@@ -161,8 +160,7 @@
     "        ],\n",
     "    )\n",
     "    .to_coreai()\n",
-    ")\n",
-    "coreai_program.optimize()"
+    ")"
    ]
   },
   {

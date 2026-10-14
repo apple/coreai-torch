@@ -9,7 +9,7 @@
     <link rel="stylesheet" type="text/css" href="_static/shibuya.css?v=9454f7d5" />
     <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link media="print" rel="stylesheet" type="text/css" href="_static/print.css?v=20ff2c19" />
-    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=05f3bbaf" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=bc932304" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -168,6 +168,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#quick-example">Quick example</a></li>
 <li><a class="reference internal" href="#choosing-your-workflow">Choosing your workflow</a></li>
 <li><a class="reference internal" href="#next-steps">Next steps</a></li>
+<li><a class="reference internal" href="#what-is-core-ai">What is Core AI?</a></li>
 <li><a class="reference internal" href="#links">Links</a></li>
 <li><a class="reference internal" href="#notices">Notices</a><ul>
 </ul>
@@ -239,9 +240,13 @@ data-aria-dark="Switch to auto color mode">
 <p>Bring PyTorch models to Core AI for on-device execution.</p>
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
-<p>Core AI PyTorch Extensions (<code class="docutils literal notranslate"><span class="pre">coreai-torch</span></code>) is a Python package that bridges PyTorch and Core AI. You can use it to bring up an existing PyTorch model — exported as a <code class="docutils literal notranslate"><span class="pre">torch.export.ExportedProgram</span></code> — into a Core AI <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code> ready to run on Apple hardware, traversing the FX graph node-by-node and mapping ATen operators to Core AI operations. You can equally use it to author Core AI models directly from PyTorch by composing the library of composite ops in <code class="docutils literal notranslate"><span class="pre">coreai_torch.composite_ops</span></code>, authoring new ops via <code class="docutils literal notranslate"><span class="pre">register_torch_lowering</span></code>, and authoring inline Metal GPU kernels through <code class="docutils literal notranslate"><span class="pre">TorchMetalKernel</span></code> and <code class="docutils literal notranslate"><span class="pre">register_custom_kernels</span></code> — all expressed as PyTorch <code class="docutils literal notranslate"><span class="pre">nn.Module</span></code>s and lowered to Core AI IR that the compiler recognizes and optimizes natively.</p>
-<p>The bring-up pipeline has three steps. First, export your PyTorch model with <code class="docutils literal notranslate"><span class="pre">torch.export.export</span></code> to capture the computation graph. Second, decompose the exported program with <code class="docutils literal notranslate"><span class="pre">get_decomp_table()</span></code>, which lowers composite ATen ops to the primitive set that <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> can map while preserving the operations that <code class="docutils literal notranslate"><span class="pre">TorchConverter</span></code> lowers as composite ops. Third, call <code class="docutils literal notranslate"><span class="pre">TorchConverter().add_exported_program(ep).to_coreai()</span></code> to produce the <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code>.</p>
-<p>For authoring, <code class="docutils literal notranslate"><span class="pre">coreai_torch.composite_ops</span></code> exposes well-known building blocks — such as attention, RoPE embeddings, RMSNorm, and gather-matmul (the MoE primitive) — as PyTorch modules. Passing these modules to <code class="docutils literal notranslate"><span class="pre">externalize_modules</span></code> preserves each one’s operation boundary as a named composite op that the compiler can recognize and optimize. When a PyTorch op has no built-in lowering rule, register a custom lowering function with <code class="docutils literal notranslate"><span class="pre">register_torch_lowering</span></code>. For compute-intensive custom operations, <code class="docutils literal notranslate"><span class="pre">register_custom_kernels</span></code> lets you author Metal kernel source and wire it into the conversion pipeline.</p>
+<p><code class="docutils literal notranslate"><span class="pre">coreai-torch</span></code> is a Python package that bridges PyTorch and Core AI. It converts PyTorch models — exported as <code class="docutils literal notranslate"><span class="pre">torch.export.ExportedProgram</span></code> — into a Core AI <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code> by traversing the FX graph and mapping ATen operators to Core AI operations. For an overview of the Core AI ecosystem and how coreai-torch fits in, see <a class="reference internal" href="#what-is-core-ai"><span class="xref myst">What is Core AI?</span></a>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">coreai-torch</span></code> is built around the following capabilities:</p>
+<ul class="simple">
+<li><p><strong>Bring up existing models.</strong> Export your model with <code class="docutils literal notranslate"><span class="pre">torch.export.export</span></code>, decompose with <code class="docutils literal notranslate"><span class="pre">get_decomp_table()</span></code>, then call <code class="docutils literal notranslate"><span class="pre">TorchConverter().add_exported_program(ep).to_coreai()</span></code> to produce an <code class="docutils literal notranslate"><span class="pre">AIProgram</span></code> ready to run on Apple hardware.</p></li>
+<li><p><strong>Author Core AI models from PyTorch.</strong> <code class="docutils literal notranslate"><span class="pre">coreai_torch.composite_ops</span></code> provides building blocks — attention, RoPE embeddings, RMSNorm, and gather-matmul — as PyTorch modules. Use <code class="docutils literal notranslate"><span class="pre">externalize_modules</span></code> to preserve operation boundaries as named composite ops the compiler can recognize and optimize.</p></li>
+<li><p><strong>Extend with custom ops and Metal kernels.</strong> Register custom lowering functions with <code class="docutils literal notranslate"><span class="pre">register_torch_lowering</span></code> for ops with no built-in rule, or author inline Metal GPU kernels with <code class="docutils literal notranslate"><span class="pre">TorchMetalKernel</span></code> and <code class="docutils literal notranslate"><span class="pre">register_custom_kernels</span></code>.</p></li>
+</ul>
 </section>
 <section id="quick-example">
 <h2>Quick example<a class="headerlink" href="#quick-example" title="Link to this heading">¶</a></h2>
@@ -252,7 +257,6 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="5"><span class="n">ep</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">),))</span>
 </span><span data-line="6"><span class="n">ep</span> <span class="o">=</span> <span class="n">ep</span><span class="o">.</span><span class="n">run_decompositions</span><span class="p">(</span><span class="n">get_decomp_table</span><span class="p">())</span>
 </span><span data-line="7"><span class="n">coreai_program</span> <span class="o">=</span> <span class="n">TorchConverter</span><span class="p">()</span><span class="o">.</span><span class="n">add_exported_program</span><span class="p">(</span><span class="n">ep</span><span class="p">)</span><span class="o">.</span><span class="n">to_coreai</span><span class="p">()</span>
-</span><span data-line="8"><span class="n">coreai_program</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 </span></pre></div>
 </div>
 </section>
@@ -287,6 +291,19 @@ data-aria-dark="Switch to auto color mode">
 <li><p><strong>Authoring Core AI models from PyTorch:</strong> <a class="reference internal" href="guides/composite-ops.html"><span class="doc">Composite Ops Guide</span></a> covers the built-in composite op library, <a class="reference internal" href="guides/custom-op-lowering.html"><span class="doc">Custom Op Lowering</span></a> shows how to author Core AI IR for new torch ops, and <a class="reference internal" href="guides/custom-metal-kernels.html"><span class="doc">Custom Metal Kernels</span></a> walks through authoring inline Metal GPU kernels.</p></li>
 <li><p><strong>Customizing bring-up:</strong> <a class="reference internal" href="guides/conversion-workflows.html"><span class="doc">Conversion Workflows</span></a> covers each bring-up workflow. <a class="reference internal" href="guides/externalization.html"><span class="doc">Externalization</span></a> covers preserving submodule boundaries as composite ops.</p></li>
 <li><p><strong>API reference:</strong> <a class="reference internal" href="api/TorchConverter.html"><span class="doc">TorchConverter API reference</span></a> documents every method and parameter. <a class="reference internal" href="api/composite-ops.html"><span class="doc">Composite ops API reference</span></a> lists all built-in composite ops. <a class="reference internal" href="api/TorchMetalKernel.html"><span class="doc">TorchMetalKernel</span></a> covers the Metal-kernel authoring API.</p></li>
+</ul>
+</section>
+<section id="what-is-core-ai">
+<h2>What is Core AI?<a class="headerlink" href="#what-is-core-ai" title="Link to this heading">¶</a></h2>
+<p>Core AI is a set of technologies for deploying machine learning models on Apple hardware, covering the full model deployment lifecycle: from model conversion, debugging, optimization, and integration into your app. Models run entirely on device on Apple silicon, with no server required.</p>
+<img alt="Diagram of the Core AI ecosystem. At the top, Core AI Models provides ready-to-use models and examples. Core AI Optimization and Core AI PyTorch Extensions prepare models for deployment, producing a .aimodel file. Core AI Debugger and Xcode support integration and debugging. Core AI Framework runs models on device." class="align-center" src="_images/core-ai-ecosystem.svg" />
+<p>The Core AI ecosystem consists of the following components:</p>
+<ul class="simple">
+<li><p>Convert PyTorch models to the Core AI model format (<code class="docutils literal notranslate"><span class="pre">.aimodel</span></code>) using <a class="reference external" href="https://github.com/apple/coreai-torch">Core AI PyTorch Package</a></p></li>
+<li><p>Compress models with quantization, palettization, and pruning using <a class="reference external" href="https://github.com/apple/coreai-optimization">Core AI Optimization</a></p></li>
+<li><p>Load and run models in an app with the <a class="reference external" href="https://developer.apple.com/documentation/coreai">Core AI Framework</a></p></li>
+<li><p>Inspect, debug, and profile models using <a class="reference external" href="https://developer.apple.com/documentation/coreai/inspecting-debugging-and-profiling-core-ai-models">Core AI Debugger</a></p></li>
+<li><p>Get popular open-source covered models with optimization and Swift app integration code using <a class="reference external" href="https://github.com/apple/coreai-models">Core AI Models</a></p></li>
 </ul>
 </section>
 <section id="links">
@@ -353,5 +370,6 @@ data-aria-dark="Switch to auto color mode">
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="_static/shibuya.js?v=50760d75"></script>
+      <script src="_static/sidebar-wrap.js?v=1515cd75"></script>
       <script src="_static/copy-page-button.js?v=d5e0191b"></script></body>
 </html>
