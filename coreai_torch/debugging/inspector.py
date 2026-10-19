@@ -13,11 +13,14 @@ from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Union, cast
 
 import coreai
 import numpy as np
 import torch
+from coreai.authoring import AIProgram
 from numpy.typing import NDArray
 
 from .debug_info import (
@@ -26,6 +29,7 @@ from .debug_info import (
     _build_compile_id_to_coreai_map,
     parse_debug_infos,
 )
+from .probes import ProbedProgram, add_probe_outputs
 from .torch_utils import _TorchFXNodeValueInterpreter
 
 logger = logging.getLogger(__name__)
@@ -40,6 +44,11 @@ def _uses_os_framework() -> bool:
     variable reads as False here.
     """
     return "USE_OS_COREAI" in os.environ
+
+
+def _as_numpy(value: Any) -> NDArray[Any]:
+    """A numpy view of a Core AI NDArray, or the array itself if it is not one."""
+    return value.numpy() if isinstance(value, coreai.runtime.NDArray) else value
 
 
 async def _wait_for_async_callbacks() -> None:
@@ -1142,3 +1151,198 @@ class CoreAIInspector(Inspector):
             )
             for (source_op_id, _output_idx), mk in compile_map.items()
         }
+
+
+@dataclass
+class _CompiledProbe:
+    """A probed program compiled and loaded once, with the files it was loaded from."""
+
+    probed: ProbedProgram
+    function: Any
+    temp_dir: TemporaryDirectory[str]
+
+
+class CoreAIProbedInspector(Inspector):
+    """
+    Inspector that reads intermediates by adding them to the model's outputs.
+
+    :class:`CoreAIInspector` relies on the runtime's intermediate logger, which does
+    not fire for work placed on the neural engine. This inspector needs no logger:
+    each call copies the program, appends the requested operations' values to the
+    graph's outputs, compiles the copy and runs it, so a value comes back the way any
+    model output does on any compute unit.
+
+    The price is a compile, and that a probed value is an output the compiler may not
+    fuse away, so placement of the probed copy can differ from the original's. A
+    compiled copy is kept per set of probed operations, so reading the same set again
+    with new inputs does not compile again; see ``max_cached_models``. Wrap in
+    :class:`CachingInspector` to avoid re-reading values.
+
+    Operation IDs are Core AI operation IDs of the program passed in.
+    """
+
+    def __init__(
+        self,
+        program: AIProgram,
+        function_name: str = "main",
+        specialization_options: coreai.runtime.SpecializationOptions | None = None,
+        max_cached_models: int = 4,
+    ):
+        """
+        Initialize the probed inspector.
+
+        Args:
+            program: The program to inspect. Not modified.
+            function_name: Graph to run and probe (default: "main")
+            specialization_options: Options the probed copy is compiled with, for
+                example a preferred compute unit. Runtime defaults when None.
+            max_cached_models: How many compiled copies to keep, one per distinct
+                set of probed operations, least recently used dropped first. A
+                compiled copy of a large model is large, so lower this to save
+                memory; 0 compiles on every call.
+
+        Raises:
+            ValueError: If max_cached_models is negative.
+
+        """
+        if max_cached_models < 0:
+            msg = f"max_cached_models must not be negative, got {max_cached_models}"
+            raise ValueError(msg)
+        self._max_cached_models = max_cached_models
+        self._compiled: OrderedDict[frozenset[int], _CompiledProbe] = OrderedDict()
+        self._program = program
+        self._function_name = function_name
+        self._specialization_options = specialization_options
+        self._last_outputs: dict[str, NDArray[Any]] | None = None
+        self._last_state: dict[str, NDArray[Any]] | None = None
+
+    async def get_intermediates_for_ops(
+        self,
+        op_ids: list[Inspector.OpID],
+        inputs: Any,
+        state: Mapping[str, Any] | None = None,
+    ) -> dict[Inspector.OpID, list[NDArray[Any] | None] | None]:
+        """
+        Run the model with *op_ids* added as outputs and return their values.
+
+        Args:
+            op_ids: Core AI operation IDs to read.
+            inputs: Model inputs, mapping input names to NDArray or numpy arrays.
+            state: Starting value of each state the model reads or writes, by name.
+                The runtime updates state in place as the model runs, so this copies
+                it: every call starts from the same values and the caller's arrays
+                are left as they were. The values the run left behind are in
+                :attr:`last_state`.
+
+        Returns:
+            Each requested ID mapped to its output arrays, one per result. None
+            means the operation cannot be probed: it has no tensor result, is not in
+            the function's top-level graph, or has no ID in this program.
+
+        Raises:
+            TypeError: If inputs is not a dictionary.
+
+        """
+        if not isinstance(inputs, dict):
+            msg = "inputs must be a dictionary mapping input names to NDArray"
+            raise TypeError(msg)
+
+        int_op_ids = cast(list[int], op_ids)
+        compiled = await self._compiled_for(int_op_ids)
+        probed = compiled.probed
+
+        ndarray_inputs = {
+            name: value
+            if isinstance(value, coreai.runtime.NDArray)
+            else coreai.runtime.NDArray(value)
+            for name, value in inputs.items()
+        }
+
+        ndarray_state = {
+            name: coreai.runtime.NDArray(np.array(_as_numpy(value)))
+            for name, value in (state or {}).items()
+        }
+
+        try:
+            outputs = await compiled.function(
+                inputs=ndarray_inputs, state=ndarray_state
+            )
+            arrays = {name: array.numpy() for name, array in outputs.items()}
+            self._last_state = {
+                name: np.array(array.numpy()) for name, array in ndarray_state.items()
+            }
+        finally:
+            if self._max_cached_models == 0:
+                compiled.temp_dir.cleanup()
+
+        self._last_outputs, probed_arrays = probed.split_outputs(arrays)
+
+        results: dict[int, list[NDArray[Any] | None] | None] = dict.fromkeys(int_op_ids)
+        for op_id, values in probed_arrays.items():
+            results[op_id] = [np.asarray(value) for value in values]
+        return results  # type: ignore[return-value]
+
+    async def _compiled_for(self, op_ids: list[int]) -> _CompiledProbe:
+        """The compiled copy for this set of operations, compiling it if not kept."""
+        key = frozenset(op_ids)
+        if (kept := self._compiled.get(key)) is not None:
+            self._compiled.move_to_end(key)
+            return kept
+
+        probed = add_probe_outputs(self._program, op_ids, self._function_name)
+        if probed.unprobed:
+            logger.warning("Cannot probe operations: %s", probed.unprobed)
+
+        temp_dir = TemporaryDirectory()
+        try:
+            asset = probed.program.save_asset(Path(temp_dir.name) / "probed.aimodel")
+            model = await coreai.runtime.AIModel.load(
+                asset.path, self._specialization_options
+            )
+            function = model.load_function(self._function_name)
+        except BaseException:
+            temp_dir.cleanup()
+            raise
+
+        compiled = _CompiledProbe(probed, function, temp_dir)
+        if self._max_cached_models > 0:
+            self._compiled[key] = compiled
+            while len(self._compiled) > self._max_cached_models:
+                self._compiled.popitem(last=False)[1].temp_dir.cleanup()
+        return compiled
+
+    def clear_cache(self) -> None:
+        """Drop every compiled copy and delete the files they were loaded from."""
+        while self._compiled:
+            self._compiled.popitem(last=False)[1].temp_dir.cleanup()
+
+    @property
+    def cached_models(self) -> int:
+        """How many compiled copies are currently kept."""
+        return len(self._compiled)
+
+    @property
+    def last_outputs(self) -> dict[str, NDArray[Any]] | None:
+        """
+        Get the model's own outputs from the most recent execution.
+
+        The probe outputs are not included.
+
+        Returns:
+            Dictionary mapping output names to NumPy arrays, or None if the model
+            hasn't been executed yet.
+
+        """
+        return self._last_outputs
+
+    @property
+    def last_state(self) -> dict[str, NDArray[Any]] | None:
+        """
+        Get the state the most recent execution left behind.
+
+        Returns:
+            Dictionary mapping state names to NumPy arrays, or None if the model
+            hasn't been executed yet.
+
+        """
+        return self._last_state
