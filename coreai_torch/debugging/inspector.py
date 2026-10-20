@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Literal, Union, cast
+from typing import Any, Union, cast
 
 import coreai
 import numpy as np
@@ -1199,6 +1199,19 @@ class CoreAIInspector(Inspector):
         }
 
 
+class PerturbationPolicy(str, Enum):
+    """What a probed inspector does with a probe set that moves the model's outputs."""
+
+    SPLIT = "split"
+    """Retry each half until every returned value comes from a clean set."""
+
+    WARN = "warn"
+    """Log and return the values anyway."""
+
+    RAISE = "raise"
+    """Raise :class:`PerturbationError`."""
+
+
 class PerturbationError(RuntimeError):
     """Probing moved the model's own outputs beyond the tolerance."""
 
@@ -1242,7 +1255,7 @@ class CoreAIProbedInspector(Inspector):
         max_cached_models: int = 4,
         rtol: float = 1e-3,
         atol: float = 1e-3,
-        on_perturbation: Literal["split", "warn", "raise"] = "split",
+        on_perturbation: PerturbationPolicy | str = PerturbationPolicy.SPLIT,
     ):
         """
         Initialize the probed inspector.
@@ -1258,15 +1271,13 @@ class CoreAIProbedInspector(Inspector):
             rtol: Relative tolerance of the perturbation check.
             atol: Absolute tolerance of the perturbation check. Neither default is
                 tuned to a model; set them for the precision you run.
-            on_perturbation: For a set that moves the outputs. ``"split"`` retries
-                each half until every returned value comes from a clean set;
-                ``"warn"`` logs and returns the values; ``"raise"`` raises
-                :class:`PerturbationError`. A set that fails to compile or run is
-                always split, or raises under ``"raise"``.
+            on_perturbation: A :class:`PerturbationPolicy` (or its string value) for
+                a set that moves the outputs. A set that fails to compile or run is
+                split, or raises under ``RAISE``.
 
         Raises:
             ValueError: If max_cached_models, rtol or atol is negative, or
-                on_perturbation is not one of the three.
+                on_perturbation is not a policy.
 
         """
         if max_cached_models < 0:
@@ -1275,13 +1286,10 @@ class CoreAIProbedInspector(Inspector):
         if rtol < 0 or atol < 0:
             msg = f"rtol and atol must not be negative, got {rtol} and {atol}"
             raise ValueError(msg)
-        if on_perturbation not in ("split", "warn", "raise"):
-            msg = f"on_perturbation must be split, warn or raise, got {on_perturbation}"
-            raise ValueError(msg)
         self._max_cached_models = max_cached_models
         self._rtol = rtol
         self._atol = atol
-        self._on_perturbation = on_perturbation
+        self._on_perturbation = PerturbationPolicy(on_perturbation)
         self._compiled: OrderedDict[frozenset[int], _CompiledProbe] = OrderedDict()
         self._reference: _CompiledProbe | None = None
         self._program = program
@@ -1317,7 +1325,7 @@ class CoreAIProbedInspector(Inspector):
         Raises:
             TypeError: If inputs is not a dictionary.
             PerturbationError: If a set moved the outputs, or failed to compile or
-                run, and ``on_perturbation="raise"``.
+                run, and the policy is ``RAISE``.
 
         """
         if not isinstance(inputs, dict):
@@ -1364,7 +1372,7 @@ class CoreAIProbedInspector(Inspector):
                     if self._max_cached_models == 0:
                         compiled.temp_dir.cleanup()
             except Exception as error:
-                if self._on_perturbation == "raise":
+                if self._on_perturbation is PerturbationPolicy.RAISE:
                     msg = f"probing {batch} failed to compile or run: {error}"
                     raise PerturbationError(msg) from error
                 self._split_or_give_up(
@@ -1383,7 +1391,10 @@ class CoreAIProbedInspector(Inspector):
             if probeable:
                 self._perturbations.append(report)
 
-            if report.within_tolerance or self._on_perturbation == "warn":
+            if (
+                report.within_tolerance
+                or self._on_perturbation is PerturbationPolicy.WARN
+            ):
                 if not report.within_tolerance:
                     logger.warning(
                         "Probing %s moved the model's outputs (max abs %.3g, "
@@ -1394,7 +1405,7 @@ class CoreAIProbedInspector(Inspector):
                     )
                 for op_id, values in probed_arrays.items():
                     results[op_id] = [np.asarray(value) for value in values]
-            elif self._on_perturbation == "raise":
+            elif self._on_perturbation is PerturbationPolicy.RAISE:
                 msg = (
                     f"probing {probeable} moved the model's outputs "
                     f"(max abs {report.max_abs_diff:.3g}, "

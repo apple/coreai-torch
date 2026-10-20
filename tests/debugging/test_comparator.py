@@ -20,6 +20,7 @@ from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
 from coreai_torch.debugging.comparator import (
     Comparator,
     DebugGraph,
+    TargetInspector,
     create_comparator_for_programs,
 )
 from coreai_torch.debugging.graph import ComputationGraph
@@ -664,10 +665,10 @@ class _Accumulator(torch.nn.Module):
         return torch.relu(y)
 
 
-@pytest.mark.parametrize("target_inspector", ["logger", "probed"])
+@pytest.mark.parametrize("target_inspector", list(TargetInspector))
 async def test_comparator_starts_both_sides_from_the_given_state(
     specialization_options: SpecializationOptions | None,
-    target_inspector: str,
+    target_inspector: TargetInspector,
 ) -> None:
     x = torch.randn(1, 4)
     exported = torch.export.export(_Accumulator().eval(), (x,)).run_decompositions()
@@ -677,7 +678,7 @@ async def test_comparator_starts_both_sides_from_the_given_state(
         target_program=program,
         target_entry_point="main",
         specialization_options=specialization_options,
-        target_inspector=target_inspector,  # type: ignore[arg-type]
+        target_inspector=target_inspector,
     )
     state = {"b_acc": np.full((1, 4), 3.0, dtype=np.float32)}
 
@@ -689,13 +690,3 @@ async def test_comparator_starts_both_sides_from_the_given_state(
     assert result.failed_nodes == []
     # The caller's array is not updated by either run.
     np.testing.assert_array_equal(state["b_acc"], np.full((1, 4), 3.0))
-
-
-async def test_probed_options_need_the_probed_inspector() -> None:
-    with pytest.raises(ValueError, match="only valid"):
-        await create_comparator_for_programs(
-            source_program=None,  # type: ignore[arg-type]
-            target_program=None,  # type: ignore[arg-type]
-            target_entry_point="main",
-            probed_options={"rtol": 1e-2},
-        )

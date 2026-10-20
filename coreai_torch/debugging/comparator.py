@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, TypeVar
 
 import numpy as np
 import torch
@@ -56,6 +56,17 @@ from .torch_utils import get_torch_to_coreai_output_mapping
 from .utils import _plain, _state_kwargs, _with_debug
 
 logger = logging.getLogger(__name__)
+
+
+class TargetInspector(str, Enum):
+    """How a comparator reads the target program's intermediates."""
+
+    LOGGER = "logger"
+    """The runtime's intermediate logger. Leaves the model as it is."""
+
+    PROBED = "probed"
+    """Extra model outputs (:class:`CoreAIProbedInspector`), for work the logger misses."""
+
 
 _DEFAULT_RTOL: float = 1e-5
 _DEFAULT_ATOL: float = 1e-3
@@ -1527,7 +1538,7 @@ async def create_comparator_for_programs(
     use_caching: bool = True,
     exclude_ops: frozenset[str] = _DEFAULT_EXCLUDED_OPS,
     specialization_options: SpecializationOptions | None = None,
-    target_inspector: Literal["logger", "probed"] = "logger",
+    target_inspector: TargetInspector | str = TargetInspector.LOGGER,
     probed_options: Mapping[str, Any] | None = None,
 ) -> Comparator[torch.fx.Node, torch.fx.Graph, Operation, Module]:
     """
@@ -1551,27 +1562,23 @@ async def create_comparator_for_programs(
                      Defaults to _DEFAULT_EXCLUDED_OPS which includes view/reshape
                      operations. Pass frozenset() to disable exclusions.
         specialization_options: Options for configuring model specialization
-        target_inspector: How target intermediates are read. ``"logger"`` uses the
-            runtime's intermediate logger. ``"probed"`` adds the values to the model's
-            outputs (:class:`CoreAIProbedInspector`), so the values come from a copy of
-            the model with extra outputs; check its ``perturbations``.
-        probed_options: Extra keyword arguments for :class:`CoreAIProbedInspector`
-            (``rtol``, ``atol``, ``on_perturbation``, ``max_cached_models``). Only
-            valid with ``target_inspector="probed"``.
+        target_inspector: A :class:`TargetInspector` (or its string value). With
+            ``PROBED`` the values come from a copy of the model with extra outputs;
+            check the inspector's ``perturbations``.
+        probed_options: Keyword arguments for :class:`CoreAIProbedInspector`. Only
+            valid with ``PROBED``.
 
     Returns:
         Comparator instance configured for comparing the two programs
 
     Raises:
-        ValueError: If target_inspector is unknown, or probed_options is given
-            without ``"probed"``.
+        ValueError: If target_inspector is not a :class:`TargetInspector`, or
+            probed_options is given without ``PROBED``.
 
     """
-    if target_inspector not in ("logger", "probed"):
-        msg = f"target_inspector must be logger or probed, got {target_inspector}"
-        raise ValueError(msg)
-    if probed_options and target_inspector != "probed":
-        msg = "probed_options is only valid with target_inspector='probed'"
+    target_inspector = TargetInspector(target_inspector)
+    if probed_options and target_inspector is not TargetInspector.PROBED:
+        msg = "probed_options is only valid with TargetInspector.PROBED"
         raise ValueError(msg)
 
     # Create ID mapping from torch to coreai operations
@@ -1590,7 +1597,7 @@ async def create_comparator_for_programs(
     source_graph = create_graph_from_exported_program(source_program)
 
     target: Inspector
-    if target_inspector == "probed":
+    if target_inspector is TargetInspector.PROBED:
         target = CoreAIProbedInspector(
             target_program,
             function_name=target_entry_point,
