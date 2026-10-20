@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from coreai._compiler.dialects import coreai as coreai_dialect
 from coreai._compiler.ir import (
     ArrayAttr,
@@ -36,9 +37,8 @@ class ProbedProgram:
     """
     A copy of a program with extra outputs that carry intermediate values.
 
-    Nothing here needs the Python runtime. The rewritten program can be saved and run by
-    any runtime, and :meth:`manifest` says which of its outputs are probes, so a caller
-    that gets the arrays back some other way can still tell them apart.
+    Independent of the Python runtime: the saved program runs anywhere, and
+    :meth:`manifest` says which outputs are probes.
 
     Attributes:
         program: The rewritten copy. The original is not modified.
@@ -125,18 +125,13 @@ def add_probe_outputs(
     """
     Copy *program* and return the values of the given operations as extra outputs.
 
-    This reads an intermediate without the runtime's intermediate logger, which does
-    not fire on the neural engine: the value leaves the graph like any other output.
-    The extra outputs are appended after the existing ones, so the original outputs
-    keep their names and positions.
+    The extra outputs follow the existing ones, which keep their names and positions.
 
     Only tensor results of operations in the entry block of *function_name* can be
-    probed. An operation elsewhere (a nested graph, say), one with no results, or one
-    with no operation ID is reported in :attr:`ProbedProgram.unprobed`.
+    probed. Others (nested graphs, no results, no operation ID) are reported in
+    :attr:`ProbedProgram.unprobed`.
 
-    Probing changes what the compiler sees: a value that is an output cannot be
-    fused away, so the compiled program can place work differently from the
-    original. Compare placement before trusting a probed value as a stand-in.
+    An output cannot be fused away, so the compiled copy may differ from the original.
 
     Args:
         program: The program to read values from. Not modified.
@@ -220,3 +215,78 @@ def add_probe_outputs(
         outputs=outputs,
         unprobed=unprobed,
     )
+
+
+@dataclass(frozen=True)
+class Perturbation:
+    """
+    How far probing moved the model's own outputs.
+
+    Attributes:
+        op_ids: The operations that were probed together.
+        max_abs_diff: Largest absolute difference from the unprobed run, over every
+            output and state.
+        max_rel_diff: Largest difference relative to the unprobed value's magnitude.
+        within_tolerance: Whether every output and state stayed within the tolerance.
+
+    """
+
+    op_ids: tuple[int, ...]
+    max_abs_diff: float
+    max_rel_diff: float
+    within_tolerance: bool
+
+
+def compare_to_reference(
+    reference: Mapping[str, Any],
+    probed: Mapping[str, Any],
+    op_ids: Iterable[int],
+    rtol: float,
+    atol: float,
+) -> Perturbation:
+    """
+    Compare a probed run's own outputs with an unprobed run of the same program.
+
+    Needs only numpy, so it is usable wherever the arrays came from.
+
+    A value counts as moved when ``|probed - reference| > atol + rtol * |reference|``,
+    the rule ``numpy.allclose`` uses. A NaN or infinity that appears, disappears or
+    changes sign is always a move.
+
+    Args:
+        reference: Outputs and state of the unprobed run, by name.
+        probed: The same names from the probed run.
+        op_ids: The operations that were probed, recorded in the result.
+        rtol: Relative tolerance.
+        atol: Absolute tolerance.
+
+    Returns:
+        The differences found and whether they were within tolerance.
+
+    Raises:
+        KeyError: If the probed run lacks a name the reference has.
+
+    """
+    max_abs = 0.0
+    max_rel = 0.0
+    within = True
+    for name, expected in reference.items():
+        got = np.asarray(probed[name], dtype=np.float64)
+        want = np.asarray(expected, dtype=np.float64)
+        if got.shape != want.shape or not np.array_equal(
+            np.isfinite(got), np.isfinite(want)
+        ):
+            max_abs = max_rel = float("inf")
+            within = False
+            continue
+        finite = np.isfinite(want)
+        diff = np.abs(got[finite] - want[finite])
+        if diff.size == 0:
+            continue
+        scale = np.abs(want[finite])
+        max_abs = max(max_abs, float(diff.max()))
+        max_rel = max(
+            max_rel, float((diff / np.maximum(scale, np.finfo(float).tiny)).max())
+        )
+        within = within and bool(np.all(diff <= atol + rtol * scale))
+    return Perturbation(tuple(op_ids), max_abs, max_rel, within)

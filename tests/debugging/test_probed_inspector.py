@@ -15,9 +15,17 @@ from coreai.authoring import AIProgram
 from coreai.runtime import SpecializationOptions
 
 from coreai_torch.converter import TorchConverter
+from coreai_torch.debugging import inspector as inspector_module
 from coreai_torch.debugging.debug_info import _build_coreai_op_map
-from coreai_torch.debugging.inspector import CoreAIProbedInspector
-from coreai_torch.debugging.probes import add_probe_outputs
+from coreai_torch.debugging.inspector import (
+    CoreAIProbedInspector,
+    PerturbationError,
+)
+from coreai_torch.debugging.probes import (
+    Perturbation,
+    add_probe_outputs,
+    compare_to_reference,
+)
 
 
 class _Net(torch.nn.Module):
@@ -93,7 +101,10 @@ async def test_probed_inspector_returns_intermediates(
     (relu,) = result[relu_id]
     (conv,) = result[conv_id]
     assert conv.shape == relu.shape == (1, 4, 8, 8)
-    np.testing.assert_array_equal(relu, inspector.last_outputs["relu"])
+    # last_outputs is the unprobed run's; the probed copy is within an fp16 step.
+    np.testing.assert_allclose(
+        relu, inspector.last_outputs["relu"], rtol=1e-2, atol=2e-3
+    )
     assert np.all(relu >= 0)
     # The value is the convolution before the bias add, so relu(conv) is not it.
     assert not np.array_equal(conv, relu)
@@ -134,8 +145,7 @@ async def test_probed_inspector_reads_stateful_models_without_advancing_state(
     ((written,),) = (result[written_id],)
     np.testing.assert_array_equal(read, start)
     np.testing.assert_allclose(written, (start + x.numpy()) * 2, rtol=1e-5)
-    # What was written is what the model left in its state, and the caller's own
-    # array is untouched so a second call starts from the same place.
+    # The written value is the state left behind; the caller's array is untouched.
     np.testing.assert_array_equal(inspector.last_state["b_acc"], written)
     np.testing.assert_array_equal(caller_state["b_acc"], np.ones((1, 4)))
     assert set(inspector.last_outputs) == {"relu"}
@@ -149,7 +159,7 @@ def test_probed_program_describes_itself_without_a_runtime(
     (relu_id,) = _ids_named(program, "coreai.relu")
     probed = add_probe_outputs(program, [relu_id, 10_000])
 
-    # A run's outputs split by name alone, so a caller using another runtime can do it.
+    # Splitting needs only output names.
     own, by_op = probed.split_outputs({"relu": 1, f"__probe_{relu_id}_0": 2})
     assert own == {"relu": 1}
     assert by_op == {relu_id: [2]}
@@ -196,13 +206,15 @@ async def test_compiled_copy_is_reused_for_the_same_operations(
     )
 
     first = await inspector.get_intermediates_for_ops([relu_id], {"x": x.numpy()})
-    # Same set in another order, other inputs: no compile, and the answer follows the input.
+    # Reference plus probed copy.
+    assert loads.count == 2
+    # Same set, new inputs: no compile.
     again = await inspector.get_intermediates_for_ops([relu_id], {"x": x.numpy() * 2})
-    assert loads.count == 1
+    assert loads.count == 2
     assert not np.array_equal(first[relu_id][0], again[relu_id][0])
 
     await inspector.get_intermediates_for_ops([conv_id, relu_id], {"x": x.numpy()})
-    assert loads.count == 2
+    assert loads.count == 3
     assert inspector.cached_models == 2
 
 
@@ -224,7 +236,8 @@ async def test_cache_is_bounded_and_can_be_switched_off(
     await bounded.get_intermediates_for_ops([relu_id], inputs)  # evicts conv
     assert bounded.cached_models == 1
     await bounded.get_intermediates_for_ops([conv_id], inputs)  # compiles again
-    assert loads.count == 3
+    # Reference, conv, relu, conv again.
+    assert loads.count == 4
     bounded.clear_cache()
     assert bounded.cached_models == 0
 
@@ -234,8 +247,162 @@ async def test_cache_is_bounded_and_can_be_switched_off(
     )
     await uncached.get_intermediates_for_ops([relu_id], inputs)
     await uncached.get_intermediates_for_ops([relu_id], inputs)
-    assert loads.count == 2
+    # Nothing kept: two compiles per call.
+    assert loads.count == 4
     assert uncached.cached_models == 0
 
     with pytest.raises(ValueError, match="must not be negative"):
         CoreAIProbedInspector(program, max_cached_models=-1)
+
+
+def test_compare_to_reference_applies_the_allclose_rule() -> None:
+    reference = {"y": np.array([1.0, 100.0], dtype=np.float32)}
+
+    near = compare_to_reference(
+        reference, {"y": np.array([1.0005, 100.05])}, [7], rtol=1e-3, atol=1e-3
+    )
+    assert near.within_tolerance
+    assert near.op_ids == (7,)
+    assert near.max_abs_diff == pytest.approx(0.05)
+
+    far = compare_to_reference(
+        reference, {"y": np.array([1.0, 100.5])}, [7], rtol=1e-3, atol=1e-3
+    )
+    assert not far.within_tolerance
+
+    # A new NaN or a changed shape always fails.
+    assert not compare_to_reference(
+        reference, {"y": np.array([1.0, np.nan])}, [7], rtol=1.0, atol=1.0
+    ).within_tolerance
+    assert not compare_to_reference(
+        reference, {"y": np.zeros(3)}, [7], rtol=1.0, atol=1.0
+    ).within_tolerance
+
+
+def _perturbed_by(culprit: int):  # noqa: ANN202
+    """A stand-in comparison that finds any set containing *culprit* perturbed."""
+
+    def compare(reference, probed, op_ids, rtol, atol):  # noqa: ANN001, ANN202, ARG001
+        ids = tuple(op_ids)
+        return Perturbation(
+            ids, 1.0 if culprit in ids else 0.0, 0.0, culprit not in ids
+        )
+
+    return compare
+
+
+async def test_a_perturbing_set_is_split_until_every_value_is_clean(
+    program_and_input: tuple[AIProgram, torch.Tensor],
+    specialization_options: SpecializationOptions | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    program, x = program_and_input
+    (conv_id,) = _ids_named(program, "coreai.conv2d")
+    (relu_id,) = _ids_named(program, "coreai.relu")
+    (add_id,) = _ids_named(program, "coreai.decomposable.broadcasting_add")
+    monkeypatch.setattr(
+        inspector_module, "compare_to_reference", _perturbed_by(relu_id)
+    )
+    inspector = CoreAIProbedInspector(
+        program, specialization_options=specialization_options
+    )
+
+    result = await inspector.get_intermediates_for_ops(
+        [conv_id, add_id, relu_id], {"x": x.numpy()}
+    )
+
+    assert result[relu_id] is None
+    assert result[conv_id] is not None
+    assert result[add_id] is not None
+    assert inspector.perturbing_ops == {relu_id}
+    # The whole set fails, then its halves; the half without the culprit passes.
+    sets = [(p.op_ids, p.within_tolerance) for p in inspector.perturbations]
+    assert sets[0] == ((conv_id, add_id, relu_id), False)
+    assert any(ids == (relu_id,) and not ok for ids, ok in sets)
+    assert any(relu_id not in ids and ok for ids, ok in sets)
+
+
+async def test_perturbation_can_warn_or_raise_instead_of_splitting(
+    program_and_input: tuple[AIProgram, torch.Tensor],
+    specialization_options: SpecializationOptions | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    program, x = program_and_input
+    (conv_id,) = _ids_named(program, "coreai.conv2d")
+    (relu_id,) = _ids_named(program, "coreai.relu")
+    monkeypatch.setattr(
+        inspector_module, "compare_to_reference", _perturbed_by(relu_id)
+    )
+    inputs = {"x": x.numpy()}
+
+    warn = CoreAIProbedInspector(
+        program, specialization_options=specialization_options, on_perturbation="warn"
+    )
+    result = await warn.get_intermediates_for_ops([conv_id, relu_id], inputs)
+    assert result[relu_id] is not None  # returned anyway, and logged
+    assert not warn.perturbations[0].within_tolerance
+
+    strict = CoreAIProbedInspector(
+        program, specialization_options=specialization_options, on_perturbation="raise"
+    )
+    with pytest.raises(PerturbationError):
+        await strict.get_intermediates_for_ops([conv_id, relu_id], inputs)
+
+    with pytest.raises(ValueError, match="on_perturbation"):
+        CoreAIProbedInspector(program, on_perturbation="ignore")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="rtol and atol"):
+        CoreAIProbedInspector(program, rtol=-1.0)
+
+
+async def test_a_clean_probe_reports_no_perturbation(
+    program_and_input: tuple[AIProgram, torch.Tensor],
+    specialization_options: SpecializationOptions | None,
+) -> None:
+    program, x = program_and_input
+    (relu_id,) = _ids_named(program, "coreai.relu")
+    inspector = CoreAIProbedInspector(
+        program, specialization_options=specialization_options
+    )
+
+    await inspector.get_intermediates_for_ops([relu_id], {"x": x.numpy()})
+
+    (report,) = inspector.perturbations
+    assert report.within_tolerance
+    assert inspector.perturbing_ops == set()
+
+
+async def test_a_set_that_fails_to_compile_is_reduced(
+    program_and_input: tuple[AIProgram, torch.Tensor],
+    specialization_options: SpecializationOptions | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    program, x = program_and_input
+    (conv_id,) = _ids_named(program, "coreai.conv2d")
+    (relu_id,) = _ids_named(program, "coreai.relu")
+    real = CoreAIProbedInspector._compile
+
+    async def failing(self, op_ids):  # noqa: ANN001, ANN202
+        if relu_id in op_ids:
+            msg = "cannot load"
+            raise RuntimeError(msg)
+        return await real(self, op_ids)
+
+    monkeypatch.setattr(CoreAIProbedInspector, "_compile", failing)
+    inspector = CoreAIProbedInspector(
+        program, specialization_options=specialization_options
+    )
+
+    result = await inspector.get_intermediates_for_ops(
+        [conv_id, relu_id], {"x": x.numpy()}
+    )
+
+    assert result[relu_id] is None
+    assert result[conv_id] is not None
+    assert inspector.failed_ops == {relu_id}
+    assert inspector.perturbing_ops == set()
+
+    strict = CoreAIProbedInspector(
+        program, specialization_options=specialization_options, on_perturbation="raise"
+    )
+    with pytest.raises(PerturbationError, match="cannot load"):
+        await strict.get_intermediates_for_ops([conv_id, relu_id], {"x": x.numpy()})

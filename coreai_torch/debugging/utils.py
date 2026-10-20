@@ -45,6 +45,11 @@ def _with_debug(
     return specialization_options.with_debug(enabled=True)
 
 
+def _state_kwargs(state: Any) -> dict[str, Any]:
+    """``state`` as a keyword only when given, so inspectors without it still work."""
+    return {} if state is None else {"state": state}
+
+
 def _plain(value: Any) -> Any:
     """
     Normalise one leaf value for a report's ``to_dict``.
