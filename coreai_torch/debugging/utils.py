@@ -22,9 +22,10 @@ from enum import Enum
 from typing import Any
 
 import coreai._compiler._mlir_libs._coreaiIR._bindings.mlir as _mlir
+import numpy as np
 from coreai._compiler.ir import Operation
 from coreai.authoring import AIProgram
-from coreai.runtime import SpecializationOptions
+from coreai.runtime import NDArray, SpecializationOptions
 
 
 def _with_debug(
@@ -43,6 +44,14 @@ def _with_debug(
     if specialization_options is None:
         specialization_options = SpecializationOptions.default()
     return specialization_options.with_debug(enabled=True)
+
+
+def _copy_state(state: Mapping[str, Any] | None) -> dict[str, NDArray]:
+    """Fresh runtime arrays holding *state*, since a run updates its state in place."""
+    return {
+        name: NDArray(np.array(value.numpy() if isinstance(value, NDArray) else value))
+        for name, value in (state or {}).items()
+    }
 
 
 def _state_kwargs(state: Any) -> dict[str, Any]:
