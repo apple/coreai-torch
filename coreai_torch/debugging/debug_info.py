@@ -11,6 +11,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, TextIO
 
 import coreai._compiler._mlir_libs._coreaiIR._bindings.mlir as _mlir
@@ -19,7 +20,7 @@ from coreai._compiler._mlir_libs._coreaiIR._bindings.mlir import (
     set_op_location,
 )
 from coreai._compiler.ir import Location, Operation, WalkResult
-from coreai.authoring import AIProgram
+from coreai.authoring import AIModelAsset, AIProgram
 
 from coreai_torch._debug_locations import (
     OperationID,
@@ -1175,7 +1176,7 @@ def _build_coreai_op_map(program: AIProgram) -> dict[int, "Operation"]:
     return op_map
 
 
-def strip_debug_info(program: AIProgram) -> None:
+def strip_debug_info(program: AIProgram, include_op_ids: bool = True) -> None:
     """Strip debugging information from all operations in the program.
 
     This is useful for reducing asset size when full debug traces are
@@ -1183,9 +1184,33 @@ def strip_debug_info(program: AIProgram) -> None:
 
     Args:
         program: The AIProgram to strip debug info from. Modified in place.
+        include_op_ids: If True (default), assign fresh sequential operation
+            IDs to every operation. If False, every location (module,
+            operations and block arguments) is replaced with a plain unknown
+            location carrying no operation IDs.
     """
-    module = program._module._mlir_module
-    module_op = module.operation
+    module_op = program._module._mlir_module.operation
+
+    if include_op_ids:
+        _assign_fresh_op_ids(module_op)
+        return
+
+    unknown_loc = Location.unknown(context=module_op.context)
+    set_op_location(module_op, unknown_loc)
+    for nested_op in _get_nested_operations(module_op):
+        set_op_location(nested_op, unknown_loc)
+        for region in nested_op.regions:
+            for block in region:
+                for arg in block.arguments:
+                    set_block_arg_location(arg, unknown_loc)
+
+
+def _assign_fresh_op_ids(module_op: Operation) -> None:
+    """Replace all locations with unknown source locations carrying fresh op IDs.
+
+    Args:
+        module_op: The module operation to rewrite. Modified in place.
+    """
     context = module_op.context
 
     # Create a shared unknown source location for reuse
@@ -1209,3 +1234,29 @@ def strip_debug_info(program: AIProgram) -> None:
             for block in region:
                 for arg in block.arguments:
                     set_block_arg_location(arg, loc)
+
+
+def strip_debug_info_from_aimodel(
+    path: Path | str,
+    output_path: Path | str | None = None,
+    include_op_ids: bool = True,
+) -> Path:
+    """Load an ``.aimodel`` asset, strip its debug info and save it back.
+
+    Args:
+        path: Path to the ``.aimodel`` asset to read.
+        output_path: Where to save the stripped asset. If None (default), the
+            asset at *path* is overwritten.
+        include_op_ids: Forwarded to :func:`strip_debug_info`.
+
+    Returns:
+        The path of the saved asset.
+    """
+    path = Path(path)
+    output_path = path if output_path is None else Path(output_path)
+
+    asset = AIModelAsset.load(path)
+    program = asset.program
+    strip_debug_info(program, include_op_ids=include_op_ids)
+    program.save_asset(output_path, metadata=asset.metadata)
+    return output_path
