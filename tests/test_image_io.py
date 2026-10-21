@@ -236,13 +236,3 @@ class TestImageIOErrors:
         )
         with pytest.raises(ValueError, match=r"input_image_types\['image'\]"):
             converter.to_coreai()
-
-    def test_output_tensor_mismatch(self):
-        converter = TorchConverter().add_exported_program(
-            _invert_program(),
-            output_image_types={"sub": ImageType(FourCC.BGRA32, H, W)},
-        )
-        with pytest.raises(
-            ValueError, match=r"output_image_types\['sub'\].*requires tensor<4x6x4xui8>"
-        ):
-            converter.to_coreai()

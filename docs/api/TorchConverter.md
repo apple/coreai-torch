@@ -615,7 +615,6 @@ TorchConverter().add_pytorch_module(
 | `TypeError` | `add_exported_program()` / `add_pytorch_module()` | A mapping value is not a `coreai.authoring.ImageType`. |
 | `ValueError: ... has unknown name(s)` | `to_coreai()` | A key is not a non-state input/output name of the graph. The message lists the valid names. |
 | `ValueError: input_image_types[...]` | `to_coreai()` | The exported input's shape/dtype differs from what `image_to_tensor` produces for that image type. |
-| `ValueError: output_image_types[...]` | `to_coreai()` | The exported output's shape/dtype differs from what `tensor_to_image` requires for that image type. |
 
 ## Notices
 

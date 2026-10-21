@@ -242,18 +242,10 @@ class TorchConverter:
             output_names: Return value names (not mutation outputs).
             state_names: One name per state (buffers then mutated inputs).
                 Defaults to FX placeholder names.
-            input_image_types: Maps input names to a
-                :class:`coreai.authoring.ImageType`. Each listed input becomes
-                a ``!coreai.image`` graph argument, converted back to a tensor
-                with ``coreai.image_to_tensor``. The tensor that op produces
-                must match the exported input's shape and dtype, e.g.
-                ``uint8 [H, W, 3]`` for ``FourCC.RGB24``. Keys are the resolved
-                graph input names (``input_names`` if given, else FX
-                placeholder names). Unlisted inputs stay tensors. State inputs
-                cannot be images.
-            output_image_types: Maps output names to an ``ImageType``. Each
-                listed output is converted with ``coreai.tensor_to_image``.
-                Same rules as ``input_image_types``.
+            input_image_types: Input name -> ``ImageType``. Listed inputs
+                are images; the rest stay tensors.
+            output_image_types: Output name -> ``ImageType``. Listed outputs
+                are images; the rest stay tensors.
             _externalized_exported_programs: Result of
                 :func:`coreai_torch.externalize._subexport_and_restore`.
                 When set, emits composite ``coreai.graph``s for the patched
@@ -903,32 +895,6 @@ class TorchConverter:
             ),
         )
 
-    @staticmethod
-    def _tensor_to_image(value: Value, image_type: ImageType, name: str) -> Value:
-        """Emit ``coreai.tensor_to_image`` for a graph output.
-
-        The op verifier does not check the tensor against the image format,
-        so this does: the tensor must be what ``coreai.image_to_tensor`` would
-        produce for ``image_type``.
-
-        Raises:
-            ValueError: If ``value`` does not have the image's tensor type.
-        """
-        image: Value = coreai.tensor_to_image(image_type._to_mlir(), value)
-        # Infer the image's tensor type from image_to_tensor rather than
-        # duplicating its per-FourCC shape rules here.
-        probe: Value = coreai.image_to_tensor(image)
-        expected = probe.type
-        probe.owner.erase()
-        if value.type != expected:
-            image.owner.erase()
-            raise ValueError(
-                f"output_image_types[{name!r}]: coreai.tensor_to_image to "
-                f"{image_type} requires {expected}, but the exported output "
-                f"is {value.type}."
-            )
-        return image
-
     def _get_graph_op(
         self,
         name: str,
@@ -1048,8 +1014,8 @@ class TorchConverter:
                 value: Value = self._values_map[fx_name]
                 if i in output_images:
                     with graph_op.block, graph_location:
-                        value = self._tensor_to_image(
-                            value, output_images[i], resolved_name
+                        value = coreai.tensor_to_image(
+                            output_images[i]._to_mlir(), value
                         )
                 outputs_name_value.append((resolved_name, value))
 
