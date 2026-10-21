@@ -10,7 +10,7 @@ import sys
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import torch
@@ -43,6 +43,9 @@ from rich.text import Text
 from torch import Tensor
 from torch.export import Dim
 from torch.export.exported_program import ExportedProgram
+
+if TYPE_CHECKING:
+    from coreai.authoring import ImageType
 from torch.export.graph_signature import ExportGraphSignature
 from torch.fx.node import Argument
 
@@ -920,6 +923,32 @@ def get_invoke_from_graph(
         loc=loc,
     )
     return list(result)
+
+
+def image_input_to_tensor(
+    image: Value, expected_type: Type, name: str, loc: Location
+) -> Value:
+    """Convert an image graph input to the tensor the exported program expects.
+
+    Raises:
+        ValueError: If ``coreai.image_to_tensor`` does not yield ``expected_type``.
+    """
+    tensor = coreai.image_to_tensor(image, loc=loc)
+    if tensor.type != expected_type:
+        raise ValueError(
+            f"input_image_types[{name!r}]: {image.type} converts to {tensor.type} "
+            f"via coreai.image_to_tensor, but the exported input is "
+            f"{expected_type}. Export the model with an input of the image's "
+            f"tensor shape and dtype."
+        )
+    return tensor
+
+
+def tensor_to_image_output(
+    tensor: Value, image_type: "ImageType", loc: Location
+) -> Value:
+    """Convert a graph output tensor to ``image_type``."""
+    return coreai.tensor_to_image(image_type._to_mlir(), tensor, loc=loc)
 
 
 def get_dim_size_int32(tensor: Value, dim: int) -> Value:

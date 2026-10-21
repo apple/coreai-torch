@@ -57,9 +57,11 @@ from ._utils import (
     get_result_types,
     get_target,
     get_tensor_type,
+    image_input_to_tensor,
     preprocess_graph,
     scalar_constant,
     strip_variant_from_target,
+    tensor_to_image_output,
     validate_and_cast_numpy_array,
 )
 from ._validate import validate_exported_program
@@ -977,15 +979,12 @@ class TorchConverter:
             for i, orig_name in enumerate(original_input_names):
                 arg: Value = graph_op.arguments[i]
                 if i in input_images:
-                    with graph_op.block, graph_location:
-                        arg = coreai.image_to_tensor(arg)
-                    if arg.type != tensor_input_types[i]:
-                        raise ValueError(
-                            f"input_image_types[{graph_input_names[i]!r}]: "
-                            f"{input_images[i]} converts to {arg.type} via "
-                            f"coreai.image_to_tensor, but the exported input is "
-                            f"{tensor_input_types[i]}. Export the model with an "
-                            f"input of the image's tensor shape and dtype."
+                    with graph_op.block:
+                        arg = image_input_to_tensor(
+                            arg,
+                            tensor_input_types[i],
+                            graph_input_names[i],
+                            graph_location,
                         )
                 self._values_map[orig_name] = arg
 
@@ -1013,9 +1012,9 @@ class TorchConverter:
             ):
                 value: Value = self._values_map[fx_name]
                 if i in output_images:
-                    with graph_op.block, graph_location:
-                        value = coreai.tensor_to_image(
-                            output_images[i]._to_mlir(), value
+                    with graph_op.block:
+                        value = tensor_to_image_output(
+                            value, output_images[i], graph_location
                         )
                 outputs_name_value.append((resolved_name, value))
 
