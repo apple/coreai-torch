@@ -69,8 +69,11 @@ def unpack_fp4(uint8_byte: torch.Tensor) -> torch.Tensor:
     high_bits = uint8_byte >> 4
     # without .long call torch index errors out with
     #     IndexError: too many indices for tensor of dimension 1
-    low = FP4_VALUES[low_bits.long()]
-    high = FP4_VALUES[high_bits.long()]
+    # Move FP4_VALUES to input's device so the gather works for any
+    # device (CPU or non-CPU).
+    fp4_values = FP4_VALUES.to(uint8_byte.device)
+    low = fp4_values[low_bits.long()]
+    high = fp4_values[high_bits.long()]
     return torch.stack((low, high), dim=-1).flatten(-2)
 
 
