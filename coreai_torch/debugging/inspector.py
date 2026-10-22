@@ -23,18 +23,22 @@ import torch
 from coreai.authoring import AIProgram
 from numpy.typing import NDArray
 
+from .._debug_locations import TorchNode
+
 from .debug_info import (
     DebugInfo,
     DebugInfoRecord,
     _build_compile_id_to_coreai_map,
     parse_debug_infos,
 )
+from .modules import module_output_op_ids
 from .probes import (
     Perturbation,
     ProbedProgram,
     add_probe_outputs,
     compare_to_reference,
 )
+from .source_annotator import ModulePath
 from .torch_utils import _TorchFXNodeValueInterpreter
 from .utils import _state_kwargs
 
@@ -1536,3 +1540,58 @@ class CoreAIProbedInspector(Inspector):
     def last_state(self) -> dict[str, NDArray[Any]] | None:
         """The state the latest unprobed run left behind, or None before one."""
         return self._last_state
+
+
+class ModuleOutputUnknownError(LookupError):
+    """A module's output cannot be read from the program with certainty."""
+
+
+async def get_module_outputs(
+    inspector: Inspector,
+    program: AIProgram,
+    torch_graph: Mapping[int, TorchNode],
+    module: ModulePath,
+    inputs: Any,
+    state: Mapping[str, Any] | None = None,
+) -> list[NDArray[Any]]:
+    """
+    Run a model and return the output of one module instance.
+
+    Args:
+        inspector: Inspector over *program*, a `CoreAIInspector` or a
+            `CoreAIProbedInspector`.
+        program: The program the inspector runs.
+        torch_graph: The FX nodes behind it, from `TorchConverter.torch_graph`.
+        module: Module instance path, outermost first, as in ``("Net$1", "Block$2")``.
+        inputs: Model inputs, as the inspector takes them.
+        state: Starting value of each state, by name.
+
+    Returns:
+        One array per value the module returns, ordered by Core AI operation ID. A
+        value has its producer's shape when the module reshapes it on the way out.
+
+    Raises:
+        ModuleOutputUnknownError: If the module is not in the graph, or the compiler
+            left no operation that certainly holds its output (see
+            `module_output_op_ids`).
+        RuntimeError: If the inspector returns nothing for one of its operations.
+
+    """
+    if not any(node.stack[: len(module)] == module for node in torch_graph.values()):
+        msg = f"no module {'/'.join(module)!r} in the graph"
+        raise ModuleOutputUnknownError(msg)
+    op_ids = module_output_op_ids(program, torch_graph).get(module)
+    if not op_ids:
+        msg = f"the output of {'/'.join(module)!r} is not certain in this program"
+        raise ModuleOutputUnknownError(msg)
+
+    values = await inspector.get_intermediates_for_ops(op_ids, inputs, state)
+
+    arrays: list[NDArray[Any]] = []
+    for op_id in op_ids:
+        found = values.get(op_id)
+        if not found or any(array is None for array in found):
+            msg = f"the inspector returned no value for operation {op_id}"
+            raise RuntimeError(msg)
+        arrays.extend(np.asarray(array) for array in found)
+    return arrays

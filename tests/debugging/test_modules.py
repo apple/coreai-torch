@@ -15,12 +15,19 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pytest
 import torch
 from coreai.authoring import AIProgram
+from coreai.runtime import SpecializationOptions
 
 from coreai_torch.converter import TorchConverter
 from coreai_torch.debugging.debug_info import _build_coreai_op_map
+from coreai_torch.debugging.inspector import (
+    CoreAIProbedInspector,
+    ModuleOutputUnknownError,
+    get_module_outputs,
+)
 from coreai_torch.debugging.modules import (
     UNATTRIBUTED,
     ModuleNode,
@@ -263,3 +270,77 @@ def test_module_whose_reader_was_folded_in_is_left_out() -> None:
     assert (*root, "Conv2d$1") not in outputs
     assert (*root, "BatchNorm2d$1") not in outputs
     assert (*root, "Conv2d$2") in outputs
+
+
+async def test_get_module_outputs_matches_torch(
+    hierarchical_converter: TorchConverter,
+    specialization_options: SpecializationOptions | None,
+) -> None:
+    """Probing a module's output gives the value torch's own module returns."""
+    torch.manual_seed(0)
+    model = HierarchicalModel().eval()
+    x = get_example_inputs(HierarchicalModel)["x"]
+    exported = torch.export.export(model, (x,)).run_decompositions()
+    converter = TorchConverter()
+    converter.add_exported_program(exported, entrypoint_name="main")
+    program = converter.to_coreai()
+
+    seen: list[torch.Tensor] = []
+    handle = model.sub_model1.register_forward_hook(
+        lambda _m, _i, out: seen.append(out.detach())
+    )
+    model(x)
+    handle.remove()
+
+    inspector = CoreAIProbedInspector(
+        program, specialization_options=specialization_options
+    )
+    (value,) = await get_module_outputs(
+        inspector,
+        program,
+        converter.torch_graph,
+        ("HierarchicalModel$1", "SubModel$1"),
+        {"x": x.numpy()},
+    )
+
+    np.testing.assert_allclose(
+        value.reshape(-1), seen[0].numpy().reshape(-1), rtol=1e-3, atol=1e-3
+    )
+
+
+async def test_get_module_outputs_refuses_what_it_cannot_place(
+    hierarchical_converter: TorchConverter,
+    specialization_options: SpecializationOptions | None,
+) -> None:
+    """A module that is absent or folded away is an error, never a guess."""
+    inspector = CoreAIProbedInspector(
+        hierarchical_converter.program, specialization_options=specialization_options
+    )
+    graph = hierarchical_converter.torch_graph
+    x = get_example_inputs(HierarchicalModel)["x"].numpy()
+
+    with pytest.raises(ModuleOutputUnknownError, match="no module"):
+        await get_module_outputs(
+            inspector,
+            hierarchical_converter.program,
+            graph,
+            ("HierarchicalModel$1", "Nope$1"),
+            {"x": x},
+        )
+
+    exported = torch.export.export(
+        _ConvBatchNorm().eval(), (torch.randn(1, 3, 8, 8),)
+    ).run_decompositions()
+    folded = TorchConverter()
+    folded.add_exported_program(exported, entrypoint_name="main")
+    program = folded.to_coreai()
+    with pytest.raises(ModuleOutputUnknownError, match="not certain"):
+        await get_module_outputs(
+            CoreAIProbedInspector(
+                program, specialization_options=specialization_options
+            ),
+            program,
+            folded.torch_graph,
+            ("_ConvBatchNorm$1", "Conv2d$1"),
+            {"x": np.zeros((1, 3, 8, 8), dtype=np.float32)},
+        )
