@@ -126,17 +126,29 @@ class OutputMap:
         return cls(source=source_value, target=target_value)
 
 
-@dataclass(frozen=True)
-class TorchNode:
-    """One FX node as the converter saw it, for reasoning about module boundaries."""
+NODE_TABLE_METADATA = "source_nodes"
+"""Name of the metadata on a graph's location that lists the source nodes converted into it."""
 
-    id: int  # Torch operation ID, as in a Core AI operation's `torch` sources
-    op: str  # FX node kind: "call_function", "placeholder", "output", ...
-    target: str  # Called function; empty unless `op` is "call_function"
-    stack: tuple[str, ...]  # Module instance path, outermost first
-    inputs: tuple[int, ...]  # IDs of the nodes it reads
-    users: tuple[int, ...]  # IDs of the nodes that read it
-    multi_output: bool  # Produces several values, so one ID is not one value
+NODE_TABLE_VERSION = 1
+
+
+class _NodeTable:
+    """The torch nodes converted into one graph: what each was, and where the graph ends.
+
+    Nodes the compiler folds away or reshapes leave nothing in the program, so their
+    kind cannot be read from an operation. This is what says that an id with no
+    operation was a ``view`` and not, say, a batch norm.
+    """
+
+    def __init__(self) -> None:
+        self.targets: dict[int, str] = {}
+        self.output_id: int | None = None
+
+    def add(self, node_id: int, node: fx.Node) -> None:
+        if node.op == "call_function":
+            self.targets[node_id] = str(node.target)
+        elif node.op == "output":
+            self.output_id = node_id
 
 
 @dataclass
@@ -786,7 +798,7 @@ class _DebugInfoRecorder:
         self.config = config
         self.module_registry = _ModuleInstanceRegistry()
         self._source_operation_id = 0
-        self._torch_nodes: dict[int, tuple[fx.Node, tuple[str, ...]]] = {}
+        self._graph_tables: list[_NodeTable] = []
         self._debug_info_map = _DebugInfoMap()
         self._current_module: Module | None = None
         self._current_graph: Operation | None = None
@@ -927,11 +939,14 @@ class _DebugInfoRecorder:
 
         return graph_files
 
-    def _set_graph_location(self: Self, graph_operation: Operation) -> None:
+    def _set_graph_location(
+        self: Self, graph_operation: Operation, table: _NodeTable
+    ) -> None:
         """Set debug location for a graph operation.
 
         Args:
             graph_operation: The graph operation to set location for
+            table: The torch nodes converted into the graph, recorded on its location
         """
         context = graph_operation.context
 
@@ -980,6 +995,7 @@ class _DebugInfoRecorder:
             debug_location = location_attr(
                 src=src_location,
                 scope=subprogram,
+                metadata=self._node_table_metadata(table, context),
                 context=context,
             )
 
@@ -1125,10 +1141,13 @@ class _DebugInfoRecorder:
         # Store current graph operation
         prev_graph_operation = self._current_graph
         self._current_graph = graph_operation
+        table = _NodeTable()
+        self._graph_tables.append(table)
 
         yield graph_operation
+        self._graph_tables.pop()
         # Set graph location first so it can be reused by block arguments
-        self._set_graph_location(graph_operation)
+        self._set_graph_location(graph_operation, table)
 
         # Ensure ALL operations in the graph have debug locations
         self._ensure_all_operations_have_debug_locations(graph_operation)
@@ -1303,7 +1322,8 @@ class _DebugInfoRecorder:
 
         source_op_id = self._source_operation_id
         self._source_operation_id += 1
-        self._torch_nodes[source_op_id] = (node, tuple(reversed(debug_info.call_stack)))
+        if self._graph_tables:
+            self._graph_tables[-1].add(source_op_id, node)
 
         # Create location from debug info
         location = self._create_location_for_node(debug_info)
@@ -1320,21 +1340,29 @@ class _DebugInfoRecorder:
 
         self._op_results = None
 
-    def torch_graph(self: Self) -> dict[int, TorchNode]:
-        """The FX nodes recorded so far, by torch operation ID."""
-        ids = {node: node_id for node_id, (node, _) in self._torch_nodes.items()}
-        return {
-            node_id: TorchNode(
-                id=node_id,
-                op=node.op,
-                target=str(node.target) if node.op == "call_function" else "",
-                stack=stack,
-                inputs=tuple(ids[n] for n in node.all_input_nodes if n in ids),
-                users=tuple(ids[n] for n in node.users if n in ids),
-                multi_output=isinstance(node.meta.get("val"), (tuple, list)),
-            )
-            for node_id, (node, stack) in self._torch_nodes.items()
+    def _node_table_metadata(
+        self: Self, table: _NodeTable, context: Context
+    ) -> list[metadata_attr]:
+        """The graph location's metadata listing the torch nodes, ``[]`` when none."""
+        if not table.targets:
+            return []
+        entries = {
+            str(node_id): StringAttr.get(target, context=context)
+            for node_id, target in table.targets.items()
         }
+        data = {
+            "version": _create_uint64_attr(NODE_TABLE_VERSION, context),
+            "nodes": DictAttr.get(entries, context=context),
+        }
+        if table.output_id is not None:
+            data["output_id"] = _create_uint64_attr(table.output_id, context)
+        return [
+            metadata_attr(
+                name=NODE_TABLE_METADATA,
+                data=DictAttr.get(data, context=context),
+                context=context,
+            )
+        ]
 
     def finalize_node_operations(self: Self) -> None:
         """Materialize locations for the operations lowered into the current graph.

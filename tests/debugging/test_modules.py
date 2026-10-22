@@ -21,6 +21,7 @@ import torch
 from coreai.authoring import AIProgram
 from coreai.runtime import SpecializationOptions
 
+from coreai_torch._debug_locations import _DebugInfoRecorder
 from coreai_torch.converter import TorchConverter
 from coreai_torch.debugging.debug_info import _build_coreai_op_map
 from coreai_torch.debugging.inspector import (
@@ -32,6 +33,7 @@ from coreai_torch.debugging.modules import (
     UNATTRIBUTED,
     ModuleNode,
     build_module_tree,
+    _read_node_tables,
     module_output_op_ids,
 )
 from coreai_torch.debugging.source_annotator import (
@@ -157,34 +159,27 @@ def test_to_dict_is_json_serialisable() -> None:
     assert plain["children"][0]["items"] == [1, 2]
 
 
-@pytest.fixture
-def hierarchical_converter() -> TorchConverter:
-    """A converter that has converted the hierarchical model, with stack traces."""
-    exported = torch.export.export(
-        HierarchicalModel().eval(),
-        args=tuple(get_example_inputs(HierarchicalModel).values()),
-    ).run_decompositions()
+def _convert(model: torch.nn.Module, *inputs: torch.Tensor) -> AIProgram:
+    exported = torch.export.export(model.eval(), inputs).run_decompositions()
     converter = TorchConverter()
     converter.add_exported_program(exported, entrypoint_name="main")
-    converter.program = converter.to_coreai()
-    return converter
+    return converter.to_coreai()
 
 
 @pytest.fixture
-def hierarchical_program(hierarchical_converter: TorchConverter) -> AIProgram:
-    """The Core AI program of the hierarchical model."""
-    return hierarchical_converter.program
+def hierarchical_program() -> AIProgram:
+    """The Core AI program of the hierarchical model, with stack traces."""
+    return _convert(
+        HierarchicalModel(), *get_example_inputs(HierarchicalModel).values()
+    )
 
 
 def test_module_output_ops_are_where_values_leave(
-    hierarchical_converter: TorchConverter,
+    hierarchical_program: AIProgram,
 ) -> None:
     """A module's output is the operation realizing a node a node outside reads."""
     root = ("HierarchicalModel$1",)
-    outputs = module_output_op_ids(
-        hierarchical_converter.program, hierarchical_converter.torch_graph
-    )
-    assert outputs == {
+    assert module_output_op_ids(hierarchical_program) == {
         root: [24],
         (*root, "Linear$1"): [11],
         (*root, "SubModel$1"): [15],
@@ -196,12 +191,10 @@ def test_module_output_ops_are_where_values_leave(
 
 
 def test_output_is_the_operation_realizing_the_node(
-    hierarchical_converter: TorchConverter,
+    hierarchical_program: AIProgram,
 ) -> None:
     """An operation that absorbed a producer does not hold that producer's value."""
-    outputs = module_output_op_ids(
-        hierarchical_converter.program, hierarchical_converter.torch_graph
-    )
+    outputs = module_output_op_ids(hierarchical_program)
 
     # Op 13 is Linear$2's matmul and also carries Linear$1's location, and the last
     # sigmoid carries Linear$4's. Neither holds the value of the layer it absorbed.
@@ -209,16 +202,36 @@ def test_output_is_the_operation_realizing_the_node(
     assert outputs[("HierarchicalModel$1", "Linear$4")] == [23]
 
 
-def test_torch_graph_records_modules_and_edges(
-    hierarchical_converter: TorchConverter,
+def test_without_the_node_table_fewer_modules_are_certain(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Each FX node is recorded with its module path and what reads it."""
-    graph = hierarchical_converter.torch_graph
-    addmm = next(n for n in graph.values() if n.target == "aten.addmm.default")
+    """No id is known to be a reshape without the table, so only some modules remain."""
+    monkeypatch.setattr(
+        _DebugInfoRecorder, "_node_table_metadata", lambda *_args, **_kw: []
+    )
+    program = _convert(
+        HierarchicalModel(), *get_example_inputs(HierarchicalModel).values()
+    )
 
-    assert addmm.stack == ("HierarchicalModel$1", "Linear$1")
-    assert addmm.users
-    assert all(user in graph for user in addmm.users)
+    root = ("HierarchicalModel$1",)
+    assert module_output_op_ids(program) == {
+        root: [24],
+        (*root, "Linear$4"): [23],
+        (*root, "SubModel$1"): [15],
+        (*root, "SubModel$2"): [20],
+    }
+
+
+def test_node_table_is_read_back_from_the_program(
+    hierarchical_program: AIProgram,
+) -> None:
+    """The graph's location carries what each torch node was, and where the graph ends."""
+    (table,) = _read_node_tables(hierarchical_program).values()
+
+    assert table.targets[11] == "aten.addmm.default"
+    assert table.shape_only(9)
+    assert not table.shape_only(11)
+    assert table.output_id == 29
 
 
 def test_every_operation_has_a_stack_trace(hierarchical_program: AIProgram) -> None:
@@ -259,12 +272,9 @@ class _ConvBatchNorm(torch.nn.Module):
 
 def test_module_whose_reader_was_folded_in_is_left_out() -> None:
     """A conv's op holds the batch norm's value once folded, not the conv's."""
-    exported = torch.export.export(
-        _ConvBatchNorm().eval(), (torch.randn(1, 3, 8, 8),)
-    ).run_decompositions()
-    converter = TorchConverter()
-    converter.add_exported_program(exported, entrypoint_name="main")
-    outputs = module_output_op_ids(converter.to_coreai(), converter.torch_graph)
+    outputs = module_output_op_ids(
+        _convert(_ConvBatchNorm(), torch.randn(1, 3, 8, 8))
+    )
 
     root = ("_ConvBatchNorm$1",)
     assert (*root, "Conv2d$1") not in outputs
@@ -273,17 +283,13 @@ def test_module_whose_reader_was_folded_in_is_left_out() -> None:
 
 
 async def test_get_module_outputs_matches_torch(
-    hierarchical_converter: TorchConverter,
     specialization_options: SpecializationOptions | None,
 ) -> None:
     """Probing a module's output gives the value torch's own module returns."""
     torch.manual_seed(0)
     model = HierarchicalModel().eval()
     x = get_example_inputs(HierarchicalModel)["x"]
-    exported = torch.export.export(model, (x,)).run_decompositions()
-    converter = TorchConverter()
-    converter.add_exported_program(exported, entrypoint_name="main")
-    program = converter.to_coreai()
+    program = _convert(model, x)
 
     seen: list[torch.Tensor] = []
     handle = model.sub_model1.register_forward_hook(
@@ -298,7 +304,6 @@ async def test_get_module_outputs_matches_torch(
     (value,) = await get_module_outputs(
         inspector,
         program,
-        converter.torch_graph,
         ("HierarchicalModel$1", "SubModel$1"),
         {"x": x.numpy()},
     )
@@ -309,38 +314,30 @@ async def test_get_module_outputs_matches_torch(
 
 
 async def test_get_module_outputs_refuses_what_it_cannot_place(
-    hierarchical_converter: TorchConverter,
+    hierarchical_program: AIProgram,
     specialization_options: SpecializationOptions | None,
 ) -> None:
     """A module that is absent or folded away is an error, never a guess."""
     inspector = CoreAIProbedInspector(
-        hierarchical_converter.program, specialization_options=specialization_options
+        hierarchical_program, specialization_options=specialization_options
     )
-    graph = hierarchical_converter.torch_graph
     x = get_example_inputs(HierarchicalModel)["x"].numpy()
 
-    with pytest.raises(ModuleOutputUnknownError, match="no module"):
+    with pytest.raises(ModuleOutputUnknownError, match="no operation belongs"):
         await get_module_outputs(
             inspector,
-            hierarchical_converter.program,
-            graph,
+            hierarchical_program,
             ("HierarchicalModel$1", "Nope$1"),
             {"x": x},
         )
 
-    exported = torch.export.export(
-        _ConvBatchNorm().eval(), (torch.randn(1, 3, 8, 8),)
-    ).run_decompositions()
-    folded = TorchConverter()
-    folded.add_exported_program(exported, entrypoint_name="main")
-    program = folded.to_coreai()
+    program = _convert(_ConvBatchNorm(), torch.randn(1, 3, 8, 8))
     with pytest.raises(ModuleOutputUnknownError, match="not certain"):
         await get_module_outputs(
             CoreAIProbedInspector(
                 program, specialization_options=specialization_options
             ),
             program,
-            folded.torch_graph,
             ("_ConvBatchNorm$1", "Conv2d$1"),
             {"x": np.zeros((1, 3, 8, 8), dtype=np.float32)},
         )
