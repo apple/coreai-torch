@@ -39,7 +39,7 @@ from ._aten_to_core import _aten_to_core_resolver, _higher_order_resolver
 from ._composite_declaration import generate_composite_decl
 from ._compression.utils import inject_subbyte_tensors
 from ._custom_to_core import _custom_to_core_resolver
-from ._debug_locations import _DebugInfoRecorder
+from ._debug_locations import TorchNode, _DebugInfoRecorder
 from ._torch_metal_kernel import TorchMetalKernel
 from ._utils import (
     _EXTERNALIZE_NAMESPACE,
@@ -929,6 +929,15 @@ class TorchConverter:
             graph_op.arg_attrs = ArrayAttr.get(arg_attr)
 
         return graph_op
+
+    @property
+    def torch_graph(self) -> dict[int, TorchNode]:
+        """The FX nodes converted so far, by the torch operation ID Core AI reports.
+
+        Needed to say which node is a module's output, which the Core AI program alone
+        cannot: nodes the compiler folds away leave no location behind.
+        """
+        return self._debug_info_recorder.torch_graph()
 
     def to_coreai(self, *, entrypoints: Sequence[str] | None = None) -> AIProgram:
         """Convert staged programs to a Core AI AIProgram.

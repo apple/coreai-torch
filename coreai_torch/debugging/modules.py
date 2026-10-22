@@ -9,19 +9,22 @@ Grouping a per-operation finding by the module instance it came from.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
 from coreai.authoring import AIProgram
 from typing_extensions import Self
 
+from .._debug_locations import TorchNode
+from .debug_info import _build_coreai_op_map, get_operation_id
 from .source_annotator import (
     ModulePath,
     module_paths_by_op_id,
+    operation_torch_ids,
     source_locations_by_op_id,
 )
-from .utils import LocationInfo, split_module_frame
+from .utils import STRUCTURAL_OPS, LocationInfo, split_module_frame
 
 T = TypeVar("T")
 
@@ -269,3 +272,123 @@ def attributions_by_op_id(program: AIProgram) -> dict[int, Attribution]:
         )
         for op_id in sorted({*paths, *lines})
     }
+
+
+_SHAPE_ONLY = frozenset(
+    {
+        "view",
+        "reshape",
+        "_unsafe_view",
+        "squeeze",
+        "unsqueeze",
+        "flatten",
+        "contiguous",
+        "clone",
+        "alias",
+        "detach",
+    }
+)
+"""ATen operations that return their input's values unchanged, in another shape."""
+
+
+def _is_shape_only(node: TorchNode) -> bool:
+    parts = node.target.split(".")
+    return node.op == "call_function" and len(parts) > 1 and parts[1] in _SHAPE_ONLY
+
+
+def module_output_op_ids(
+    program: AIProgram, torch_graph: Mapping[int, TorchNode]
+) -> dict[ModulePath, list[int]]:
+    """
+    The Core AI operations that hold each module instance's output.
+
+    A module's output is a torch node inside it that a node outside it reads, or the
+    graph returns. An operation realizes the torch node with the largest ID in its
+    location; the smaller ones are producers it absorbed, and say where it came from,
+    not what it computes. A node's value is therefore the operation realizing it whose
+    value something realizing another node reads.
+
+    The module is left out, rather than guessed, when that value is not certain: the
+    node has no such operation, or several, or produces several values, or a node that
+    reads it left no operation of its own. The last means the reader was folded into
+    this operation, which then holds the reader's value instead, as batch norm folded
+    into a conv does. A shape-only node (``view``) with no operation of its own is
+    looked through to the node it reshapes, so the value returned has the producer's
+    shape.
+
+    The program's output maps are not used: they list every operation that carries a
+    node's location and leaves its cluster, which holds for the downstream operation
+    that absorbed the node as much as for the one that computes it.
+
+    Args:
+        program: Program to read.
+        torch_graph: The FX nodes behind it, from `TorchConverter.torch_graph`.
+
+    Returns:
+        Module path to the sorted ids of the operations holding its output, for every
+        module whose output is certain.
+
+    """
+    realizing: dict[int, list[int]] = {}
+    ops = {}
+    for op_id, operation in _build_coreai_op_map(program).items():
+        if operation.name in STRUCTURAL_OPS or operation.name == "coreai.constant":
+            continue
+        ids = operation_torch_ids(operation)
+        if ids:
+            ops[op_id] = operation
+            realizing.setdefault(max(ids), []).append(op_id)
+    realized_by = {op_id: node for node, held in realizing.items() for op_id in held}
+
+    def read_outside(op_id: int) -> bool:
+        """Whether something realizing another node, or the program, reads the op."""
+        return any(
+            user.name == "coreai.output"
+            or realized_by.get(get_operation_id(user)) != realized_by[op_id]
+            for result in ops[op_id].results
+            for user in (use.owner for use in result.uses)
+        )
+
+    def accounted(node_id: int) -> bool:
+        """Whether a reader of a value has its own operation, so it did not fold in."""
+        node = torch_graph[node_id]
+        if node.op == "output" or realizing.get(node_id):
+            return True
+        return _is_shape_only(node) and all(accounted(user) for user in node.users)
+
+    def value_of(node: TorchNode) -> int | None:
+        """The Core AI operation holding *node*'s value, None when not certain."""
+        while True:
+            if node.multi_output:
+                return None
+            holders = [op for op in realizing.get(node.id, []) if read_outside(op)]
+            if holders:
+                if len(holders) != 1 or not all(map(accounted, node.users)):
+                    return None
+                return holders[0]
+            # No operation of its own: only a shape-only node still has its input's values.
+            if not _is_shape_only(node) or len(node.inputs) != 1:
+                return None
+            node = torch_graph[node.inputs[0]]
+
+    def inside(node: TorchNode, module: ModulePath) -> bool:
+        return node.op == "call_function" and node.stack[: len(module)] == module
+
+    nodes = [node for node in torch_graph.values() if node.op == "call_function"]
+    modules = {
+        node.stack[:depth]
+        for node in nodes
+        for depth in range(1, len(node.stack) + 1)
+    }
+    outputs: dict[ModulePath, list[int]] = {}
+    for module in sorted(modules):
+        boundary = [
+            node
+            for node in nodes
+            if inside(node, module)
+            and any(not inside(torch_graph[user], module) for user in node.users)
+        ]
+        values = [value_of(node) for node in boundary]
+        if boundary and None not in values:
+            outputs[module] = sorted(set(values))  # type: ignore[arg-type]
+    return outputs

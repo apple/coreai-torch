@@ -55,7 +55,7 @@ from .debug_info import (
     get_operation_id,
     parse_debug_infos,
 )
-from .source_annotator import _annotate_operations
+from .source_annotator import _annotate_operations, operation_stack_trace
 from .table_writer import (
     _Column,
     _Row,
@@ -908,10 +908,7 @@ class BenchmarkResult:
 
         for timing in self.operation_timings:
             paths = [
-                tuple(
-                    _mlir.get_stack_trace(operation.location)  # type: ignore[attr-defined]
-                    or ("<unknown>",)
-                )
+                operation_stack_trace(operation) or ("<unknown>",)
                 for operation in timing.operations
             ]
             if not paths:

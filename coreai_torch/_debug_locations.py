@@ -126,6 +126,19 @@ class OutputMap:
         return cls(source=source_value, target=target_value)
 
 
+@dataclass(frozen=True)
+class TorchNode:
+    """One FX node as the converter saw it, for reasoning about module boundaries."""
+
+    id: int  # Torch operation ID, as in a Core AI operation's `torch` sources
+    op: str  # FX node kind: "call_function", "placeholder", "output", ...
+    target: str  # Called function; empty unless `op` is "call_function"
+    stack: tuple[str, ...]  # Module instance path, outermost first
+    inputs: tuple[int, ...]  # IDs of the nodes it reads
+    users: tuple[int, ...]  # IDs of the nodes that read it
+    multi_output: bool  # Produces several values, so one ID is not one value
+
+
 @dataclass
 class DebugInfo:
     """Comprehensive debug information for an operation.
@@ -610,6 +623,27 @@ def _get_scope(operation: Operation) -> Optional[Attribute]:
     return None
 
 
+def _as_operation(owner: object) -> Operation | None:
+    """The plain ``Operation`` behind a value's owner.
+
+    ``OpResult.owner`` is a plain ``Operation`` in some Core AI builds and the typed
+    op view (``ReshapeOp``, ...) in others, and the view fails ``isinstance(...,
+    Operation)``. Attribution then silently found nothing: no operation reached the
+    debug info map, every location fell back to the empty one, and no output maps were
+    recorded. ``.operation`` is the same object on a plain ``Operation``.
+
+    Args:
+        owner: An ``OpResult.owner`` or an operand's owner.
+
+    Returns:
+        The operation, or None when *owner* is not one (a ``Block``, for a block
+        argument).
+
+    """
+    operation = getattr(owner, "operation", None)
+    return operation if isinstance(operation, Operation) else None
+
+
 def _get_parent_scope(operation: Operation) -> Optional[Attribute]:
     """Get SymbolRefAttr from parent operation with symbol table trait or return None."""
     current = operation.parent
@@ -752,6 +786,7 @@ class _DebugInfoRecorder:
         self.config = config
         self.module_registry = _ModuleInstanceRegistry()
         self._source_operation_id = 0
+        self._torch_nodes: dict[int, tuple[fx.Node, tuple[str, ...]]] = {}
         self._debug_info_map = _DebugInfoMap()
         self._current_module: Module | None = None
         self._current_graph: Operation | None = None
@@ -1015,8 +1050,8 @@ class _DebugInfoRecorder:
             count, logs the mismatch but continues without adding output maps.
         """
         for i, target_result in enumerate(op_results):
-            target_op = target_result.owner
-            if not isinstance(target_op, Operation):
+            target_op = _as_operation(target_result.owner)
+            if target_op is None:
                 continue
 
             target_debug_info = self._debug_info_map.get(target_op)
@@ -1166,7 +1201,7 @@ class _DebugInfoRecorder:
         operations = []
         seen_ops = set()
         for result in self._op_results:
-            op = result.owner
+            op = _as_operation(result.owner)
             while should_process_op(op):
                 seen_ops.add(op)
                 operations.append(op)
@@ -1185,7 +1220,7 @@ class _DebugInfoRecorder:
         queue = list(operations)
         while queue:
             for operand in queue.pop().operands:
-                producer = operand.owner  # a Block, for a block argument
+                producer = _as_operation(operand.owner)  # None for a block argument
                 if should_process_op(producer):
                     seen_ops.add(producer)
                     operations.append(producer)
@@ -1268,6 +1303,7 @@ class _DebugInfoRecorder:
 
         source_op_id = self._source_operation_id
         self._source_operation_id += 1
+        self._torch_nodes[source_op_id] = (node, tuple(reversed(debug_info.call_stack)))
 
         # Create location from debug info
         location = self._create_location_for_node(debug_info)
@@ -1283,6 +1319,22 @@ class _DebugInfoRecorder:
             self._process_terminating_operations(source_op_id)
 
         self._op_results = None
+
+    def torch_graph(self: Self) -> dict[int, TorchNode]:
+        """The FX nodes recorded so far, by torch operation ID."""
+        ids = {node: node_id for node_id, (node, _) in self._torch_nodes.items()}
+        return {
+            node_id: TorchNode(
+                id=node_id,
+                op=node.op,
+                target=str(node.target) if node.op == "call_function" else "",
+                stack=stack,
+                inputs=tuple(ids[n] for n in node.all_input_nodes if n in ids),
+                users=tuple(ids[n] for n in node.users if n in ids),
+                multi_output=isinstance(node.meta.get("val"), (tuple, list)),
+            )
+            for node_id, (node, stack) in self._torch_nodes.items()
+        }
 
     def finalize_node_operations(self: Self) -> None:
         """Materialize locations for the operations lowered into the current graph.
