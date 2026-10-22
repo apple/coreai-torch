@@ -358,9 +358,7 @@ def _read_node_tables(program: AIProgram) -> dict[str, _NodeTable]:
         nodes = DictAttr(data["nodes"])
         name = StringAttr(operation.attributes["sym_name"]).value
         tables[name] = _NodeTable(
-            targets={
-                int(entry.name): StringAttr(entry.attr).value for entry in nodes
-            },
+            targets={int(entry.name): StringAttr(entry.attr).value for entry in nodes},
             output_id=(
                 IntegerAttr(data["output_id"]).value if "output_id" in data else None
             ),
@@ -431,7 +429,9 @@ def module_output_op_ids(program: AIProgram) -> dict[ModulePath, list[int]]:
         return stack[: len(module)] == module
 
     modules = {
-        stack[:depth] for stack in owner_stack.values() for depth in range(1, len(stack) + 1)
+        stack[:depth]
+        for stack in owner_stack.values()
+        for depth in range(1, len(stack) + 1)
     }
     outputs: dict[ModulePath, list[int]] = {}
     for module in sorted(modules):

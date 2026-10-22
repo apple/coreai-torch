@@ -32,8 +32,8 @@ from coreai_torch.debugging.inspector import (
 from coreai_torch.debugging.modules import (
     UNATTRIBUTED,
     ModuleNode,
-    build_module_tree,
     _read_node_tables,
+    build_module_tree,
     module_output_op_ids,
 )
 from coreai_torch.debugging.source_annotator import (
@@ -272,9 +272,7 @@ class _ConvBatchNorm(torch.nn.Module):
 
 def test_module_whose_reader_was_folded_in_is_left_out() -> None:
     """A conv's op holds the batch norm's value once folded, not the conv's."""
-    outputs = module_output_op_ids(
-        _convert(_ConvBatchNorm(), torch.randn(1, 3, 8, 8))
-    )
+    outputs = module_output_op_ids(_convert(_ConvBatchNorm(), torch.randn(1, 3, 8, 8)))
 
     root = ("_ConvBatchNorm$1",)
     assert (*root, "Conv2d$1") not in outputs
