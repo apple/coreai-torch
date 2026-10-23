@@ -29,7 +29,7 @@ from .debug_info import (
     _build_compile_id_to_coreai_map,
     parse_debug_infos,
 )
-from .modules import module_output_op_ids
+from .module_outputs import module_output_op_ids
 from .probes import (
     Perturbation,
     ProbedProgram,
