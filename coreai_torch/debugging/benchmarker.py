@@ -22,7 +22,7 @@ import logging
 import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -55,7 +55,7 @@ from .debug_info import (
     get_operation_id,
     parse_debug_infos,
 )
-from .source_annotator import _annotate_operations
+from .source_annotator import _annotate_operations, operation_stack_trace
 from .table_writer import (
     _Column,
     _Row,
@@ -66,6 +66,7 @@ from .table_writer import (
 )
 from .utils import (
     LocationInfo,
+    _copy_state,
     _plain,
     _with_debug,
     get_operation_locations,
@@ -907,10 +908,7 @@ class BenchmarkResult:
 
         for timing in self.operation_timings:
             paths = [
-                tuple(
-                    _mlir.get_stack_trace(operation.location)  # type: ignore[attr-defined]
-                    or ("<unknown>",)
-                )
+                operation_stack_trace(operation) or ("<unknown>",)
                 for operation in timing.operations
             ]
             if not paths:
@@ -1727,6 +1725,7 @@ class Benchmarker(ABC):
         self: Self,
         inputs: dict[str, Any],
         num_runs: int = 1,
+        state: Mapping[str, Any] | None = None,
     ) -> BenchmarkResult:
         """
         Benchmark the coreai_program program with the given inputs.
@@ -1736,6 +1735,9 @@ class Benchmarker(ABC):
             num_runs: Number of timed iterations (default: 1). Always preceded by an
                 untimed warmup run, which is not one of them, so the samples describe
                 the steady state rather than first-inference costs.
+            state: Starting value of each stateful buffer, by name. Every run,
+                warmup included, starts from a fresh copy, so no run is timed on the
+                state a previous one left.
 
         Returns:
             BenchmarkResult containing timing information for all operations
@@ -1751,6 +1753,7 @@ class CoreAIBenchmarker(Benchmarker):
         self: Self,
         inputs: dict[str, Any],
         num_runs: int = 1,
+        state: Mapping[str, Any] | None = None,
     ) -> BenchmarkResult:
         """
         Benchmark using Core AI Runtime.
@@ -1760,6 +1763,9 @@ class CoreAIBenchmarker(Benchmarker):
             num_runs: Number of timed iterations (default: 1). Always preceded by an
                 untimed warmup run, which is not one of them, so the samples describe
                 the steady state rather than first-inference costs.
+            state: Starting value of each stateful buffer, by name. Every run,
+                warmup included, starts from a fresh copy, so no run is timed on the
+                state a previous one left.
 
         Returns:
             BenchmarkResult containing timing information
@@ -1823,7 +1829,7 @@ class CoreAIBenchmarker(Benchmarker):
             # cold one, so a single-run number was not comparable with any other --
             # including the other side of a `timing_diff` comparison.
             logger.debug("Warmup run (untimed)")
-            await function(nd_inputs)
+            await function(nd_inputs, state=_copy_state(state))
 
             # Transition to RUNNING state to start collecting timing data. Written
             # under the lock the callbacks take, so the transition is ordered against
@@ -1833,7 +1839,7 @@ class CoreAIBenchmarker(Benchmarker):
 
             for i in range(num_runs):
                 logger.debug("Benchmark run %d/%d", i + 1, num_runs)
-                await function(nd_inputs)
+                await function(nd_inputs, state=_copy_state(state))
 
             # Callbacks arrive asynchronously, so intervals from the final runs may
             # still be open. Block (off the event loop) until they close: flipping to
@@ -1861,6 +1867,7 @@ async def benchmark_coreai_program(  # noqa: PLR0913
     num_runs: int = 1,
     excluded_operations: tuple[str, ...] | None = None,
     specialization_options: SpecializationOptions | None = None,
+    state: Mapping[str, Any] | None = None,
 ) -> BenchmarkResult:
     """
     Benchmark an AIProgram with profiling.
@@ -1873,6 +1880,7 @@ async def benchmark_coreai_program(  # noqa: PLR0913
         excluded_operations: Tuple of operation names to exclude from timing
                            (default: ("coreai.graph", "coreai.constant"))
         specialization_options: Options for configuring model specialization
+        state: Starting value of each stateful buffer, by name
 
     Returns:
         BenchmarkResult containing timing information for all operations
@@ -1886,4 +1894,4 @@ async def benchmark_coreai_program(  # noqa: PLR0913
     benchmarker = CoreAIBenchmarker(
         coreai_program, entry_point, excluded_operations, specialization_options
     )
-    return await benchmarker.benchmark(inputs, num_runs)
+    return await benchmarker.benchmark(inputs, num_runs, state)

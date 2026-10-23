@@ -18,7 +18,7 @@ Key components:
 - Concrete implementations for Core AI AIProgram and PyTorch ExportedProgram
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -47,7 +47,7 @@ from .search_strategy import (
     ExhaustiveStrategy,
     SearchStrategy,
 )
-from .utils import _with_debug
+from .utils import _state_kwargs, _with_debug
 
 TNode = TypeVar("TNode")
 TGraph = TypeVar("TGraph")
@@ -247,6 +247,7 @@ class Validator(Generic[TNode, TGraph]):
         self,
         check_fn: Callable[[list[NDArray[Any] | None]], bool],
         inputs: Any,
+        state: Mapping[str, Any] | None = None,
     ) -> Result:
         """
         Find operations where check_fn returns True.
@@ -254,6 +255,7 @@ class Validator(Generic[TNode, TGraph]):
         Args:
             check_fn: Function that returns True if outputs have issues
             inputs: Model inputs to use during execution
+            state: Starting value of each stateful buffer, by name
 
         Returns:
             ValidationResult containing failed and unknown operations sorted by topological order.
@@ -262,6 +264,9 @@ class Validator(Generic[TNode, TGraph]):
         """
         op_ids = self.graph.get_op_ids()
         total_ops = len(op_ids)
+
+        # A search consumes the strategy, so another call starts it afresh.
+        self.strategy.reset()
 
         # Initialize progress tracking
         pass_count = 0
@@ -279,6 +284,7 @@ class Validator(Generic[TNode, TGraph]):
                 results = await self.inspector.get_intermediates_for_ops(
                     batch_op_ids,
                     inputs,
+                    **_state_kwargs(state),
                 )
 
                 # Check each node in the batch and collect results
@@ -346,12 +352,14 @@ class Validator(Generic[TNode, TGraph]):
     async def check_for_nans(
         self,
         inputs: Any,
+        state: Mapping[str, Any] | None = None,
     ) -> Result:
         """
         Find operations that produce NaN values.
 
         Args:
             inputs: Model inputs to use during execution
+            state: Starting value of each stateful buffer, by name
 
         Returns:
             ValidationResult containing operations that produced NaN and unknown operations,
@@ -366,17 +374,20 @@ class Validator(Generic[TNode, TGraph]):
                 for arr in outputs
             ),
             inputs,
+            state,
         )
 
     async def check_for_infs(
         self,
         inputs: Any,
+        state: Mapping[str, Any] | None = None,
     ) -> Result:
         """
         Find operations that produce infinite values.
 
         Args:
             inputs: Model inputs to use during execution
+            state: Starting value of each stateful buffer, by name
 
         Returns:
             ValidationResult containing operations that produced inf and unknown operations,
@@ -391,6 +402,7 @@ class Validator(Generic[TNode, TGraph]):
                 for arr in outputs
             ),
             inputs,
+            state,
         )
 
 
