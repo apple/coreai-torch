@@ -11,15 +11,17 @@ from pathlib import Path
 
 import pytest
 import torch
-from coreai.authoring import AIProgram
+from coreai.authoring import AIModelAsset, AIProgram
 from coreai.runtime import AIModel
 
 from coreai_torch._debug_locations import _get_nested_operations, _is_debuginfo_location
 from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
 from coreai_torch.debugging.debug_info import (
     DebugInfoRecord,
+    get_operation_id,
     parse_debug_infos,
     strip_debug_info,
+    strip_debug_info_from_aimodel,
 )
 
 from .test_model import LinearMulAddModel, get_example_inputs
@@ -151,3 +153,42 @@ async def test_strip_debug_info() -> None:
             f"Expected debuginfo location on {nested_op.name}, "
             f"got: {nested_op.location}"
         )
+
+
+@pytest.mark.asyncio
+async def test_strip_debug_info_without_op_ids() -> None:
+    """Test that include_op_ids=False replaces all locations with unknown."""
+    coreai_program = _create_debug_program()
+
+    strip_debug_info(coreai_program, include_op_ids=False)
+
+    module_op = coreai_program._module._mlir_module.operation
+    assert str(module_op.location) == "loc(unknown)"
+    for nested_op in _get_nested_operations(module_op):
+        assert str(nested_op.location) == "loc(unknown)", (
+            f"Expected unknown location on {nested_op.name}, got: {nested_op.location}"
+        )
+        assert get_operation_id(nested_op) is None
+
+
+@pytest.mark.parametrize("include_op_ids", [True, False])
+def test_strip_debug_info_from_aimodel(include_op_ids: bool) -> None:
+    """Test that stripping a saved .aimodel rewrites it in place and to a copy."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "model.aimodel"
+        dst = Path(tmp) / "stripped.aimodel"
+        _create_debug_program().save_asset(src)
+
+        out = strip_debug_info_from_aimodel(
+            src, output_path=dst, include_op_ids=include_op_ids
+        )
+        assert out == dst and src.exists()
+
+        # In-place overwrite keeps the asset loadable.
+        assert strip_debug_info_from_aimodel(src, include_op_ids=include_op_ids) == src
+
+        for saved in (src, dst):
+            module_op = AIModelAsset.load(saved).program._module._mlir_module.operation
+            for nested_op in _get_nested_operations(module_op):
+                op_id = get_operation_id(nested_op)
+                assert (op_id is not None) == include_op_ids

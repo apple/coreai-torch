@@ -44,6 +44,8 @@ def add_exported_program(
     input_names: Sequence[str] | None = None,
     output_names: Sequence[str] | None = None,
     state_names: Sequence[str] | None = None,
+    input_image_types: Mapping[str, ImageType] | None = None,
+    output_image_types: Mapping[str, ImageType] | None = None,
     entrypoint_name: str = "main",
 ) -> TorchConverter
 ```
@@ -60,6 +62,8 @@ The caller **must** call `run_decompositions()` on the program before passing it
 | `input_names` | `Sequence[str] \| None` | `None` | Names for non-stateful user inputs only. Mutated inputs (buffers and user-input mutations) are renamed via `state_names`. **Breaking change**: previously this covered all graph inputs. |
 | `output_names` | `Sequence[str] \| None` | `None` | Names for non-state outputs (return values) only. Mutation outputs are renamed via `state_names`. **Breaking change**: previously this covered all graph outputs. |
 | `state_names` | `Sequence[str] \| None` | `None` | Names for stateful IO. Each name applies to both the state input and its corresponding mutation output — matching the Core AI runtime's single-name-per-state model. See [IO Naming](#io-naming) below. |
+| `input_image_types` | `Mapping[str, ImageType] \| None` | `None` | Inputs to accept as `!coreai.image` instead of tensors, keyed by input name. Unlisted inputs stay tensors. See [Image IO](#image-io) below. |
+| `output_image_types` | `Mapping[str, ImageType] \| None` | `None` | Outputs to return as `!coreai.image` instead of tensors, keyed by output name. Unlisted outputs stay tensors. See [Image IO](#image-io) below. |
 | `entrypoint_name` | `str` | `"main"` | Name of the entry-point graph in the generated Core AI module. Must be unique across all staged programs. |
 
 **Returns:** `self` — the same `TorchConverter` instance, for chaining.
@@ -95,6 +99,8 @@ def add_pytorch_module(
     input_names: Sequence[str] | None = None,
     output_names: Sequence[str] | None = None,
     state_names: Sequence[str] | None = None,
+    input_image_types: Mapping[str, ImageType] | None = None,
+    output_image_types: Mapping[str, ImageType] | None = None,
     entrypoint_name: str = "main",
 ) -> TorchConverter
 ```
@@ -109,6 +115,8 @@ Stages an `nn.Module` for conversion. `export_fn` must return a **decomposed** `
 | `input_names` | `Sequence[str] \| None` | `None` | Names for non-stateful user inputs only. Mutated inputs (buffers and user-input mutations) are renamed via `state_names`. **Breaking change**: previously this covered all graph inputs. |
 | `output_names` | `Sequence[str] \| None` | `None` | Names for non-state outputs (return values) only. Mutation outputs are renamed via `state_names`. **Breaking change**: previously this covered all graph outputs. |
 | `state_names` | `Sequence[str] \| None` | `None` | Names for stateful IO. See [IO Naming](#io-naming) below. |
+| `input_image_types` | `Mapping[str, ImageType] \| None` | `None` | Inputs to accept as images. See [Image IO](#image-io) below. |
+| `output_image_types` | `Mapping[str, ImageType] \| None` | `None` | Outputs to return as images. See [Image IO](#image-io) below. |
 | `entrypoint_name` | `str` | `"main"` | Name of the entry-point graph in the generated Core AI module. Must be unique across all staged programs. |
 
 **Returns:** `self` — the same `TorchConverter` instance, for chaining.
@@ -508,6 +516,105 @@ TorchConverter().add_exported_program(
 ```
 
 The converter applies these names to the graph's inputs and outputs: mutated buffers and mutated user inputs become model state (in `state_names` order), followed by the non-mutated `input_names` and the returned `output_names`.
+
+## Image IO
+
+By default every graph input and output is a tensor. To have the converted model take or return images instead, pass `input_image_types` and/or `output_image_types` to `add_exported_program()` or `add_pytorch_module()`. Each maps an IO name to a `coreai.authoring.ImageType`.
+
+For each listed IO, the converter:
+
+- **Input** — declares the graph argument as `!coreai.image<...>` and immediately converts it with `coreai.image_to_tensor`. The rest of the model sees the tensor, exactly as it did in PyTorch.
+- **Output** — converts the returned tensor with `coreai.tensor_to_image` and returns the image.
+
+IO not listed in either mapping stays a tensor, so you can mix image and tensor IO freely.
+
+### Keys
+
+Keys are the **resolved graph names** — the names you passed in `input_names` / `output_names`, or the FX default names when you did not (see [Default names](#default-names)). If you rename inputs, key the mapping by the new names. State inputs and outputs cannot be images.
+
+### Export the model with the image's tensor layout
+
+`image_to_tensor` always produces an unsigned 8-bit tensor whose shape depends on the pixel format, so the exported PyTorch input (or returned output) must have exactly that shape and `torch.uint8` dtype:
+
+| `FourCC` | Tensor shape | Tensor dtype |
+|---|---|---|
+| `RGB24` | `[height, width, 3]` | `torch.uint8` |
+| `ARGB32` | `[height, width, 4]` | `torch.uint8` |
+| `BGRA32` | `[height, width, 4]` | `torch.uint8` |
+
+Any normalization, layout change (e.g. HWC → NCHW) or float conversion belongs inside `forward()`, so it is converted along with the rest of the model.
+
+```{note}
+Import `FourCC` from `coreai._compiler.dialects.coreai`. `ImageType` expects that enum; `coreai.authoring.FourCC` is a different enum and is not accepted.
+```
+
+### Example
+
+```python
+import torch
+import torch.nn as nn
+from coreai._compiler.dialects.coreai import FourCC
+from coreai.authoring import ImageType
+from coreai_torch import TorchConverter, get_decomp_table
+
+H, W = 224, 224
+
+
+class Enhance(nn.Module):
+    """Takes an RGB image, returns an RGB image and a float score."""
+
+    def forward(self, image: torch.Tensor):  # uint8 [H, W, 3]
+        x = image.to(torch.float32) / 255.0
+        enhanced = (x * 1.2).clamp(0, 1)
+        score = x.mean().reshape(1)
+        return (enhanced * 255).to(torch.uint8), score
+
+
+rgb = ImageType(FourCC.RGB24, H, W)
+example = (torch.zeros(H, W, 3, dtype=torch.uint8),)
+ep = torch.export.export(Enhance().eval(), args=example)
+ep = ep.run_decompositions(get_decomp_table())
+
+coreai_program = (
+    TorchConverter()
+    .add_exported_program(
+        ep,
+        input_names=["photo"],
+        output_names=["enhanced", "score"],
+        input_image_types={"photo": rgb},  # image in
+        output_image_types={"enhanced": rgb},  # image out; "score" stays a tensor
+    )
+    .to_coreai()
+)
+```
+
+The resulting graph signature is:
+
+```text
+coreai.graph @main(%arg0: !coreai.image<<k24RGB> x 224 : i64 x 224 : i64> {coreai.name = "photo"})
+    -> (!coreai.image<<k24RGB> x 224 : i64 x 224 : i64> {coreai.name = "enhanced"},
+        tensor<1xf32> {coreai.name = "score"})
+```
+
+The same arguments work with `add_pytorch_module()`:
+
+```python
+TorchConverter().add_pytorch_module(
+    Enhance().eval(),
+    export_fn=lambda m: torch.export.export(m, args=example).run_decompositions(
+        get_decomp_table()
+    ),
+    input_image_types={"image": rgb},  # FX default name of the forward() arg
+)
+```
+
+### Errors
+
+| Error | Raised by | Cause |
+|---|---|---|
+| `TypeError` | `add_exported_program()` / `add_pytorch_module()` | A mapping value is not a `coreai.authoring.ImageType`. |
+| `ValueError: ... has unknown name(s)` | `to_coreai()` | A key is not a non-state input/output name of the graph. The message lists the valid names. |
+| `ValueError: input_image_types[...]` | `to_coreai()` | The exported input's shape/dtype differs from what `image_to_tensor` produces for that image type. |
 
 ## Notices
 

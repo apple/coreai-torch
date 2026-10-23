@@ -32,6 +32,7 @@ test = [
     "filecheck",
     "mlx; sys_platform == 'darwin'",
     "mlx_lm; sys_platform == 'darwin'",
+    "pillow",
     "pytest",
     "pytest-asyncio",
     "pytest-randomly",
@@ -111,7 +112,7 @@ known-first-party = ["coreai_torch"]
 # silence self-imports flagged as transitive / missing.
 known_first_party = ["coreai_torch", "tests"]
 # Map distribution names to the import names they provide.
-package_module_name_map = { "coreai-core" = "coreai" }
+package_module_name_map = { "coreai-core" = "coreai", "pillow" = "PIL" }
 # Override the default exclude list (which includes "tests") so deptry sees
 # test imports — otherwise every `[test]` extra is flagged DEP002 unused.
 exclude = ["venv", ".venv", ".direnv", ".eggs", ".git", "setup.py", "__pycache__", "build", "dist", "docs"]

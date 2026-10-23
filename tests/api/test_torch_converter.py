@@ -173,3 +173,66 @@ class TestTorchConverterDocs:
                 // CHECK-NOT: ti_test_lib
             """,
         )
+
+    # --- Image IO -----------------------------------------------------------
+
+    @pytest.mark.ir
+    def test_image_io_example(self):
+        """Image IO example: image in, image + tensor out, keyed by user names."""
+        from coreai._compiler.dialects.coreai import FourCC
+        from coreai.authoring import ImageType
+
+        from coreai_torch import get_decomp_table
+
+        H, W = 224, 224
+
+        class Enhance(nn.Module):
+            def forward(self, image: torch.Tensor):
+                x = image.to(torch.float32) / 255.0
+                enhanced = (x * 1.2).clamp(0, 1)
+                score = x.mean().reshape(1)
+                return (enhanced * 255).to(torch.uint8), score
+
+        rgb = ImageType(FourCC.RGB24, H, W)
+        example = (torch.zeros(H, W, 3, dtype=torch.uint8),)
+        ep = torch.export.export(Enhance().eval(), args=example)
+        ep = ep.run_decompositions(get_decomp_table())
+
+        coreai_program = (
+            TorchConverter()
+            .add_exported_program(
+                ep,
+                input_names=["photo"],
+                output_names=["enhanced", "score"],
+                input_image_types={"photo": rgb},
+                output_image_types={"enhanced": rgb},
+            )
+            .to_coreai()
+        )
+        filecheck_pattern(
+            str(coreai_program),
+            check_file="""
+                // CHECK: coreai.graph @main(%{{.*}}: !coreai.image<<k24RGB> x 224 : i64 x 224 : i64> {coreai.name = "photo"}) -> (!coreai.image<<k24RGB> x 224 : i64 x 224 : i64> {coreai.name = "enhanced"}, tensor<1xf32> {coreai.name = "score"})
+                // CHECK: coreai.image_to_tensor
+                // CHECK: coreai.tensor_to_image
+            """,
+        )
+
+        # add_pytorch_module variant, keyed by the FX default input name
+        coreai_program = (
+            TorchConverter()
+            .add_pytorch_module(
+                Enhance().eval(),
+                export_fn=lambda m: torch.export.export(
+                    m, args=example
+                ).run_decompositions(get_decomp_table()),
+                input_image_types={"image": rgb},
+            )
+            .to_coreai()
+        )
+        filecheck_pattern(
+            str(coreai_program),
+            check_file="""
+                // CHECK: coreai.graph @main(%{{.*}}: !coreai.image<{{.*}}> {coreai.name = "image"})
+            """,
+        )

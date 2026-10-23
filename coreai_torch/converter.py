@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import warnings
 from collections import Counter, OrderedDict, defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Optional, cast
@@ -27,7 +27,7 @@ from coreai._compiler.ir import (
     Type,
     Value,
 )
-from coreai.authoring import AIProgram, Module
+from coreai.authoring import AIProgram, ImageType, Module
 from coreai.authoring import Context as _CoreAIAuthoringContext
 from torch import Tensor
 from torch.export.exported_program import ExportedProgram
@@ -44,6 +44,8 @@ from ._torch_metal_kernel import TorchMetalKernel
 from ._utils import (
     _EXTERNALIZE_NAMESPACE,
     _NARROW_TORCH_DTYPE,
+    _classify_stateful_inputs,
+    _classify_stateful_outputs,
     _get_mutation_output_name,
     _get_verify_debuginfo_locations_enabled,
     _ProgressBar,
@@ -55,9 +57,11 @@ from ._utils import (
     get_result_types,
     get_target,
     get_tensor_type,
+    image_input_to_tensor,
     preprocess_graph,
     scalar_constant,
     strip_variant_from_target,
+    tensor_to_image_output,
     validate_and_cast_numpy_array,
 )
 from ._validate import validate_exported_program
@@ -80,11 +84,29 @@ class _StagedEntry:
     output_names: Sequence[str]
     state_names: Sequence[str]
     entrypoint_name: str  # IR graph name only (coreai.graph @name)
+    # resolved IO name -> ImageType; IO not listed stays a tensor
+    input_image_types: Mapping[str, ImageType]
+    output_image_types: Mapping[str, ImageType]
     # nn.Module-path fields (None for ExportedProgram path):
     module: torch.nn.Module | None = None
     export_fn: Callable[..., Any] | None = None
     externalize_modules: list[type | ExternalizeSpec] | None = None
     _externalized_exported_programs: list[_ExternalizedExportedProgram] | None = None
+
+
+def _validate_image_types(
+    image_types: Mapping[str, ImageType] | None, arg_name: str
+) -> dict[str, ImageType]:
+    """Check that every value in a user image-type mapping is an ``ImageType``."""
+    if not image_types:
+        return {}
+    for name, image_type in image_types.items():
+        if not isinstance(image_type, ImageType):
+            raise TypeError(
+                f"{arg_name}[{name!r}] must be a coreai.authoring.ImageType, "
+                f"got {type(image_type).__name__}."
+            )
+    return dict(image_types)
 
 
 class Context(_CoreAIAuthoringContext):
@@ -191,6 +213,8 @@ class TorchConverter:
         self.user_input_names: Sequence[str] = []
         self.user_output_names: Sequence[str] = []
         self.user_state_names: Sequence[str] = []
+        self.user_input_image_types: Mapping[str, ImageType] = {}
+        self.user_output_image_types: Mapping[str, ImageType] = {}
 
         # module-path state
         self._module: torch.nn.Module | None = None
@@ -204,6 +228,8 @@ class TorchConverter:
         input_names: Sequence[str] | None = None,
         output_names: Sequence[str] | None = None,
         state_names: Sequence[str] | None = None,
+        input_image_types: Mapping[str, ImageType] | None = None,
+        output_image_types: Mapping[str, ImageType] | None = None,
         entrypoint_name: str = "main",
         _externalized_exported_programs: list[_ExternalizedExportedProgram]
         | None = None,
@@ -218,6 +244,10 @@ class TorchConverter:
             output_names: Return value names (not mutation outputs).
             state_names: One name per state (buffers then mutated inputs).
                 Defaults to FX placeholder names.
+            input_image_types: Input name -> ``ImageType``. Listed inputs
+                are images; the rest stay tensors.
+            output_image_types: Output name -> ``ImageType``. Listed outputs
+                are images; the rest stay tensors.
             _externalized_exported_programs: Result of
                 :func:`coreai_torch.externalize._subexport_and_restore`.
                 When set, emits composite ``coreai.graph``s for the patched
@@ -241,6 +271,12 @@ class TorchConverter:
                 output_names=output_names or [],
                 state_names=state_names or [],
                 entrypoint_name=entrypoint_name,
+                input_image_types=_validate_image_types(
+                    input_image_types, "input_image_types"
+                ),
+                output_image_types=_validate_image_types(
+                    output_image_types, "output_image_types"
+                ),
                 _externalized_exported_programs=_externalized_exported_programs,
             )
         )
@@ -255,6 +291,8 @@ class TorchConverter:
         input_names: Sequence[str] | None = None,
         output_names: Sequence[str] | None = None,
         state_names: Sequence[str] | None = None,
+        input_image_types: Mapping[str, ImageType] | None = None,
+        output_image_types: Mapping[str, ImageType] | None = None,
         entrypoint_name: str = "main",
     ) -> Self:
         """Stage an nn.Module for conversion.
@@ -276,6 +314,10 @@ class TorchConverter:
                 :meth:`add_exported_program`.
             output_names: Return value names. See :meth:`add_exported_program`.
             state_names: One name per state. See :meth:`add_exported_program`.
+            input_image_types: Inputs to treat as images. See
+                :meth:`add_exported_program`.
+            output_image_types: Outputs to treat as images. See
+                :meth:`add_exported_program`.
 
         Returns ``self`` for chaining.
         """
@@ -305,6 +347,12 @@ class TorchConverter:
                 output_names=output_names or [],
                 state_names=state_names or [],
                 entrypoint_name=entrypoint_name,
+                input_image_types=_validate_image_types(
+                    input_image_types, "input_image_types"
+                ),
+                output_image_types=_validate_image_types(
+                    output_image_types, "output_image_types"
+                ),
                 module=model,
                 export_fn=export_fn,
                 externalize_modules=externalize_modules,
@@ -803,6 +851,52 @@ class TorchConverter:
             else:
                 raise ValueError(f"Could not create operation for the fx node {node}")
 
+    def _resolve_image_io(
+        self,
+        original_input_names: list[str],
+        graph_input_names: list[str],
+        graph_output_names: list[str],
+        resolved_output_names: list[str],
+    ) -> tuple[dict[int, ImageType], dict[int, ImageType]]:
+        """Map user image types, keyed by resolved IO name, to graph IO indices.
+
+        Raises:
+            ValueError: If a name is not a non-state input/output of the graph.
+        """
+        signature = self.exported_program.graph_signature
+        _, non_state_in_idx = _classify_stateful_inputs(signature, original_input_names)
+        _, non_state_out_idx = _classify_stateful_outputs(signature, graph_output_names)
+
+        def resolve(
+            image_types: Mapping[str, ImageType],
+            names: list[str],
+            non_state_idx: list[int],
+            arg_name: str,
+        ) -> dict[int, ImageType]:
+            index_of = {names[i]: i for i in non_state_idx}
+            unknown = [name for name in image_types if name not in index_of]
+            if unknown:
+                raise ValueError(
+                    f"{arg_name} has unknown name(s) {unknown}. Valid names: "
+                    f"{list(index_of)}. State inputs and outputs cannot be images."
+                )
+            return {index_of[name]: t for name, t in image_types.items()}
+
+        return (
+            resolve(
+                self.user_input_image_types,
+                graph_input_names,
+                non_state_in_idx,
+                "input_image_types",
+            ),
+            resolve(
+                self.user_output_image_types,
+                resolved_output_names,
+                non_state_out_idx,
+                "output_image_types",
+            ),
+        )
+
     def _get_graph_op(
         self,
         name: str,
@@ -853,6 +947,21 @@ class TorchConverter:
             user_state_names,
         )
 
+        input_images, output_images = (
+            self._resolve_image_io(
+                original_input_names,
+                graph_input_names,
+                graph_output_names,
+                resolved_output_names,
+            )
+            if primary_entrypoint
+            else ({}, {})
+        )
+        tensor_input_types = list(input_types)
+        for i, image_type in input_images.items():
+            input_types[i] = image_type._to_mlir()
+        graph_location = self._location
+
         # creating and populating coreai.graph
         graph_op: coreai.GraphOp = coreai.GraphOp(
             name=name,
@@ -868,7 +977,16 @@ class TorchConverter:
 
         with self._debug_info_recorder.record_graph(graph_op):
             for i, orig_name in enumerate(original_input_names):
-                self._values_map[orig_name] = graph_op.arguments[i]
+                arg: Value = graph_op.arguments[i]
+                if i in input_images:
+                    with graph_op.block:
+                        arg = image_input_to_tensor(
+                            arg,
+                            tensor_input_types[i],
+                            graph_input_names[i],
+                            graph_location,
+                        )
+                self._values_map[orig_name] = arg
 
             description = (
                 f"Converting {name}" if primary_entrypoint else "Converting submodule"
@@ -888,12 +1006,17 @@ class TorchConverter:
             self._debug_info_recorder.finalize_node_operations()
 
             # Assemble outputs with resolved names
-            outputs_name_value: list[tuple[str, Value]] = [
-                (resolved_name, self._values_map[fx_name])
-                for fx_name, resolved_name in zip(
-                    graph_output_names, resolved_output_names
-                )
-            ]
+            outputs_name_value: list[tuple[str, Value]] = []
+            for i, (fx_name, resolved_name) in enumerate(
+                zip(graph_output_names, resolved_output_names)
+            ):
+                value: Value = self._values_map[fx_name]
+                if i in output_images:
+                    with graph_op.block:
+                        value = tensor_to_image_output(
+                            value, output_images[i], graph_location
+                        )
+                outputs_name_value.append((resolved_name, value))
 
             graph_op.set_outputs_spec_from_dict(
                 OrderedDict(outputs_name_value),
@@ -981,6 +1104,8 @@ class TorchConverter:
                         self.user_input_names = entry.input_names
                         self.user_output_names = entry.output_names
                         self.user_state_names = entry.state_names
+                        self.user_input_image_types = entry.input_image_types
+                        self.user_output_image_types = entry.output_image_types
 
                         # Handle externalization for nn.Module path
                         if entry.module is not None and entry.externalize_modules:
