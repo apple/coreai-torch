@@ -1166,6 +1166,9 @@ class Comparator(
         op_ids = self.source.graph.get_op_ids()
         total_ops = len(op_ids)
 
+        # A search consumes the strategy, so another call starts it afresh.
+        self.strategy.reset()
+
         # Initialize progress tracking and result tracking
         pass_count = 0
         fail_count = 0

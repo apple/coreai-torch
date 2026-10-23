@@ -265,6 +265,9 @@ class Validator(Generic[TNode, TGraph]):
         op_ids = self.graph.get_op_ids()
         total_ops = len(op_ids)
 
+        # A search consumes the strategy, so another call starts it afresh.
+        self.strategy.reset()
+
         # Initialize progress tracking
         pass_count = 0
         excluded: list[ComputationGraph.Node] = []
