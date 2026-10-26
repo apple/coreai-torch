@@ -96,6 +96,19 @@ def test_without_the_node_table_fewer_modules_are_certain(
     }
 
 
+def test_a_program_without_debug_info_reports_no_modules() -> None:
+    """With no locations there is nothing to read, and nothing is guessed."""
+    model = HierarchicalModel()
+    x = get_example_inputs(HierarchicalModel)["x"]
+    exported = torch.export.export(model.eval(), (x,)).run_decompositions()
+    converter = TorchConverter(mode=TorchConverter.Mode.RELEASE)
+    converter.add_exported_program(exported, entrypoint_name="main")
+    program = converter.to_coreai()
+
+    assert _read_source_nodes(program) == {}
+    assert module_output_op_ids(program) == {}
+
+
 def test_node_table_is_read_back_from_the_program(
     hierarchical_program: AIProgram,
 ) -> None:

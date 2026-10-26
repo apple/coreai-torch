@@ -18,7 +18,14 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from coreai._compiler.ir import Attribute, DictAttr, IntegerAttr, Operation, StringAttr
+from coreai._compiler.ir import (
+    Attribute,
+    DictAttr,
+    IntegerAttr,
+    Location,
+    Operation,
+    StringAttr,
+)
 from coreai.authoring import AIProgram
 
 from .._debug_locations import NODE_TABLE_METADATA, NODE_TABLE_VERSION
@@ -70,30 +77,20 @@ class _SourceNodes:
         return len(parts) > 1 and parts[1] in _SHAPE_ONLY
 
 
-def _metadata_data(printed: str, name: str) -> str | None:
+def _node_table_data(location: Location) -> str | None:
     """
-    The printed data of the metadata called *name* in a printed location, if any.
+    The printed data of the node table on a graph's location, if it carries one.
 
-    A location's metadata is read from its printed form because builds differ in
-    what they expose of it: some give the list of metadata, others only the
-    attribute. The data is a brace-delimited dictionary, which MLIR parses back.
+    The entry is found by name in the location's metadata and printed on its own, which
+    is the attribute alone, and MLIR parses its dictionary back. A build whose locations
+    do not list their metadata has no table to read.
     """
-    marker = f'<"{name}": '
-    start = printed.find(marker)
-    if start < 0:
-        return None
-    start += len(marker)
-    depth, quoted = 0, False
-    for index in range(start, len(printed)):
-        char = printed[index]
-        if char == '"' and printed[index - 1] != "\\":
-            quoted = not quoted
-        elif not quoted and char == "{":
-            depth += 1
-        elif not quoted and char == "}":
-            depth -= 1
-            if depth == 0:
-                return printed[start : index + 1]
+    entries = getattr(location.attr.maybe_downcast(), "metadata", None) or []
+    prefix = f'#debuginfo.metadata<"{NODE_TABLE_METADATA}": '
+    for entry in entries:
+        printed = str(entry)
+        if entry.name == NODE_TABLE_METADATA and printed.startswith(prefix):
+            return printed[len(prefix) : -1]
     return None
 
 
@@ -108,7 +105,7 @@ def _read_source_nodes(program: AIProgram) -> dict[str, _SourceNodes]:
     for operation in _build_coreai_op_map(program).values():
         if operation.name != "coreai.graph":
             continue
-        printed = _metadata_data(str(operation.location), NODE_TABLE_METADATA)
+        printed = _node_table_data(operation.location)
         if printed is None:
             continue
         with operation.context:
