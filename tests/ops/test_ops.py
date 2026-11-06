@@ -6257,6 +6257,24 @@ class TestSliceScatter:
             model=model, x=x, src=src, dynamic_shapes=dynamic_shapes
         )
 
+    @pytest.mark.parametrize("from_input", [False, True])
+    @pytest.mark.parametrize("start", [4, 8])
+    async def test_slice_assignment(self, start: int, from_input: bool) -> None:
+        """In-place slice assignment, which exports to slice_scatter.
+
+        start=8 selects nothing along a dim of size 8: a no-op in PyTorch,
+        exported as a slice_scatter with an empty src.
+        """
+        x = torch.rand(1, 8, 8, 1)
+
+        class SliceAssignModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                mask = x * 2 if from_input else torch.zeros(1, 8, 8, 1)
+                mask[:, start:, :, :] = 1.0
+                return x + mask
+
+        await validate_numerical_output(model=SliceAssignModel().eval(), x=x)
+
 
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
