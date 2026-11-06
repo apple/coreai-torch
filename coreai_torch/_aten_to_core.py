@@ -2595,6 +2595,10 @@ def replace_slice_scatter(
 ) -> Value:
     """Converts aten.slice_scatter to coreai.slice_update."""
     input_val, src = _get_operands(values_map, node, [0, 1])
+    # An empty slice (e.g. x[:, n:] = v with n == x.shape[1]) leaves the input
+    # unchanged. A slice_update with an empty update crashes the conversion.
+    if 0 in src.type.shape:
+        return input_val
     args = node.args
     rank = input_val.type.rank
 
