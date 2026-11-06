@@ -448,6 +448,38 @@ async def test_avg_pool2d(
 
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
+    "pool,input_shape",
+    [
+        # [C, L]: nn.AvgPool1d reaches avg_pool2d with a [C, 1, L] input
+        (nn.AvgPool1d(2), (4, 8)),
+        (nn.AvgPool1d(3, stride=2, padding=1), (4, 8)),
+        # [C, H, W]
+        (nn.AvgPool2d(2), (3, 8, 8)),
+    ],
+)
+async def test_avg_pool2d_unbatched(
+    pool: nn.Module, input_shape: tuple[int, ...], dynamic: bool
+) -> None:
+    """avg_pool2d on an input without a batch dim, which PyTorch accepts."""
+    x = torch.rand(*input_shape)
+
+    class UnbatchedPoolModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pool = pool
+
+        def forward(self, x: Tensor) -> Tensor:
+            return self.pool(x)
+
+    model = UnbatchedPoolModel().eval()
+    dynamic_shapes = (
+        {"x": {0: torch.export.Dim("channels", min=1)}} if dynamic else None
+    )
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
     "kernel_size,stride,padding,divisor_override",
     [
         # Basic cube kernel, no padding
