@@ -2744,11 +2744,19 @@ def replace_softmax(
 def replace_squeeze_dims(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
-    """Converts aten.squeeze.dims to coreai.shrink_dims."""
+    """Converts aten.squeeze.dims to coreai.shrink_dims.
+
+    PyTorch keeps a listed dim whose size is not 1 (x.squeeze() lists every
+    dim), so only the dims of static size 1 in the exported input are shrunk.
+    """
     x = _get_operand(values_map, node, 0)
-    return coreai.shrink_dims(
-        x, [d + x.type.rank if d < 0 else d for d in node.args[1]]
-    )
+    in_shape = node.args[0].meta["val"].shape
+    dims = [
+        d + x.type.rank if d < 0 else d
+        for d in node.args[1]
+        if isinstance(in_shape[d], int) and in_shape[d] == 1
+    ]
+    return coreai.shrink_dims(x, dims) if dims else x
 
 
 def replace_sum_dim_intlist(

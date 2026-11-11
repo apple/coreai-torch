@@ -5800,6 +5800,28 @@ async def test_squeeze_dims(
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
+    "dims",
+    [
+        [1],  # size 4: PyTorch returns the input unchanged
+        [0, 1],  # only dim 0 is removed
+        None,  # x.squeeze(), exported as squeeze.dims over every dim
+    ],
+)
+async def test_squeeze_dims_not_size_one(dims: list[int] | None, dynamic: bool) -> None:
+    """A listed dim whose size is not 1 stays in the output, as in PyTorch."""
+    x = torch.rand(1, 4, 8)
+
+    class SqueezeModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return x.squeeze() if dims is None else torch.squeeze(x, dims)
+
+    model = SqueezeModel().eval()
+    dynamic_shapes = make_dynamic_shapes(x=[None, "x1", "x2"]) if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
 class TestIndexTensor:
     """Test suite for index.Tensor operation."""
 

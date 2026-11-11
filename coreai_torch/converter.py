@@ -310,6 +310,14 @@ class TorchConverter:
         ``to_coreai``).
 
         Args:
+            model: The PyTorch module to convert.
+            export_fn: Callable that takes ``model`` and returns its decomposed
+                ``ExportedProgram`` (see above). It is called once when staging,
+                and again during ``to_coreai`` if ``externalize_modules`` is set.
+            externalize_modules: Submodule classes to keep as separate graphs,
+                given as :class:`ExternalizeSpec` objects (composite ops) or bare
+                classes (experimental simple externalization). Only submodules
+                of ``model`` are matched, never ``model`` itself.
             input_names: Non-stateful forward() arg names. See
                 :meth:`add_exported_program`.
             output_names: Return value names. See :meth:`add_exported_program`.
@@ -318,8 +326,16 @@ class TorchConverter:
                 :meth:`add_exported_program`.
             output_image_types: Outputs to treat as images. See
                 :meth:`add_exported_program`.
+            entrypoint_name: Name of this program's entry-point graph in the
+                converted module. Must be unique among staged programs.
 
-        Returns ``self`` for chaining.
+        Returns:
+            This converter, so further calls can be chained onto it, e.g.
+            ``TorchConverter().add_pytorch_module(...).to_coreai()``.
+
+        Raises:
+            ValueError: If ``entrypoint_name`` is already staged.
+            RuntimeError: If ``export_fn`` fails on ``model``.
         """
         if any(e.entrypoint_name == entrypoint_name for e in self._staged):
             raise ValueError(
