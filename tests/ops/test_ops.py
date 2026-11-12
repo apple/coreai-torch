@@ -6275,6 +6275,60 @@ class TestSliceScatter:
 
         await validate_numerical_output(model=SliceAssignModel().eval(), x=x)
 
+    @pytest.mark.parametrize("from_input", [False, True])
+    @pytest.mark.parametrize("start", [4, 8])
+    async def test_slice_assignment_dynamic(self, start: int, from_input: bool) -> None:
+        """test_slice_assignment with every dim but the sliced one dynamic.
+
+        For start=8, src keeps a static zero-size dim next to the dynamic ones.
+        The program is exported once and run at three sizes.
+        """
+
+        class SliceAssignModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                mask = x * 2 if from_input else torch.zeros_like(x)
+                mask[:, start:, :, :] = 1.0
+                return x + mask
+
+        model = SliceAssignModel().eval()
+        program = torch.export.export(
+            model,
+            args=(torch.rand(2, 8, 3, 2),),
+            dynamic_shapes=make_dynamic_shapes(x=["b", None, "h", "w"]),
+        ).run_decompositions()
+        coreai_program = TorchConverter().add_exported_program(program).to_coreai()
+        for shape in [(2, 8, 3, 2), (3, 8, 5, 4), (1, 8, 1, 1)]:
+            x = torch.rand(shape)
+            await validate_numerical_output(
+                coreai_program=coreai_program, torch_out=model(x), x=x
+            )
+
+    async def test_slice_assignment_from_dynamic_end(self) -> None:
+        """Assignment to x[:, n:] where n = x.shape[1] is dynamic.
+
+        The slice is empty at every size, and src's sliced dim is a static zero.
+        Before the empty-slice check, the conversion crashed here (exit 139).
+        """
+
+        class SliceAssignModel(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                mask = x * 2
+                mask[:, x.shape[1] :, :, :] = 1.0
+                return x + mask
+
+        model = SliceAssignModel().eval()
+        program = torch.export.export(
+            model,
+            args=(torch.rand(1, 8, 8, 1),),
+            dynamic_shapes=make_dynamic_shapes(x=[None, "n", None, None]),
+        ).run_decompositions()
+        coreai_program = TorchConverter().add_exported_program(program).to_coreai()
+        for n in [8, 12]:
+            x = torch.rand(1, n, 8, 1)
+            await validate_numerical_output(
+                coreai_program=coreai_program, torch_out=model(x), x=x
+            )
+
 
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
