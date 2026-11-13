@@ -169,6 +169,12 @@ def replace_avg_pool2d(
         x.context, "avg_pool_2d", input_names, output_names, op_attributes
     )
 
+    # PyTorch also takes an unbatched [C, H, W] input (nn.AvgPool1d on [C, L]
+    # arrives as [C, 1, L]). Pool it as a batch of one.
+    unbatched = x.type.rank == 3
+    if unbatched:
+        x = coreai.expand_dims(x, [0])
+
     dyn = RankedTensorType.get_dynamic_size()
     n = x.type.shape[0] if x.type.shape[0] > 0 else dyn
     c = x.type.shape[1] if x.type.shape[1] > 0 else dyn
@@ -243,9 +249,10 @@ def replace_avg_pool2d(
     count_include_pad = coreai.constant(count_include_pad)
     divisor_override = coreai.constant(divisor_override_val, dtype=np.int32)
 
-    return avg_pool2d_composite(
+    pooled = avg_pool2d_composite(
         x, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override
     )
+    return coreai.shrink_dims(pooled[0], [0]) if unbatched else pooled
 
 
 def replace_adaptive_avg_pool2d_dynamic(
@@ -2737,11 +2744,19 @@ def replace_softmax(
 def replace_squeeze_dims(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
-    """Converts aten.squeeze.dims to coreai.shrink_dims."""
+    """Converts aten.squeeze.dims to coreai.shrink_dims.
+
+    PyTorch keeps a listed dim whose size is not 1 (x.squeeze() lists every
+    dim), so only the dims of static size 1 in the exported input are shrunk.
+    """
     x = _get_operand(values_map, node, 0)
-    return coreai.shrink_dims(
-        x, [d + x.type.rank if d < 0 else d for d in node.args[1]]
-    )
+    in_shape = node.args[0].meta["val"].shape
+    dims = [
+        d + x.type.rank if d < 0 else d
+        for d in node.args[1]
+        if isinstance(in_shape[d], int) and in_shape[d] == 1
+    ]
+    return coreai.shrink_dims(x, dims) if dims else x
 
 
 def replace_sum_dim_intlist(
