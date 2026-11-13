@@ -20,6 +20,7 @@ rather than re-invented so the two tools describe the same situations with the s
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -436,6 +437,7 @@ async def compare_program_intermediates(
     rtol: float = _DEFAULT_RTOL,
     atol: float = _DEFAULT_ATOL,
     exclude_multi_output: bool = True,
+    state: Mapping[str, Any] | None = None,
 ) -> IntermediatesReport:
     """
     Run both programs on the same inputs and compare every mapped operation.
@@ -464,6 +466,8 @@ async def compare_program_intermediates(
         rtol: Relative tolerance.
         atol: Absolute tolerance.
         exclude_multi_output: As :func:`compare_intermediates`.
+        state: Starting value of each stateful buffer, by its placeholder name. Both
+            sides start from it.
 
     Returns:
         One entry per mapping, classified.
@@ -492,6 +496,7 @@ async def compare_program_intermediates(
             if node.op == "call_function"
         ],
         torch_arguments,
+        state,
     )
 
     mappings = get_torch_to_coreai_output_mapping(program)
@@ -503,6 +508,7 @@ async def compare_program_intermediates(
         coreai_intermediates = await coreai_inspector.get_intermediates_for_ops(
             [mapping.target_op_id for mapping in mappings.values()],
             numpy_inputs,
+            state,
         )
 
     return compare_intermediates(

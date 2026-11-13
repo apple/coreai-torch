@@ -248,6 +248,117 @@ def _trim_excluded_leaf_modules(
     return module[: max(0, len(module) - excluded_leaves)]
 
 
+def _leaf_locations(location: Any) -> Iterable[Any]:
+    """
+    Flatten a (possibly nested) fused location into its non-fused locations.
+
+    Args:
+        location: Location to flatten.
+
+    Yields:
+        Each non-fused location; *location* itself when it is not fused.
+
+    """
+    # Some builds answer ``is_a_fused()`` on every Location; others return a
+    # ``FusedLoc`` that alone has ``locations``.
+    is_a_fused = getattr(location, "is_a_fused", None)
+    fused = is_a_fused() if is_a_fused else hasattr(location, "locations")
+    if fused:
+        for child in location.locations:
+            yield from _leaf_locations(child)
+    else:
+        yield location
+
+
+def _leaf_stack_traces(operation: Operation) -> list[tuple[tuple[str, ...], int]]:
+    """
+    Read each stack trace on an operation's location, with the torch node it is for.
+
+    Args:
+        operation: Operation to read.
+
+    Returns:
+        ``(stack trace, torch operation ID)`` per location that has a stack trace, in
+        location order. The ID is -1 when the location names no torch node.
+
+    """
+    found = []
+    for leaf in _leaf_locations(operation.location):
+        stack = tuple(_mlir.get_stack_trace(leaf) or ())  # type: ignore[attr-defined]
+        if not stack:
+            continue
+        torch_id = max(
+            (
+                source.id
+                for source in _mlir.get_source_info(leaf)  # type: ignore[attr-defined]
+                if source.name == "torch" and source.id is not None
+            ),
+            default=-1,
+        )
+        found.append((stack, torch_id))
+    return found
+
+
+def operation_torch_ids(operation: Operation) -> set[int]:
+    """
+    The torch operation IDs recorded on an operation's location.
+
+    Args:
+        operation: Operation to read.
+
+    Returns:
+        The ID of every torch node the operation came from, reading through fused
+        locations. The largest is the node the operation itself realizes; the rest are
+        producers it absorbed.
+
+    """
+    return {
+        source.id
+        for leaf in _leaf_locations(operation.location)
+        for source in _mlir.get_source_info(leaf)  # type: ignore[attr-defined]
+        if source.name == "torch" and source.id is not None
+    }
+
+
+def operation_stack_traces(operation: Operation) -> list[tuple[str, ...]]:
+    """
+    Every stack trace on an operation, outermost frame first.
+
+    Reads through fused locations, so an operation that replaced several has the stack
+    of each.
+
+    Args:
+        operation: Operation to read.
+
+    Returns:
+        The distinct stack traces, in location order. Empty when none is recorded.
+
+    """
+    return list(dict.fromkeys(stack for stack, _ in _leaf_stack_traces(operation)))
+
+
+def operation_stack_trace(operation: Operation) -> tuple[str, ...]:
+    """
+    The stack trace of the module an operation belongs to, outermost frame first.
+
+    Of an operation's stack traces, that of the latest torch node (highest operation
+    ID) is its own; the earlier ones are the producers it absorbed.
+
+    Args:
+        operation: Operation to read.
+
+    Returns:
+        The stack trace, empty when none is recorded.
+
+    """
+    best: tuple[str, ...] = ()
+    best_id = -1
+    for stack, torch_id in _leaf_stack_traces(operation):
+        if not best or torch_id > best_id:
+            best, best_id = stack, torch_id
+    return best
+
+
 def _get_module_path(
     operation: Operation,
     exclude: Callable[[LocationInfo], bool],
@@ -269,7 +380,7 @@ def _get_module_path(
         their own annotatable file. Empty when there is no stack trace.
 
     """
-    stack_trace = _mlir.get_stack_trace(operation.location)  # type: ignore[attr-defined]
+    stack_trace = operation_stack_trace(operation)
     if not stack_trace:
         return ()
 
@@ -398,8 +509,7 @@ def _operation_in_module(operation: Operation, module: ModulePath) -> bool:
         True if the operation belongs to ``module`` (or one of its children).
 
     """
-    stack_trace = tuple(_mlir.get_stack_trace(operation.location) or ())  # type: ignore[attr-defined]
-    return stack_trace[: len(module)] == module
+    return operation_stack_trace(operation)[: len(module)] == module
 
 
 def _should_exclude_location(location: LocationInfo) -> bool:

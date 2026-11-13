@@ -20,6 +20,7 @@ from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
 from coreai_torch.debugging.comparator import (
     Comparator,
     DebugGraph,
+    TargetInspector,
     create_comparator_for_programs,
 )
 from coreai_torch.debugging.graph import ComputationGraph
@@ -651,3 +652,69 @@ async def test_comparator_catches_modified_ops_at_different_positions(
     assert len(result_2.failed_nodes) > 0, (
         "Should detect failure from changing second mul to div"
     )
+
+
+class _Accumulator(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.register_buffer("acc", torch.zeros(1, 4))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.acc + x
+        self.acc.copy_(y * 2)
+        return torch.relu(y)
+
+
+@pytest.mark.parametrize("target_inspector", list(TargetInspector))
+async def test_comparator_starts_both_sides_from_the_given_state(
+    specialization_options: SpecializationOptions | None,
+    target_inspector: TargetInspector,
+) -> None:
+    x = torch.randn(1, 4)
+    exported = torch.export.export(_Accumulator().eval(), (x,)).run_decompositions()
+    program = await _create_coreai_program_from_model(exported)
+    comparator = await create_comparator_for_programs(
+        source_program=exported,
+        target_program=program,
+        target_entry_point="main",
+        specialization_options=specialization_options,
+        target_inspector=target_inspector,
+    )
+    state = {"b_acc": np.full((1, 4), 3.0, dtype=np.float32)}
+
+    result = await comparator.compare_with_tolerance(
+        inputs={"x": x.numpy()}, state=state
+    )
+
+    assert len(result.compared) > 0
+    assert result.failed_nodes == []
+    # The caller's array is not updated by either run.
+    np.testing.assert_array_equal(state["b_acc"], np.full((1, 4), 3.0))
+
+
+async def test_a_comparator_compares_again_on_every_call(
+    specialization_options: SpecializationOptions | None,
+) -> None:
+    """A second comparison, from another state, covers every operation as the first did."""
+    x = torch.randn(1, 4)
+    exported = torch.export.export(_Accumulator().eval(), (x,)).run_decompositions()
+    program = await _create_coreai_program_from_model(exported)
+    comparator = await create_comparator_for_programs(
+        source_program=exported,
+        target_program=program,
+        target_entry_point="main",
+        specialization_options=specialization_options,
+    )
+
+    compared = []
+    for value in (3.0, 3.0, -7.0):
+        state = {"b_acc": np.full((1, 4), value, dtype=np.float32)}
+        result = await comparator.compare_with_tolerance(
+            inputs={"x": x.numpy()}, state=state
+        )
+        assert result.failed_nodes == []
+        compared.append(len(result.compared))
+        np.testing.assert_array_equal(state["b_acc"], np.full((1, 4), value))
+
+    assert compared[0] > 0
+    assert compared == [compared[0]] * 3

@@ -15,6 +15,7 @@ from coreai_torch import _debug_locations, get_decomp_table
 from coreai_torch._debug_locations import _DebugInfoRecorder, _get_nested_operations
 from coreai_torch.converter import TorchConverter
 from coreai_torch.debugging.debug_info import get_operation_id
+from coreai_torch.debugging.source_annotator import operation_stack_trace
 
 from .debugging.test_model import HierarchicalModel
 
@@ -162,7 +163,7 @@ def test_intermediate_ops_of_a_lowering_keep_their_attribution() -> None:
     assert matmuls, "expected the linear layers to lower to batch matmuls"
 
     for operation in matmuls:
-        stack_trace = _mlir.get_stack_trace(operation.location)  # type: ignore[attr-defined]
+        stack_trace = operation_stack_trace(operation)
         assert stack_trace, f"{operation.name} has no module hierarchy"
         # The matmul belongs to the Linear that produced its weight, not to an
         # enclosing module and not to nothing at all.

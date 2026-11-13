@@ -73,6 +73,16 @@ class SearchStrategy(ABC, Generic[TNode, TGraph]):
         raise StopAsyncIteration
 
     @abstractmethod
+    def reset(self) -> None:
+        """
+        Forget everything an earlier search left, so the strategy can search again.
+
+        A search consumes the strategy: it yields its batches once and keeps the results
+        it was given. A caller that searches again, with other inputs or state, resets it
+        first, or the second search yields nothing and reports the first one's results.
+        """
+
+    @abstractmethod
     async def update(
         self,
         results: list[tuple[ComputationGraph.Node, ValidationResult]],
@@ -126,6 +136,10 @@ class ExhaustiveStrategy(SearchStrategy[TNode, TGraph]):
 
         """
         self._graph = graph
+        self.reset()
+
+    def reset(self) -> None:
+        """Yield every node again, and forget the results."""
         self._yielded = False
         self._failed: list[ComputationGraph.Node] = []
         self._unknown: list[ComputationGraph.Node] = []
@@ -325,8 +339,10 @@ class LevelOrderStrategy(SearchStrategy[TNode, TGraph]):
         self.batch_size = batch_size
         self.level_selector = level_selector
         self._initial_scope_id = initial_scope_id
+        self.reset()
 
-        # Track search state
+    def reset(self) -> None:
+        """Start the search over from the initial scope, with no results."""
         self._scope_nodes: list[ComputationGraph.Node] = []
         self._depth_range: tuple[int, int] | None = None
         self._node_results: dict[

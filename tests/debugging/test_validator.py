@@ -462,3 +462,30 @@ async def test_coreai_program_with_inspector(
         )
         # Failed nodes can be inspected for debugging
         _ = [str(n) for n in result.failed_nodes[:3]]
+
+
+class _Reciprocal(torch.nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.relu(1.0 / x) + 1.0
+
+
+async def test_a_validator_checks_again_on_every_call(
+    specialization_options: SpecializationOptions | None,
+) -> None:
+    """A second check, on other inputs, reports what it finds there, not the first's."""
+    x = torch.ones(1, 4)
+    exported = torch.export.export(_Reciprocal().eval(), (x,)).run_decompositions()
+    converter = TorchConverter()
+    converter.add_exported_program(exported, entrypoint_name="main")
+    validator = await create_validator_for_coreai_program(
+        converter.to_coreai(), "main", specialization_options=specialization_options
+    )
+    clean = {"x": np.ones((1, 4), dtype=np.float32)}
+    infinite = {"x": np.zeros((1, 4), dtype=np.float32)}  # 1 / 0
+
+    assert (await validator.check_for_infs(clean)).failed_nodes == []
+    first = await validator.check_for_infs(infinite)
+    again = await validator.check_for_infs(infinite)
+    assert len(first.failed_nodes) > 0
+    assert len(again.failed_nodes) == len(first.failed_nodes)
+    assert (await validator.check_for_infs(clean)).failed_nodes == []

@@ -334,3 +334,37 @@ async def test_a_benchmark_that_times_nothing_says_what_it_measured(
         f"unattributed_samples={result.unattributed_samples}. An empty benchmark with "
         "no explanation cannot be distinguished from a model that cost nothing."
     )
+
+
+class _Accumulator(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.register_buffer("acc", torch.zeros(1, 4))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.acc + x
+        self.acc.copy_(y * 2)
+        return torch.relu(y)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Test only runs on macOS")
+async def test_a_stateful_program_benchmarks_from_the_given_state() -> None:
+    """Every run starts from a fresh copy of the state, and the caller's is untouched."""
+    import numpy as np
+
+    x = torch.randn(1, 4)
+    exported = torch.export.export(_Accumulator().eval(), (x,)).run_decompositions()
+    converter = TorchConverter()
+    converter.add_exported_program(exported, entrypoint_name="main")
+    start = np.ones((1, 4), dtype=np.float32)
+
+    with pytest.raises(RuntimeError, match="Missing state view for b_acc"):
+        await benchmark_coreai_program(
+            converter.to_coreai(), {"x": x.numpy()}, num_runs=2
+        )
+
+    await benchmark_coreai_program(
+        converter.to_coreai(), {"x": x.numpy()}, num_runs=2, state={"b_acc": start}
+    )
+
+    np.testing.assert_array_equal(start, np.ones((1, 4)))
