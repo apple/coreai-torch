@@ -6,7 +6,11 @@
 """Tests for search strategy with hierarchical graphs."""
 
 from coreai_torch.debugging.graph import ComputationGraph
-from coreai_torch.debugging.search_strategy import LevelOrderStrategy, SearchStrategy
+from coreai_torch.debugging.search_strategy import (
+    ExhaustiveStrategy,
+    LevelOrderStrategy,
+    SearchStrategy,
+)
 
 
 def create_hierarchical_graph_with_dependencies() -> ComputationGraph:
@@ -452,3 +456,44 @@ async def test_skipped_nodes_do_not_narrow_the_search() -> None:
     assert not strategy.get_unknown_operations(), (
         "A skipped node is not an unknown one: it was never a candidate"
     )
+
+
+async def test_a_reset_level_order_strategy_searches_again_from_scratch() -> None:
+    """A finished search leaves the strategy spent; reset makes it a fresh one."""
+    graph = create_hierarchical_graph_with_dependencies()
+    strategy = LevelOrderStrategy.top_down(graph)
+
+    # Failing everything narrows the search, so the first run is cut short.
+    await _drain(strategy, SearchStrategy.ValidationResult.FAIL)
+    assert strategy.get_problematic_operations()
+    assert await _drain(strategy, SearchStrategy.ValidationResult.PASS) == []
+
+    strategy.reset()
+
+    assert not strategy.get_problematic_operations()
+    again = await _drain(strategy, SearchStrategy.ValidationResult.PASS)
+    fresh = await _drain(
+        LevelOrderStrategy.top_down(graph), SearchStrategy.ValidationResult.PASS
+    )
+    assert [n.op_id for n in again] == [n.op_id for n in fresh]
+    assert len(again) > 2
+    assert not strategy.get_problematic_operations()
+
+
+async def test_a_reset_exhaustive_strategy_offers_every_node_again() -> None:
+    """It yields everything once, and forgets what it was told when reset."""
+    graph = create_hierarchical_graph_with_dependencies()
+    strategy = ExhaustiveStrategy(graph=graph)
+
+    (batch,) = [b async for b in strategy]
+    await strategy.update(
+        [(node, SearchStrategy.ValidationResult.FAIL) for node in batch]
+    )
+    assert strategy.get_problematic_operations()
+    assert [b async for b in strategy] == []
+
+    strategy.reset()
+
+    assert not strategy.get_problematic_operations()
+    (again,) = [b async for b in strategy]
+    assert [n.op_id for n in again] == [n.op_id for n in batch]

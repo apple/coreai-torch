@@ -126,6 +126,31 @@ class OutputMap:
         return cls(source=source_value, target=target_value)
 
 
+NODE_TABLE_METADATA = "source_nodes"
+"""Name of the metadata on a graph's location that lists the source nodes converted into it."""
+
+NODE_TABLE_VERSION = 1
+
+
+class _NodeTable:
+    """The torch nodes converted into one graph: what each was, and where the graph ends.
+
+    Nodes the compiler folds away or reshapes leave nothing in the program, so their
+    kind cannot be read from an operation. This is what says that an id with no
+    operation was a ``view`` and not, say, a batch norm.
+    """
+
+    def __init__(self) -> None:
+        self.targets: dict[int, str] = {}
+        self.output_id: int | None = None
+
+    def add(self, node_id: int, node: fx.Node) -> None:
+        if node.op == "call_function":
+            self.targets[node_id] = str(node.target)
+        elif node.op == "output":
+            self.output_id = node_id
+
+
 @dataclass
 class DebugInfo:
     """Comprehensive debug information for an operation.
@@ -610,6 +635,27 @@ def _get_scope(operation: Operation) -> Optional[Attribute]:
     return None
 
 
+def _as_operation(owner: object) -> Operation | None:
+    """The plain ``Operation`` behind a value's owner.
+
+    ``OpResult.owner`` is a plain ``Operation`` in some Core AI builds and the typed
+    op view (``ReshapeOp``, ...) in others, and the view fails ``isinstance(...,
+    Operation)``. Attribution then silently found nothing: no operation reached the
+    debug info map, every location fell back to the empty one, and no output maps were
+    recorded. ``.operation`` is the same object on a plain ``Operation``.
+
+    Args:
+        owner: An ``OpResult.owner`` or an operand's owner.
+
+    Returns:
+        The operation, or None when *owner* is not one (a ``Block``, for a block
+        argument).
+
+    """
+    operation = getattr(owner, "operation", None)
+    return operation if isinstance(operation, Operation) else None
+
+
 def _get_parent_scope(operation: Operation) -> Optional[Attribute]:
     """Get SymbolRefAttr from parent operation with symbol table trait or return None."""
     current = operation.parent
@@ -752,6 +798,7 @@ class _DebugInfoRecorder:
         self.config = config
         self.module_registry = _ModuleInstanceRegistry()
         self._source_operation_id = 0
+        self._graph_tables: list[_NodeTable] = []
         self._debug_info_map = _DebugInfoMap()
         self._current_module: Module | None = None
         self._current_graph: Operation | None = None
@@ -892,11 +939,14 @@ class _DebugInfoRecorder:
 
         return graph_files
 
-    def _set_graph_location(self: Self, graph_operation: Operation) -> None:
+    def _set_graph_location(
+        self: Self, graph_operation: Operation, table: _NodeTable
+    ) -> None:
         """Set debug location for a graph operation.
 
         Args:
             graph_operation: The graph operation to set location for
+            table: The torch nodes converted into the graph, recorded on its location
         """
         context = graph_operation.context
 
@@ -945,6 +995,7 @@ class _DebugInfoRecorder:
             debug_location = location_attr(
                 src=src_location,
                 scope=subprogram,
+                metadata=self._node_table_metadata(table, context),
                 context=context,
             )
 
@@ -1015,8 +1066,8 @@ class _DebugInfoRecorder:
             count, logs the mismatch but continues without adding output maps.
         """
         for i, target_result in enumerate(op_results):
-            target_op = target_result.owner
-            if not isinstance(target_op, Operation):
+            target_op = _as_operation(target_result.owner)
+            if target_op is None:
                 continue
 
             target_debug_info = self._debug_info_map.get(target_op)
@@ -1090,10 +1141,13 @@ class _DebugInfoRecorder:
         # Store current graph operation
         prev_graph_operation = self._current_graph
         self._current_graph = graph_operation
+        table = _NodeTable()
+        self._graph_tables.append(table)
 
         yield graph_operation
+        self._graph_tables.pop()
         # Set graph location first so it can be reused by block arguments
-        self._set_graph_location(graph_operation)
+        self._set_graph_location(graph_operation, table)
 
         # Ensure ALL operations in the graph have debug locations
         self._ensure_all_operations_have_debug_locations(graph_operation)
@@ -1166,7 +1220,7 @@ class _DebugInfoRecorder:
         operations = []
         seen_ops = set()
         for result in self._op_results:
-            op = result.owner
+            op = _as_operation(result.owner)
             while should_process_op(op):
                 seen_ops.add(op)
                 operations.append(op)
@@ -1185,7 +1239,7 @@ class _DebugInfoRecorder:
         queue = list(operations)
         while queue:
             for operand in queue.pop().operands:
-                producer = operand.owner  # a Block, for a block argument
+                producer = _as_operation(operand.owner)  # None for a block argument
                 if should_process_op(producer):
                     seen_ops.add(producer)
                     operations.append(producer)
@@ -1268,6 +1322,8 @@ class _DebugInfoRecorder:
 
         source_op_id = self._source_operation_id
         self._source_operation_id += 1
+        if self._graph_tables:
+            self._graph_tables[-1].add(source_op_id, node)
 
         # Create location from debug info
         location = self._create_location_for_node(debug_info)
@@ -1283,6 +1339,30 @@ class _DebugInfoRecorder:
             self._process_terminating_operations(source_op_id)
 
         self._op_results = None
+
+    def _node_table_metadata(
+        self: Self, table: _NodeTable, context: Context
+    ) -> list[metadata_attr]:
+        """The graph location's metadata listing the torch nodes, ``[]`` when none."""
+        if not table.targets:
+            return []
+        entries = {
+            str(node_id): StringAttr.get(target, context=context)
+            for node_id, target in table.targets.items()
+        }
+        data = {
+            "version": _create_uint64_attr(NODE_TABLE_VERSION, context),
+            "nodes": DictAttr.get(entries, context=context),
+        }
+        if table.output_id is not None:
+            data["output_id"] = _create_uint64_attr(table.output_id, context)
+        return [
+            metadata_attr(
+                name=NODE_TABLE_METADATA,
+                data=DictAttr.get(data, context=context),
+                context=context,
+            )
+        ]
 
     def finalize_node_operations(self: Self) -> None:
         """Materialize locations for the operations lowered into the current graph.

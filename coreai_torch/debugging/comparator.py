@@ -20,7 +20,7 @@ Key components:
 
 import logging
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
@@ -43,6 +43,7 @@ from .graph import (
 from .inspector import (
     CachingInspector,
     CoreAIInspector,
+    CoreAIProbedInspector,
     Inspector,
     TorchFXInspector,
 )
@@ -52,9 +53,20 @@ from .search_strategy import (
 )
 from .table_writer import _Column, _Row, _TableSpec, _write_table
 from .torch_utils import get_torch_to_coreai_output_mapping
-from .utils import _plain, _with_debug
+from .utils import _plain, _state_kwargs, _with_debug
 
 logger = logging.getLogger(__name__)
+
+
+class TargetInspector(str, Enum):
+    """How a comparator reads the target program's intermediates."""
+
+    LOGGER = "logger"
+    """The runtime's intermediate logger. Leaves the model as it is."""
+
+    PROBED = "probed"
+    """Extra model outputs (:class:`CoreAIProbedInspector`), for work the logger misses."""
+
 
 _DEFAULT_RTOL: float = 1e-5
 _DEFAULT_ATOL: float = 1e-3
@@ -865,6 +877,7 @@ class Comparator(
         self,
         batch: list[ComputationGraph.Node],
         inputs: Any,
+        state: Mapping[str, Any] | None = None,
     ) -> dict[ComputationGraph.OpID, list[NDArray[Any] | None] | None]:
         """Fetch intermediates for target nodes corresponding to source batch."""
         target_batch_op_ids: list[ComputationGraph.OpID] = []
@@ -879,6 +892,7 @@ class Comparator(
         return await self.target.inspector.get_intermediates_for_ops(
             target_batch_op_ids,
             inputs,
+            **_state_kwargs(state),
         )
 
     @staticmethod
@@ -1045,6 +1059,7 @@ class Comparator(
             ],
             Status,
         ],
+        state: Mapping[str, Any] | None = None,
     ) -> BatchResult:
         """
         Process a batch of nodes for comparison.
@@ -1069,8 +1084,9 @@ class Comparator(
         source_results = await self.source.inspector.get_intermediates_for_ops(
             source_batch_op_ids,
             inputs,
+            **_state_kwargs(state),
         )
-        target_results = await self._fetch_target_intermediates(batch, inputs)
+        target_results = await self._fetch_target_intermediates(batch, inputs, state)
 
         # Check each node pair in the batch
         batch_results = []
@@ -1130,6 +1146,7 @@ class Comparator(
             Status,
         ],
         inputs: Any,
+        state: Mapping[str, Any] | None = None,
     ) -> Result:
         """
         Compare operations between source and target graphs.
@@ -1138,6 +1155,8 @@ class Comparator(
             check_fn: Function that takes (source_node, target_node, source_outputs, target_outputs)
                      and returns Status
             inputs: Model inputs to use during execution
+            state: Starting value of each stateful buffer, by name. Both sides start
+                from it, so the buffer names must match in source and target.
 
         Returns:
             Result containing failed and unknown comparisons sorted by source topological order.
@@ -1146,6 +1165,9 @@ class Comparator(
         """
         op_ids = self.source.graph.get_op_ids()
         total_ops = len(op_ids)
+
+        # A search consumes the strategy, so another call starts it afresh.
+        self.strategy.reset()
 
         # Initialize progress tracking and result tracking
         pass_count = 0
@@ -1165,6 +1187,7 @@ class Comparator(
                     batch,
                     inputs,
                     check_fn,
+                    state,
                 )
 
                 pass_count += batch_result.pass_count
@@ -1362,6 +1385,7 @@ class Comparator(
         rtol: float = _DEFAULT_RTOL,
         atol: float = _DEFAULT_ATOL,
         exclude_multi_output: bool = False,
+        state: Mapping[str, Any] | None = None,
     ) -> Result:
         """
         Compare outputs between graphs with numerical tolerance.
@@ -1375,6 +1399,7 @@ class Comparator(
                 up.
             exclude_multi_output: Skip any operation whose source has several outputs,
                 reporting it as EXCLUDED rather than comparing.
+            state: Starting value of each stateful buffer, by name.
 
         Returns:
             Result containing operations where outputs differ beyond tolerance
@@ -1452,7 +1477,7 @@ class Comparator(
 
             return Comparator.Status.PASS
 
-        return await self.compare(check_fn, inputs)
+        return await self.compare(check_fn, inputs, state)
 
 
 def _create_id_map_from_coreai_program(
@@ -1516,6 +1541,8 @@ async def create_comparator_for_programs(
     use_caching: bool = True,
     exclude_ops: frozenset[str] = _DEFAULT_EXCLUDED_OPS,
     specialization_options: SpecializationOptions | None = None,
+    target_inspector: TargetInspector | str = TargetInspector.LOGGER,
+    probed_options: Mapping[str, Any] | None = None,
 ) -> Comparator[torch.fx.Node, torch.fx.Graph, Operation, Module]:
     """
     Create a comparator between PyTorch ExportedProgram and AIProgram.
@@ -1538,11 +1565,25 @@ async def create_comparator_for_programs(
                      Defaults to _DEFAULT_EXCLUDED_OPS which includes view/reshape
                      operations. Pass frozenset() to disable exclusions.
         specialization_options: Options for configuring model specialization
+        target_inspector: A :class:`TargetInspector` (or its string value). With
+            ``PROBED`` the values come from a copy of the model with extra outputs;
+            check the inspector's ``perturbations``.
+        probed_options: Keyword arguments for :class:`CoreAIProbedInspector`. Only
+            valid with ``PROBED``.
 
     Returns:
         Comparator instance configured for comparing the two programs
 
+    Raises:
+        ValueError: If target_inspector is not a :class:`TargetInspector`, or
+            probed_options is given without ``PROBED``.
+
     """
+    target_inspector = TargetInspector(target_inspector)
+    if probed_options and target_inspector is not TargetInspector.PROBED:
+        msg = "probed_options is only valid with TargetInspector.PROBED"
+        raise ValueError(msg)
+
     # Create ID mapping from torch to coreai operations
     id_map = _create_id_map_from_coreai_program(
         target_program,
@@ -1558,22 +1599,26 @@ async def create_comparator_for_programs(
     # Create source graph
     source_graph = create_graph_from_exported_program(source_program)
 
-    # Create target (AIProgram) inspector based on inspector type
-    temp_dir = TemporaryDirectory()
-    asset_path = Path(temp_dir.name) / "model.aimodel"
-
-    # Create asset from AIProgram and load model from asset
-    asset = target_program.save_asset(asset_path)
-    specialization_options = _with_debug(specialization_options)
-    model = await AIModel.load(asset.path, specialization_options)
-    target_inspector = CoreAIInspector(
-        model=model,
-        function_name=target_entry_point,
-        temp_dir=temp_dir,
-    )
+    target: Inspector
+    if target_inspector is TargetInspector.PROBED:
+        target = CoreAIProbedInspector(
+            target_program,
+            function_name=target_entry_point,
+            specialization_options=specialization_options,
+            **(probed_options or {}),
+        )
+    else:
+        temp_dir = TemporaryDirectory()
+        asset = target_program.save_asset(Path(temp_dir.name) / "model.aimodel")
+        model = await AIModel.load(asset.path, _with_debug(specialization_options))
+        target = CoreAIInspector(
+            model=model,
+            function_name=target_entry_point,
+            temp_dir=temp_dir,
+        )
 
     if use_caching:
-        target_inspector = CachingInspector(target_inspector)
+        target = CachingInspector(target)
 
     # Create target graph
     target_graph = create_graph_from_coreai_program(
@@ -1588,7 +1633,7 @@ async def create_comparator_for_programs(
     )
     target_debug_graph = DebugGraph(
         graph=target_graph,
-        inspector=target_inspector,
+        inspector=target,
     )
 
     return Comparator(
