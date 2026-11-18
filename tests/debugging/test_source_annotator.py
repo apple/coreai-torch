@@ -13,13 +13,17 @@ from coreai._compiler.ir import Operation
 from coreai.authoring import AIProgram
 
 from coreai_torch.converter import TorchConverter, _DebugInfoRecorder
+from coreai_torch.debugging.debug_info import _build_coreai_op_map
 from coreai_torch.debugging.source_annotator import (
     _annotate_source,
     _Annotation,
     _SourceAnnotator,
     _TextAnnotation,
     _walk_operations,
+    module_paths_by_op_id,
+    operation_stack_traces,
 )
+from coreai_torch.debugging.utils import STRUCTURAL_OPS
 
 from .test_model import HierarchicalModel, get_example_inputs
 
@@ -127,3 +131,30 @@ async def test_source_annotator_get_annotation_unknown_location(
     )
 
     assert annotator.get_annotation("/does/not/exist.py", 1) == []
+
+
+async def test_every_operation_has_a_stack_trace(
+    hierarchical_coreai_program: AIProgram,
+) -> None:
+    """No operation of a converted model is left without a module."""
+    paths = module_paths_by_op_id(hierarchical_coreai_program)
+    ops = _build_coreai_op_map(hierarchical_coreai_program)
+    missing = [
+        op_id
+        for op_id, op in ops.items()
+        if op.name not in STRUCTURAL_OPS and op.name != "coreai.constant"
+        if op_id not in paths
+    ]
+    assert missing == []
+
+
+async def test_fused_location_gives_every_stack(
+    hierarchical_coreai_program: AIProgram,
+) -> None:
+    """A matmul rebuilt from the previous layer's output is in both layers' stacks."""
+    ops = _build_coreai_op_map(hierarchical_coreai_program)
+    stacks = operation_stack_traces(ops[13])
+
+    assert ("HierarchicalModel$1", "SubModel$1", "Linear$2") in stacks
+    assert ("HierarchicalModel$1", "Linear$1") in stacks
+    assert len(stacks) == len(set(stacks))

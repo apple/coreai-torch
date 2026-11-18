@@ -13,11 +13,14 @@ from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Union, cast
 
 import coreai
 import numpy as np
 import torch
+from coreai.authoring import AIProgram
 from numpy.typing import NDArray
 
 from .debug_info import (
@@ -26,7 +29,16 @@ from .debug_info import (
     _build_compile_id_to_coreai_map,
     parse_debug_infos,
 )
+from .module_outputs import module_output_op_ids
+from .probes import (
+    Perturbation,
+    ProbedProgram,
+    add_probe_outputs,
+    compare_to_reference,
+)
+from .source_annotator import ModulePath, module_paths_by_op_id
 from .torch_utils import _TorchFXNodeValueInterpreter
+from .utils import _state_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +52,11 @@ def _uses_os_framework() -> bool:
     variable reads as False here.
     """
     return "USE_OS_COREAI" in os.environ
+
+
+def _as_numpy(value: Any) -> NDArray[Any]:
+    """A numpy view of a Core AI NDArray, or the array itself if it is not one."""
+    return value.numpy() if isinstance(value, coreai.runtime.NDArray) else value
 
 
 async def _wait_for_async_callbacks() -> None:
@@ -454,6 +471,7 @@ class Inspector(ABC):
         self,
         op_ids: list[OpID],
         inputs: Any,
+        state: Mapping[str, Any] | None = None,
     ) -> dict[OpID, list[NDArray[Any] | None] | None]:
         """
         Execute model and capture intermediate outputs for specified operations.
@@ -461,6 +479,8 @@ class Inspector(ABC):
         Args:
             op_ids: List of operation identifiers to capture outputs for
             inputs: Model inputs (format varies by implementation)
+            state: Starting value of each stateful buffer, by name. Copied, so the
+                caller's arrays are never updated.
 
         Returns:
             Dictionary mapping each operation ID to a list of output arrays.
@@ -516,6 +536,7 @@ class CachingInspector(Inspector):
             OrderedDict()
         )
         self._current_inputs: Any = None
+        self._current_state: Any = None
         self._max_cache_size = max_cache_size
 
     @staticmethod
@@ -586,25 +607,31 @@ class CachingInspector(Inspector):
         self,
         op_ids: list[Inspector.OpID],
         inputs: Any,
+        state: Mapping[str, Any] | None = None,
     ) -> dict[Inspector.OpID, list[NDArray[Any] | None] | None]:
         """
         Retrieve intermediate outputs with automatic caching.
 
         Returns cached values when available, only executing the model for operations
-        not yet in the cache. Automatically clears the cache when inputs change.
-        Implements LRU eviction when max_cache_size is set.
+        not yet in the cache. Automatically clears the cache when inputs or state
+        change. Implements LRU eviction when max_cache_size is set.
 
         Args:
             op_ids: List of operation identifiers to capture outputs for
             inputs: Model inputs (cache is invalidated if these change)
+            state: Starting state (cache is invalidated if this changes)
 
         Returns:
             Dictionary mapping operation IDs to output arrays (cached or freshly captured)
 
         """
-        if not self._inputs_equal(self._current_inputs, inputs):
+        if not (
+            self._inputs_equal(self._current_inputs, inputs)
+            and self._inputs_equal(self._current_state, state)
+        ):
             self._cache.clear()
             self._current_inputs = self._copy_inputs(inputs)
+            self._current_state = self._copy_inputs(state)
 
         uncached_ops = [op_id for op_id in op_ids if op_id not in self._cache]
 
@@ -612,6 +639,7 @@ class CachingInspector(Inspector):
             results = await self._inspector.get_intermediates_for_ops(
                 uncached_ops,
                 inputs,
+                **_state_kwargs(state),
             )
             if results is not None:
                 for op_id, value in results.items():
@@ -636,6 +664,7 @@ class CachingInspector(Inspector):
         """Clear all cached intermediate values and reset input tracking."""
         self._cache.clear()
         self._current_inputs = None
+        self._current_state = None
 
 
 class TorchFXInspector(Inspector):
@@ -663,6 +692,7 @@ class TorchFXInspector(Inspector):
         self,
         op_ids: list[Inspector.OpID],
         inputs: Any,
+        state: Mapping[str, Any] | None = None,
     ) -> dict[Inspector.OpID, list[NDArray[Any] | None] | None]:
         """
         Capture intermediate values at specified FX graph nodes.
@@ -673,6 +703,11 @@ class TorchFXInspector(Inspector):
         Args:
             op_ids: List of FX node names (operation IDs) to capture
             inputs: Tuple of input tensors matching the model's expected signature
+            state: Starting value of each buffer, by its placeholder name (for
+                example ``"b_cache"``). Buffers not named keep the exported value.
+
+        Raises:
+            KeyError: If a state name is not a buffer of the exported program.
 
         Returns:
             Dictionary mapping node names to lists of output arrays (as NumPy).
@@ -692,10 +727,16 @@ class TorchFXInspector(Inspector):
                 else:
                     results[node.name] = [self.__class__.convert_to_numpy(result)]
 
-        interpreter = _TorchFXNodeValueInterpreter(
-            self.exported_program.module(),
-            callback=capture_callback,
-        )
+        module = self.exported_program.module()
+        buffers = self.exported_program.graph_signature.inputs_to_buffers
+        for name, value in (state or {}).items():
+            if name not in buffers:
+                msg = f"{name!r} is not a buffer; buffers: {sorted(buffers)}"
+                raise KeyError(msg)
+            buffer = module.get_buffer(buffers[name])
+            buffer.copy_(torch.as_tensor(np.array(_as_numpy(value))).to(buffer.dtype))
+
+        interpreter = _TorchFXNodeValueInterpreter(module, callback=capture_callback)
 
         # Accept the same shape of inputs as CoreAIInspector, which requires a
         # name -> array dict. Without this the two inspectors in a Comparator need
@@ -782,6 +823,7 @@ class CoreAIInspector(Inspector):
         self._model = model
         self._function_name = function_name
         self._last_outputs: dict[str, NDArray[Any]] | None = None
+        self._last_state: dict[str, NDArray[Any]] | None = None
         self._temp_dir = temp_dir  # Keep temp directory alive
 
         # Load debug info from model
@@ -975,6 +1017,7 @@ class CoreAIInspector(Inspector):
         self,
         op_ids: list[Inspector.OpID],
         inputs: Any,
+        state: Mapping[str, Any] | None = None,
     ) -> dict[Inspector.OpID, list[NDArray[Any] | None] | None]:
         """
         Capture intermediate outputs from Core AI Runtime model execution.
@@ -985,6 +1028,8 @@ class CoreAIInspector(Inspector):
         Args:
             op_ids: List of source operation debug IDs to capture
             inputs: Model inputs (dictionary mapping input names to NDArray or numpy arrays)
+            state: Starting value of each state, by name. Copied, because the runtime
+                updates state in place.
 
         Returns:
             Dictionary mapping operation IDs to lists of output arrays.
@@ -1045,10 +1090,17 @@ class CoreAIInspector(Inspector):
             intermediate_logger=intermediate_logger,
         )
 
-        outputs = await inference_function(inputs=ndarray_inputs)
+        ndarray_state = {
+            name: coreai.runtime.NDArray(np.array(_as_numpy(value)))
+            for name, value in (state or {}).items()
+        }
+        outputs = await inference_function(inputs=ndarray_inputs, state=ndarray_state)
         await _wait_for_async_callbacks()
 
         self._last_outputs = {name: array.numpy() for name, array in outputs.items()}
+        self._last_state = {
+            name: np.array(array.numpy()) for name, array in ndarray_state.items()
+        }
 
         logger.debug("Successfully captured %d source operations", len(results))
 
@@ -1080,6 +1132,11 @@ class CoreAIInspector(Inspector):
 
         """
         return self._last_outputs
+
+    @property
+    def last_state(self) -> dict[str, NDArray[Any]] | None:
+        """State left by the most recent execution, or None if never executed."""
+        return self._last_state
 
     @staticmethod
     def get_compile_identifiers_for_op(
@@ -1142,3 +1199,400 @@ class CoreAIInspector(Inspector):
             )
             for (source_op_id, _output_idx), mk in compile_map.items()
         }
+
+
+class PerturbationPolicy(str, Enum):
+    """What a probed inspector does with a probe set that moves the model's outputs."""
+
+    SPLIT = "split"
+    """Retry each half until every returned value comes from a clean set."""
+
+    WARN = "warn"
+    """Log and return the values anyway."""
+
+    RAISE = "raise"
+    """Raise :class:`PerturbationError`."""
+
+
+class PerturbationError(RuntimeError):
+    """Probing moved the model's own outputs beyond the tolerance."""
+
+
+@dataclass
+class _CompiledProbe:
+    """A probed program compiled and loaded once, with the files it was loaded from."""
+
+    probed: ProbedProgram
+    function: Any
+    temp_dir: TemporaryDirectory[str]
+
+
+class CoreAIProbedInspector(Inspector):
+    """
+    Inspector that reads intermediates by adding them to the model's outputs.
+
+    Needs no intermediate logger: it copies the program, appends the requested
+    operations' values to the graph's outputs, compiles the copy and runs it, so a
+    value comes back like any model output on any compute unit.
+
+    A probed value is an output the compiler may not fuse away, so the copy can be
+    placed or fused differently from the original. Each probe set is checked: the
+    copy's outputs and state are compared with an unprobed run on the same inputs,
+    within ``rtol`` and ``atol``. A set that moves them, or fails to compile or run,
+    is reduced (see ``on_perturbation``) so every value returned comes from a copy
+    that left the model's outputs in place.
+
+    Passing the check means no evidence the probes changed the model, not that a
+    probed value equals the unprobed model's internal value.
+
+    Compiled copies are kept per probe set; see ``max_cached_models``. Operation IDs
+    are Core AI operation IDs of the program passed in.
+    """
+
+    def __init__(
+        self,
+        program: AIProgram,
+        function_name: str = "main",
+        specialization_options: coreai.runtime.SpecializationOptions | None = None,
+        max_cached_models: int = 4,
+        rtol: float = 1e-3,
+        atol: float = 1e-3,
+        on_perturbation: PerturbationPolicy | str = PerturbationPolicy.SPLIT,
+    ):
+        """
+        Initialize the probed inspector.
+
+        Args:
+            program: The program to inspect. Not modified.
+            function_name: Graph to run and probe.
+            specialization_options: Options the copies are compiled with. Runtime
+                defaults when None.
+            max_cached_models: Probed copies to keep, least recently used dropped
+                first. 0 compiles on every call. The unprobed reference is kept
+                separately.
+            rtol: Relative tolerance of the perturbation check.
+            atol: Absolute tolerance of the perturbation check. Neither default is
+                tuned to a model; set them for the precision you run.
+            on_perturbation: A :class:`PerturbationPolicy` (or its string value) for
+                a set that moves the outputs. A set that fails to compile or run is
+                split, or raises under ``RAISE``.
+
+        Raises:
+            ValueError: If max_cached_models, rtol or atol is negative, or
+                on_perturbation is not a policy.
+
+        """
+        if max_cached_models < 0:
+            msg = f"max_cached_models must not be negative, got {max_cached_models}"
+            raise ValueError(msg)
+        if rtol < 0 or atol < 0:
+            msg = f"rtol and atol must not be negative, got {rtol} and {atol}"
+            raise ValueError(msg)
+        self._max_cached_models = max_cached_models
+        self._rtol = rtol
+        self._atol = atol
+        self._on_perturbation = PerturbationPolicy(on_perturbation)
+        self._compiled: OrderedDict[frozenset[int], _CompiledProbe] = OrderedDict()
+        self._reference: _CompiledProbe | None = None
+        self._program = program
+        self._function_name = function_name
+        self._specialization_options = specialization_options
+        self._last_outputs: dict[str, NDArray[Any]] | None = None
+        self._last_state: dict[str, NDArray[Any]] | None = None
+        self._perturbations: list[Perturbation] = []
+        self._perturbing_ops: set[int] = set()
+        self._failed_ops: set[int] = set()
+
+    async def get_intermediates_for_ops(
+        self,
+        op_ids: list[Inspector.OpID],
+        inputs: Any,
+        state: Mapping[str, Any] | None = None,
+    ) -> dict[Inspector.OpID, list[NDArray[Any] | None] | None]:
+        """
+        Run the model with *op_ids* added as outputs and return their values.
+
+        Args:
+            op_ids: Core AI operation IDs to read.
+            inputs: Model inputs, mapping input names to NDArray or numpy arrays.
+            state: Starting value of each state, by name. Copied, so every run starts
+                from the same values and the caller's arrays are left alone.
+
+        Returns:
+            Each requested ID mapped to its output arrays, one per result. None means
+            the operation cannot be probed (no tensor result, not in the function's
+            top-level graph, or no ID in this program), or it is in
+            :attr:`perturbing_ops` or :attr:`failed_ops`.
+
+        Raises:
+            TypeError: If inputs is not a dictionary.
+            PerturbationError: If a set moved the outputs, or failed to compile or
+                run, and the policy is ``RAISE``.
+
+        """
+        if not isinstance(inputs, dict):
+            msg = "inputs must be a dictionary mapping input names to NDArray"
+            raise TypeError(msg)
+
+        int_op_ids = list(dict.fromkeys(cast(list[int], op_ids)))
+        ndarray_inputs = {
+            name: value
+            if isinstance(value, coreai.runtime.NDArray)
+            else coreai.runtime.NDArray(value)
+            for name, value in inputs.items()
+        }
+        start_state = {
+            name: np.array(_as_numpy(value)) for name, value in (state or {}).items()
+        }
+
+        self._perturbations = []
+        self._perturbing_ops = set()
+        self._failed_ops = set()
+        reference_compiled = await self._reference_copy()
+        try:
+            reference_arrays, reference_state = await self._run(
+                reference_compiled, ndarray_inputs, start_state
+            )
+        finally:
+            if self._max_cached_models == 0:
+                self._release_reference()
+        self._last_outputs = reference_arrays
+        self._last_state = reference_state
+        reference = {**reference_arrays, **reference_state}
+
+        results: dict[int, list[NDArray[Any] | None] | None] = dict.fromkeys(int_op_ids)
+        pending = [int_op_ids]
+        while pending:
+            batch = pending.pop(0)
+            try:
+                compiled = await self._compiled_for(batch)
+                try:
+                    arrays, left_state = await self._run(
+                        compiled, ndarray_inputs, start_state
+                    )
+                finally:
+                    if self._max_cached_models == 0:
+                        compiled.temp_dir.cleanup()
+            except Exception as error:
+                if self._on_perturbation is PerturbationPolicy.RAISE:
+                    msg = f"probing {batch} failed to compile or run: {error}"
+                    raise PerturbationError(msg) from error
+                self._split_or_give_up(
+                    batch,
+                    pending,
+                    self._failed_ops,
+                    f"fails to compile or run: {error}",
+                )
+                continue
+
+            own, probed_arrays = compiled.probed.split_outputs(arrays)
+            probeable = list(compiled.probed.outputs)
+            report = compare_to_reference(
+                reference, {**own, **left_state}, probeable, self._rtol, self._atol
+            )
+            if probeable:
+                self._perturbations.append(report)
+
+            if (
+                report.within_tolerance
+                or self._on_perturbation is PerturbationPolicy.WARN
+            ):
+                if not report.within_tolerance:
+                    logger.warning(
+                        "Probing %s moved the model's outputs (max abs %.3g, "
+                        "max rel %.3g)",
+                        probeable,
+                        report.max_abs_diff,
+                        report.max_rel_diff,
+                    )
+                for op_id, values in probed_arrays.items():
+                    results[op_id] = [np.asarray(value) for value in values]
+            elif self._on_perturbation is PerturbationPolicy.RAISE:
+                msg = (
+                    f"probing {probeable} moved the model's outputs "
+                    f"(max abs {report.max_abs_diff:.3g}, "
+                    f"max rel {report.max_rel_diff:.3g})"
+                )
+                raise PerturbationError(msg)
+            else:
+                self._split_or_give_up(
+                    probeable,
+                    pending,
+                    self._perturbing_ops,
+                    "moves the model's outputs",
+                )
+        return results  # type: ignore[return-value]
+
+    @staticmethod
+    def _split_or_give_up(
+        batch: list[int],
+        pending: list[list[int]],
+        culprits: set[int],
+        why: str,
+    ) -> None:
+        """Queue the halves of a failing set, or record a failing single op."""
+        if len(batch) == 1:
+            culprits.add(batch[0])
+            logger.warning(
+                "Probing operation %d alone %s; no value returned", *batch, why
+            )
+            return
+        middle = len(batch) // 2
+        pending.extend([batch[:middle], batch[middle:]])
+
+    async def _run(
+        self,
+        compiled: _CompiledProbe,
+        inputs: Mapping[str, Any],
+        state: Mapping[str, Any],
+    ) -> tuple[dict[str, NDArray[Any]], dict[str, NDArray[Any]]]:
+        """Run a compiled copy on fresh copies of the state.
+
+        Returns:
+            Every output by name, and the state the run left behind.
+        """
+        ndarray_state = {
+            name: coreai.runtime.NDArray(np.array(value))
+            for name, value in state.items()
+        }
+        outputs = await compiled.function(inputs=dict(inputs), state=ndarray_state)
+        arrays = {name: np.array(array.numpy()) for name, array in outputs.items()}
+        left = {name: np.array(array.numpy()) for name, array in ndarray_state.items()}
+        return arrays, left
+
+    async def _compile(self, op_ids: list[int]) -> _CompiledProbe:
+        """Rewrite, save, compile and load a copy that probes *op_ids*."""
+        probed = add_probe_outputs(self._program, op_ids, self._function_name)
+        if probed.unprobed:
+            logger.warning("Cannot probe operations: %s", probed.unprobed)
+
+        temp_dir = TemporaryDirectory()
+        try:
+            asset = probed.program.save_asset(Path(temp_dir.name) / "probed.aimodel")
+            model = await coreai.runtime.AIModel.load(
+                asset.path, self._specialization_options
+            )
+            function = model.load_function(self._function_name)
+        except BaseException:
+            temp_dir.cleanup()
+            raise
+        return _CompiledProbe(probed, function, temp_dir)
+
+    async def _reference_copy(self) -> _CompiledProbe:
+        """The program compiled with nothing probed."""
+        if self._reference is None:
+            self._reference = await self._compile([])
+        return self._reference
+
+    def _release_reference(self) -> None:
+        if self._reference is not None:
+            self._reference.temp_dir.cleanup()
+            self._reference = None
+
+    async def _compiled_for(self, op_ids: list[int]) -> _CompiledProbe:
+        """The compiled copy for this set of operations, compiling it if not kept."""
+        key = frozenset(op_ids)
+        if (kept := self._compiled.get(key)) is not None:
+            self._compiled.move_to_end(key)
+            return kept
+
+        compiled = await self._compile(op_ids)
+        if self._max_cached_models > 0:
+            self._compiled[key] = compiled
+            while len(self._compiled) > self._max_cached_models:
+                self._compiled.popitem(last=False)[1].temp_dir.cleanup()
+        return compiled
+
+    def clear_cache(self) -> None:
+        """Drop every compiled copy, the reference included."""
+        while self._compiled:
+            self._compiled.popitem(last=False)[1].temp_dir.cleanup()
+        self._release_reference()
+
+    @property
+    def cached_models(self) -> int:
+        """Probed copies currently kept, the reference not counted."""
+        return len(self._compiled)
+
+    @property
+    def perturbations(self) -> list[Perturbation]:
+        """The check result for each probe set the latest call ran, in order."""
+        return list(self._perturbations)
+
+    @property
+    def perturbing_ops(self) -> set[int]:
+        """Operations that moved the model's outputs even when probed alone."""
+        return set(self._perturbing_ops)
+
+    @property
+    def failed_ops(self) -> set[int]:
+        """Operations whose copy failed to compile or run even when probed alone."""
+        return set(self._failed_ops)
+
+    @property
+    def last_outputs(self) -> dict[str, NDArray[Any]] | None:
+        """The model's outputs from the latest unprobed run, or None before one."""
+        return self._last_outputs
+
+    @property
+    def last_state(self) -> dict[str, NDArray[Any]] | None:
+        """The state the latest unprobed run left behind, or None before one."""
+        return self._last_state
+
+
+class ModuleOutputUnknownError(LookupError):
+    """A module's output cannot be read from the program with certainty."""
+
+
+async def get_module_outputs(
+    inspector: Inspector,
+    program: AIProgram,
+    module: ModulePath,
+    inputs: Any,
+    state: Mapping[str, Any] | None = None,
+) -> list[NDArray[Any]]:
+    """
+    Run a model and return the output of one module instance.
+
+    Args:
+        inspector: Inspector over *program*, a `CoreAIInspector` or a
+            `CoreAIProbedInspector`.
+        program: The program the inspector runs, converted with debug info.
+        module: Module instance path, outermost first, as in ``("Net$1", "Block$2")``.
+        inputs: Model inputs, as the inspector takes them.
+        state: Starting value of each state, by name.
+
+    Returns:
+        One array per value the module returns, ordered by Core AI operation ID. A
+        value has its producer's shape when the module reshapes it on the way out.
+
+    Raises:
+        ModuleOutputUnknownError: If no operation belongs to the module, or the
+            compiler left no operation that certainly holds its output (see
+            `module_output_op_ids`).
+        RuntimeError: If the inspector returns nothing for one of its operations.
+
+    """
+    op_ids = module_output_op_ids(program).get(module)
+    if not op_ids:
+        known = any(
+            path[: len(module)] == module
+            for path in module_paths_by_op_id(program).values()
+        )
+        msg = (
+            f"the output of {'/'.join(module)!r} is not certain in this program"
+            if known
+            else f"no operation belongs to module {'/'.join(module)!r}"
+        )
+        raise ModuleOutputUnknownError(msg)
+
+    values = await inspector.get_intermediates_for_ops(op_ids, inputs, state)
+
+    arrays: list[NDArray[Any]] = []
+    for op_id in op_ids:
+        found = values.get(op_id)
+        if not found or any(array is None for array in found):
+            msg = f"the inspector returned no value for operation {op_id}"
+            raise RuntimeError(msg)
+        arrays.extend(np.asarray(array) for array in found)
+    return arrays

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TextIO
@@ -623,6 +624,7 @@ async def compare_runs(
     excluded_operations: tuple[str, ...] | None = None,
     specialization_options: SpecializationOptions | None = None,
     weights: WeightPolicy = WeightPolicy.IGNORE,
+    state: Mapping[str, Any] | None = None,
 ) -> TimingDiff:
     """
     Benchmark both programs under identical settings and compare them.
@@ -650,6 +652,7 @@ async def compare_runs(
             otherwise unchanged dispatch on one side.
         specialization_options: Specialization options. Applied to both runs.
         weights: Whether parameter values count towards an operation's identity.
+        state: Starting state for both, by name.
 
     Returns:
         What changed between the two runs.
@@ -672,7 +675,7 @@ async def compare_runs(
         benchmarker = CoreAIBenchmarker(
             program, entry_point, excluded_operations, specialization_options
         )
-        results.append(await benchmarker.benchmark(inputs, num_runs))
+        results.append(await benchmarker.benchmark(inputs, num_runs, state))
 
     for label, result in zip(("before", "after"), results, strict=True):
         if not result.operation_timings:
