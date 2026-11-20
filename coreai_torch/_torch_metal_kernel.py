@@ -12,6 +12,7 @@ import math
 from collections import Counter
 from collections.abc import Sequence
 from functools import wraps
+from hashlib import sha256
 from typing import Any, Callable, get_args, get_origin
 
 import torch
@@ -124,6 +125,41 @@ class TorchMetalKernel(CustomMetalKernel):
             helper_src=helper_src,
             template_dtypes=template_dtypes,
         )
+
+    def template_kernel_src(
+        self: Self,
+        kernel_id: str,
+        input_metadata: list[Any],
+        result_metadata: list[Any],
+    ) -> str:
+        """Guard identical rendered helpers across kernels and specializations.
+
+        Core AI may compile multiple generated kernel sources as one Metal
+        library. Without a shared include guard, helper functions reused by
+        distinct kernels (or scalar specializations) are redefined.
+        """
+
+        source = super().template_kernel_src(
+            kernel_id,
+            input_metadata,
+            result_metadata,
+        )
+        rendered_helpers = self.helpers
+        for input_meta in input_metadata:
+            if input_meta.name in self.dtype_templates:
+                rendered_helpers = rendered_helpers.replace(
+                    self.dtype_templates[input_meta.name],
+                    input_meta.metal_dtype,
+                )
+        if not rendered_helpers.strip():
+            return source
+
+        digest = sha256(rendered_helpers.encode()).hexdigest()[:16].upper()
+        guard = f"COREAI_TORCH_HELPER_{digest}"
+        guarded_helpers = (
+            f"#ifndef {guard}\n#define {guard}\n{rendered_helpers}\n#endif  // {guard}"
+        )
+        return source.replace(rendered_helpers, guarded_helpers, 1)
 
     # ------------------------------------------------------------------
     # Torch validation

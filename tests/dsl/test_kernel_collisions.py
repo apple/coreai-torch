@@ -67,6 +67,15 @@ def _identity_kernel(name: str, *, src: str = "out[id] = x[id];") -> TorchMetalK
     )
 
 
+def _helper_guard_names(kernel: TorchMetalKernel) -> set[str]:
+    return {
+        line.removeprefix("#ifndef ")
+        for _, source in kernel.kernel_cache.values()
+        for line in source.splitlines()
+        if line.startswith("#ifndef COREAI_TORCH_HELPER_")
+    }
+
+
 # ---------------------------------------------------------------------------
 # Collision at register time
 # ---------------------------------------------------------------------------
@@ -126,6 +135,151 @@ class TestRegisterTimeCollision:
         converter = TorchConverter()
         converter.register_custom_kernels([kernel_a, kernel_b])
         # No error.
+
+
+# ---------------------------------------------------------------------------
+# Shared helper source guards
+# ---------------------------------------------------------------------------
+
+
+class TestSharedHelperGuards:
+    """Rendered helper text is emitted once per combined Metal library."""
+
+    @staticmethod
+    def test_identical_helpers_share_one_content_guard() -> None:
+        helper = (
+            "static inline float shared_increment(float value) { return value + 1.0f; }"
+        )
+
+        def make_kernel(name: str) -> TorchMetalKernel:
+            def torch_defn(x: torch.Tensor) -> torch.Tensor:
+                return x + 1
+
+            return TorchMetalKernel(
+                name,
+                input_names=["x"],
+                result_names=["out"],
+                src="out[id] = shared_increment(x[id]);",
+                torch_defn=torch_defn,
+                helper_src=helper,
+                metal_params=[
+                    MetalParameter("id", "uint", "thread_position_in_grid"),
+                ],
+            )
+
+        kernel_a = make_kernel("shared_helper_a")
+        kernel_b = make_kernel("shared_helper_b")
+
+        class Model(torch.nn.Module):
+            def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                outputs = []
+                for kernel in (kernel_a, kernel_b):
+                    outputs.append(
+                        kernel(
+                            x,
+                            threads_per_grid=(x.shape[0], 1, 1),
+                            threads_per_thread_group=(1, 1, 1),
+                            result_shapes=[list(x.shape)],
+                        ),
+                    )
+                return outputs[0], outputs[1]
+
+        _convert_model(
+            Model().eval(),
+            args=(torch.zeros(4, dtype=torch.float32),),
+            kernels=[kernel_a, kernel_b],
+            output_names=["a", "b"],
+        )
+
+        guards_a = _helper_guard_names(kernel_a)
+        guards_b = _helper_guard_names(kernel_b)
+        assert len(guards_a) == 1
+        assert guards_a == guards_b
+        guard = next(iter(guards_a))
+        for kernel in (kernel_a, kernel_b):
+            source = next(iter(kernel.kernel_cache.values()))[1]
+            assert source.count(f"#ifndef {guard}") == 1
+            assert source.count(f"#define {guard}") == 1
+            assert source.count(f"#endif  // {guard}") == 1
+
+    @staticmethod
+    def test_rendered_dtype_variants_get_distinct_guards() -> None:
+        def torch_defn(x: torch.Tensor) -> torch.Tensor:
+            return x + 1
+
+        kernel = TorchMetalKernel(
+            "templated_shared_helper",
+            input_names=["x"],
+            result_names=["out"],
+            src="out[id] = typed_increment(x[id]);",
+            torch_defn=torch_defn,
+            helper_src=(
+                "static inline TYPE typed_increment(TYPE value) "
+                "{ return value + TYPE(1); }"
+            ),
+            metal_params=[
+                MetalParameter("id", "uint", "thread_position_in_grid"),
+            ],
+            template_dtypes={"x": "TYPE"},
+        )
+
+        class Model(torch.nn.Module):
+            def forward(
+                self,
+                half_input: torch.Tensor,
+                float_input: torch.Tensor,
+            ) -> tuple[torch.Tensor, torch.Tensor]:
+                half_output = kernel(
+                    half_input,
+                    threads_per_grid=(half_input.shape[0], 1, 1),
+                    threads_per_thread_group=(1, 1, 1),
+                    result_shapes=[list(half_input.shape)],
+                )
+                float_output = kernel(
+                    float_input,
+                    threads_per_grid=(float_input.shape[0], 1, 1),
+                    threads_per_thread_group=(1, 1, 1),
+                    result_shapes=[list(float_input.shape)],
+                )
+                return half_output, float_output
+
+        _convert_model(
+            Model().eval(),
+            args=(
+                torch.zeros(4, dtype=torch.float16),
+                torch.zeros(4, dtype=torch.float32),
+            ),
+            kernels=[kernel],
+            output_names=["half_output", "float_output"],
+        )
+
+        guards = _helper_guard_names(kernel)
+        assert len(kernel.kernel_cache) == 2
+        assert len(guards) == 2
+        assert all("TYPE" not in source for _, source in kernel.kernel_cache.values())
+
+    @staticmethod
+    def test_kernel_without_helpers_is_unchanged() -> None:
+        kernel = _identity_kernel("no_helper_guard")
+
+        class Model(torch.nn.Module):
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return kernel(
+                    x,
+                    threads_per_grid=(x.shape[0], 1, 1),
+                    threads_per_thread_group=(1, 1, 1),
+                    result_shapes=[list(x.shape)],
+                )
+
+        _convert_model(
+            Model().eval(),
+            args=(torch.zeros(4, dtype=torch.float32),),
+            kernels=[kernel],
+            output_names=["out"],
+        )
+
+        source = next(iter(kernel.kernel_cache.values()))[1]
+        assert "COREAI_TORCH_HELPER_" not in source
 
 
 # ---------------------------------------------------------------------------
