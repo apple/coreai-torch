@@ -1360,8 +1360,8 @@ class TestAvgPool2dIR:
             check_file="""
                 // CHECK-LABEL: module {
                 // CHECK-NEXT:   coreai.graph private noinline @avg_pool2d_composite_{{.*}}(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "input_tensor"}, %[[ARG1:.*]]: tensor<2xsi32> {coreai.name = "kernel_size"}, %[[ARG2:.*]]: tensor<2xsi32> {coreai.name = "stride"}, %[[ARG3:.*]]: tensor<2xsi32> {coreai.name = "padding"}, %[[ARG4:.*]]: tensor<i1> {coreai.name = "ceil_mode"}, %[[ARG5:.*]]: tensor<i1> {coreai.name = "count_include_pad"}, %[[ARG6:.*]]: tensor<si32> {coreai.name = "divisor_override"}) -> tensor<1x3x4x4xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"avg_pool_2d" = {input_names = ["input", "kernel_size", "stride", "padding", "ceil_mode", "count_include_pad", "divisor_override"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "avg_pool2d_composite"} {
-                // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<2xui32>
-                // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<4.000000e+00> : tensor<f32>
+                // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<1x3x8x8xf32>
+                // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V3:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[V4:.*]] = coreai.constant dense<0> : tensor<4xui32>
@@ -1375,9 +1375,19 @@ class TestAvgPool2dIR:
                 // CHECK-NEXT:     %[[V12:.*]] = coreai.pad %[[ARG0]], %[[V11]], %[[V2]] mode = <constant> : (tensor<1x3x8x8xf32>, tensor<8xui32>, tensor<f32>) -> tensor<1x3x?x?xf32>
                 // CHECK-NEXT:     %[[V13:.*]] = coreai.cast %[[ARG1]] : tensor<2xsi32> to tensor<2xui32>
                 // CHECK-NEXT:     %[[V14:.*]] = coreai.cast %[[ARG2]] : tensor<2xsi32> to tensor<2xui32>
-                // CHECK-NEXT:     %[[V15:.*]] = coreai.sum_pool_2d %[[V12]], %[[V13]], %[[V14]], %[[V0]] : (tensor<1x3x?x?xf32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>) -> tensor<1x3x4x4xf32>
-                // CHECK-NEXT:     %[[V16:.*]] = coreai.decomposable.broadcasting_divide %[[V15]], %[[V1]] : (tensor<1x3x4x4xf32>, tensor<f32>) -> tensor<1x3x4x4xf32>
-                // CHECK-NEXT:     coreai.output %[[V16]] : tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V15:.*]] = coreai.sum_pool_2d %[[V12]], %[[V13]], %[[V14]], %[[V1]] : (tensor<1x3x?x?xf32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V16:.*]] = coreai.pad %[[V0]], %[[V11]], %[[V2]] mode = <constant> : (tensor<1x3x8x8xf32>, tensor<8xui32>, tensor<f32>) -> tensor<1x3x?x?xf32>
+                // CHECK-NEXT:     %[[V17:.*]] = coreai.sum_pool_2d %[[V16]], %[[V13]], %[[V14]], %[[V1]] : (tensor<1x3x?x?xf32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V18:.*]] = coreai.cast %[[ARG1]] : tensor<2xsi32> to tensor<2xf32>
+                // CHECK-NEXT:     %[[V19:.*]] = coreai.slice %[[V18]], %[[V7]], %[[V6]], %[[V6]] : (tensor<2xf32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V20:.*]] = coreai.slice %[[V18]], %[[V6]], %[[V5]], %[[V6]] : (tensor<2xf32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V21:.*]] = coreai.decomposable.broadcasting_mul %[[V19]], %[[V20]] : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V22:.*]] = coreai.decomposable.broadcasting_where %[[ARG5]], %[[V21]], %[[V17]] : (tensor<i1>, tensor<1xf32>, tensor<1x3x4x4xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V23:.*]] = coreai.cast %[[ARG6]] : tensor<si32> to tensor<f32>
+                // CHECK-NEXT:     %[[V24:.*]] = coreai.decomposable.broadcasting_not_equal %[[ARG6]], %[[V3]] : (tensor<si32>, tensor<si32>) -> tensor<i1>
+                // CHECK-NEXT:     %[[V25:.*]] = coreai.decomposable.broadcasting_where %[[V24]], %[[V23]], %[[V22]] : (tensor<i1>, tensor<f32>, tensor<1x3x4x4xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V26:.*]] = coreai.decomposable.broadcasting_divide %[[V15]], %[[V25]] : (tensor<1x3x4x4xf32>, tensor<1x3x4x4xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     coreai.output %[[V26]] : tensor<1x3x4x4xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x3x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0_R51:.*]] = coreai.constant dense<2> : tensor<2xsi32>
@@ -1407,8 +1417,8 @@ class TestAvgPool2dIR:
             check_file="""
                 // CHECK-LABEL: module {
                 // CHECK-NEXT:   coreai.graph private noinline @avg_pool2d_composite_{{.*}}(%[[ARG0:.*]]: tensor<1x3x8x8xf32> {coreai.name = "input_tensor"}, %[[ARG1:.*]]: tensor<2xsi32> {coreai.name = "kernel_size"}, %[[ARG2:.*]]: tensor<2xsi32> {coreai.name = "stride"}, %[[ARG3:.*]]: tensor<2xsi32> {coreai.name = "padding"}, %[[ARG4:.*]]: tensor<i1> {coreai.name = "ceil_mode"}, %[[ARG5:.*]]: tensor<i1> {coreai.name = "count_include_pad"}, %[[ARG6:.*]]: tensor<si32> {coreai.name = "divisor_override"}) -> tensor<1x3x4x4xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"avg_pool_2d" = {input_names = ["input", "kernel_size", "stride", "padding", "ceil_mode", "count_include_pad", "divisor_override"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "avg_pool2d_composite"} {
-                // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<2xui32>
-                // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<9.000000e+00> : tensor<f32>
+                // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<1x3x8x8xf32>
+                // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<2xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V3:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[V4:.*]] = coreai.constant dense<0> : tensor<4xui32>
@@ -1422,9 +1432,19 @@ class TestAvgPool2dIR:
                 // CHECK-NEXT:     %[[V12:.*]] = coreai.pad %[[ARG0]], %[[V11]], %[[V2]] mode = <constant> : (tensor<1x3x8x8xf32>, tensor<8xui32>, tensor<f32>) -> tensor<1x3x?x?xf32>
                 // CHECK-NEXT:     %[[V13:.*]] = coreai.cast %[[ARG1]] : tensor<2xsi32> to tensor<2xui32>
                 // CHECK-NEXT:     %[[V14:.*]] = coreai.cast %[[ARG2]] : tensor<2xsi32> to tensor<2xui32>
-                // CHECK-NEXT:     %[[V15:.*]] = coreai.sum_pool_2d %[[V12]], %[[V13]], %[[V14]], %[[V0]] : (tensor<1x3x?x?xf32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>) -> tensor<1x3x4x4xf32>
-                // CHECK-NEXT:     %[[V16:.*]] = coreai.decomposable.broadcasting_divide %[[V15]], %[[V1]] : (tensor<1x3x4x4xf32>, tensor<f32>) -> tensor<1x3x4x4xf32>
-                // CHECK-NEXT:     coreai.output %[[V16]] : tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V15:.*]] = coreai.sum_pool_2d %[[V12]], %[[V13]], %[[V14]], %[[V1]] : (tensor<1x3x?x?xf32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V16:.*]] = coreai.pad %[[V0]], %[[V11]], %[[V2]] mode = <constant> : (tensor<1x3x8x8xf32>, tensor<8xui32>, tensor<f32>) -> tensor<1x3x?x?xf32>
+                // CHECK-NEXT:     %[[V17:.*]] = coreai.sum_pool_2d %[[V16]], %[[V13]], %[[V14]], %[[V1]] : (tensor<1x3x?x?xf32>, tensor<2xui32>, tensor<2xui32>, tensor<2xui32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V18:.*]] = coreai.cast %[[ARG1]] : tensor<2xsi32> to tensor<2xf32>
+                // CHECK-NEXT:     %[[V19:.*]] = coreai.slice %[[V18]], %[[V7]], %[[V6]], %[[V6]] : (tensor<2xf32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V20:.*]] = coreai.slice %[[V18]], %[[V6]], %[[V5]], %[[V6]] : (tensor<2xf32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V21:.*]] = coreai.decomposable.broadcasting_mul %[[V19]], %[[V20]] : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V22:.*]] = coreai.decomposable.broadcasting_where %[[ARG5]], %[[V21]], %[[V17]] : (tensor<i1>, tensor<1xf32>, tensor<1x3x4x4xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V23:.*]] = coreai.cast %[[ARG6]] : tensor<si32> to tensor<f32>
+                // CHECK-NEXT:     %[[V24:.*]] = coreai.decomposable.broadcasting_not_equal %[[ARG6]], %[[V3]] : (tensor<si32>, tensor<si32>) -> tensor<i1>
+                // CHECK-NEXT:     %[[V25:.*]] = coreai.decomposable.broadcasting_where %[[V24]], %[[V23]], %[[V22]] : (tensor<i1>, tensor<f32>, tensor<1x3x4x4xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     %[[V26:.*]] = coreai.decomposable.broadcasting_divide %[[V15]], %[[V25]] : (tensor<1x3x4x4xf32>, tensor<1x3x4x4xf32>) -> tensor<1x3x4x4xf32>
+                // CHECK-NEXT:     coreai.output %[[V26]] : tensor<1x3x4x4xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x8x8xf32> {coreai.name = "x"}) -> (tensor<1x3x4x4xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0_R53:.*]] = coreai.constant dense<3> : tensor<2xsi32>
@@ -1437,6 +1457,28 @@ class TestAvgPool2dIR:
                 // CHECK-NEXT:     coreai.output %[[V6_R53]] : tensor<1x3x4x4xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }
+            """,
+        )
+
+    def test_count_include_pad_false_divides_by_valid_count(self) -> None:
+        class AvgPool2dExcludePad(nn.Module):
+            def forward(self, x: Tensor) -> Tensor:
+                return torch.nn.functional.avg_pool2d(
+                    x, kernel_size=3, stride=1, padding=1, count_include_pad=False
+                )
+
+        ir = get_ir(AvgPool2dExcludePad().eval(), x=torch.rand(1, 1, 3, 3))
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK-LABEL: module {
+                // CHECK:          coreai.graph private noinline @avg_pool2d_composite_{{.*}}
+                // CHECK:            coreai.sum_pool_2d
+                // CHECK:            coreai.sum_pool_2d
+                // CHECK:            coreai.decomposable.broadcasting_where
+                // CHECK:            coreai.decomposable.broadcasting_where
+                // CHECK:            coreai.decomposable.broadcasting_divide
+                // CHECK-NOT:        dense<9.000000e+00>
             """,
         )
 
@@ -1457,8 +1499,8 @@ class TestAvgPool3dIR:
             check_file="""
                 // CHECK-LABEL: module {
                 // CHECK-NEXT:   coreai.graph private noinline @avg_pool3d_composite_{{.*}}(%[[ARG0:.*]]: tensor<1x3x4x4x4xf32> {coreai.name = "input_tensor"}, %[[ARG1:.*]]: tensor<3xsi32> {coreai.name = "kernel_size"}, %[[ARG2:.*]]: tensor<3xsi32> {coreai.name = "stride"}, %[[ARG3:.*]]: tensor<3xsi32> {coreai.name = "padding"}, %[[ARG4:.*]]: tensor<i1> {coreai.name = "ceil_mode"}, %[[ARG5:.*]]: tensor<i1> {coreai.name = "count_include_pad"}, %[[ARG6:.*]]: tensor<si32> {coreai.name = "divisor_override"}) -> tensor<1x3x2x2x2xf32> attributes {{[{].*}}composite_decl = #coreai.composite_declaration<"avg_pool_3d" = {input_names = ["input", "kernel_size", "stride", "padding", "ceil_mode", "count_include_pad", "divisor_override"], op_attrs = {version = 1 : si64}, output_names = ["output"]}>, template_op = "avg_pool3d_composite"} {
-                // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1> : tensor<3xui32>
-                // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<8.000000e+00> : tensor<f32>
+                // CHECK-NEXT:     %[[V0:.*]] = coreai.constant dense<1.000000e+00> : tensor<1x3x4x4x4xf32>
+                // CHECK-NEXT:     %[[V1:.*]] = coreai.constant dense<1> : tensor<3xui32>
                 // CHECK-NEXT:     %[[V2:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
                 // CHECK-NEXT:     %[[V3:.*]] = coreai.constant dense<0> : tensor<si32>
                 // CHECK-NEXT:     %[[V4:.*]] = coreai.constant dense<0> : tensor<4xui32>
@@ -1474,9 +1516,21 @@ class TestAvgPool3dIR:
                 // CHECK-NEXT:     %[[V14:.*]] = coreai.pad %[[ARG0]], %[[V13]], %[[V2]] mode = <constant> : (tensor<1x3x4x4x4xf32>, tensor<10xui32>, tensor<f32>) -> tensor<1x3x?x?x?xf32>
                 // CHECK-NEXT:     %[[V15:.*]] = coreai.cast %[[ARG1]] : tensor<3xsi32> to tensor<3xui32>
                 // CHECK-NEXT:     %[[V16:.*]] = coreai.cast %[[ARG2]] : tensor<3xsi32> to tensor<3xui32>
-                // CHECK-NEXT:     %[[V17:.*]] = coreai.sum_pool_3d %[[V14]], %[[V15]], %[[V16]], %[[V0]] : (tensor<1x3x?x?x?xf32>, tensor<3xui32>, tensor<3xui32>, tensor<3xui32>) -> tensor<1x3x2x2x2xf32>
-                // CHECK-NEXT:     %[[V18:.*]] = coreai.decomposable.broadcasting_divide %[[V17]], %[[V1]] : (tensor<1x3x2x2x2xf32>, tensor<f32>) -> tensor<1x3x2x2x2xf32>
-                // CHECK-NEXT:     coreai.output %[[V18]] : tensor<1x3x2x2x2xf32>
+                // CHECK-NEXT:     %[[V17:.*]] = coreai.sum_pool_3d %[[V14]], %[[V15]], %[[V16]], %[[V1]] : (tensor<1x3x?x?x?xf32>, tensor<3xui32>, tensor<3xui32>, tensor<3xui32>) -> tensor<1x3x2x2x2xf32>
+                // CHECK-NEXT:     %[[V18:.*]] = coreai.pad %[[V0]], %[[V13]], %[[V2]] mode = <constant> : (tensor<1x3x4x4x4xf32>, tensor<10xui32>, tensor<f32>) -> tensor<1x3x?x?x?xf32>
+                // CHECK-NEXT:     %[[V19:.*]] = coreai.sum_pool_3d %[[V18]], %[[V15]], %[[V16]], %[[V1]] : (tensor<1x3x?x?x?xf32>, tensor<3xui32>, tensor<3xui32>, tensor<3xui32>) -> tensor<1x3x2x2x2xf32>
+                // CHECK-NEXT:     %[[V20:.*]] = coreai.cast %[[ARG1]] : tensor<3xsi32> to tensor<3xf32>
+                // CHECK-NEXT:     %[[V21:.*]] = coreai.slice %[[V20]], %[[V8]], %[[V7]], %[[V7]] : (tensor<3xf32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V22:.*]] = coreai.slice %[[V20]], %[[V7]], %[[V6]], %[[V7]] : (tensor<3xf32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V23:.*]] = coreai.decomposable.broadcasting_mul %[[V21]], %[[V22]] : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V24:.*]] = coreai.slice %[[V20]], %[[V6]], %[[V5]], %[[V7]] : (tensor<3xf32>, tensor<1xsi32>, tensor<1xsi32>, tensor<1xsi32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V25:.*]] = coreai.decomposable.broadcasting_mul %[[V23]], %[[V24]] : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+                // CHECK-NEXT:     %[[V26:.*]] = coreai.decomposable.broadcasting_where %[[ARG5]], %[[V25]], %[[V19]] : (tensor<i1>, tensor<1xf32>, tensor<1x3x2x2x2xf32>) -> tensor<1x3x2x2x2xf32>
+                // CHECK-NEXT:     %[[V27:.*]] = coreai.cast %[[ARG6]] : tensor<si32> to tensor<f32>
+                // CHECK-NEXT:     %[[V28:.*]] = coreai.decomposable.broadcasting_not_equal %[[ARG6]], %[[V3]] : (tensor<si32>, tensor<si32>) -> tensor<i1>
+                // CHECK-NEXT:     %[[V29:.*]] = coreai.decomposable.broadcasting_where %[[V28]], %[[V27]], %[[V26]] : (tensor<i1>, tensor<f32>, tensor<1x3x2x2x2xf32>) -> tensor<1x3x2x2x2xf32>
+                // CHECK-NEXT:     %[[V30:.*]] = coreai.decomposable.broadcasting_divide %[[V17]], %[[V29]] : (tensor<1x3x2x2x2xf32>, tensor<1x3x2x2x2xf32>) -> tensor<1x3x2x2x2xf32>
+                // CHECK-NEXT:     coreai.output %[[V30]] : tensor<1x3x2x2x2xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT:   coreai.graph @main(%[[ARG0]]: tensor<1x3x4x4x4xf32> {coreai.name = "x"}) -> (tensor<1x3x2x2x2xf32> {coreai.name = "{{.*}}"}){{.*}} {
                 // CHECK-NEXT:     %[[V0_R55:.*]] = coreai.constant dense<2> : tensor<3xsi32>
