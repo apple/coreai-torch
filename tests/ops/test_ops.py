@@ -4581,6 +4581,61 @@ async def test_unary_ops(x: Tensor, unary_op: Any, dynamic: bool) -> None:
     )
 
 
+_INT_UNARY_X = torch.tensor([[1, 2, 3], [5, 7, 11]], dtype=torch.int32)
+_INT_UNIT_X = torch.tensor([[-1, 0, 1], [1, 0, -1]], dtype=torch.int32)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
+    "x, unary_op",
+    [
+        (_INT_UNIT_X, torch.acos),
+        (_INT_UNARY_X, torch.acosh),
+        (_INT_UNIT_X, torch.asin),
+        (_INT_UNARY_X, torch.asinh),
+        (_INT_UNARY_X, torch.atan),
+        (torch.zeros(2, 3, dtype=torch.int32), torch.atanh),
+        (_INT_UNARY_X, torch.cos),
+        (_INT_UNARY_X, torch.cosh),
+        (_INT_UNARY_X, torch.erf),
+        (_INT_UNARY_X, torch.exp),
+        (_INT_UNARY_X, torch.log),
+        (_INT_UNARY_X, torch.rsqrt),
+        (_INT_UNARY_X, torch.sigmoid),
+        (_INT_UNARY_X, torch.sin),
+        (_INT_UNARY_X, torch.sinh),
+        (_INT_UNARY_X, torch.sqrt),
+        (_INT_UNARY_X, torch.tan),
+        (_INT_UNARY_X, torch.tanh),
+        (_INT_UNARY_X, torch.log2),
+        (_INT_UNARY_X, torch.log10),
+        (_INT_UNARY_X, torch.log1p),
+        (_INT_UNARY_X, torch.expm1),
+        (_INT_UNARY_X, torch.exp2),
+        (_INT_UNARY_X, torch.reciprocal),
+        (torch.tensor([True, False, True]), torch.sqrt),
+        # Ops whose result stays integral keep the input dtype.
+        (torch.tensor([[-3, 0, 4], [2, -1, 0]], dtype=torch.int32), torch.relu),
+        (torch.tensor([[-3, 0, 4], [2, -1, 0]], dtype=torch.int32), torch.round),
+    ],
+)
+async def test_unary_ops_integer_input(x: Tensor, unary_op: Any, dynamic: bool) -> None:
+    """Floating-point unary ops promote integer and bool inputs to float32."""
+
+    class UnaryModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+
+        def forward(self, x: Tensor) -> Tensor:
+            return unary_op(x)
+
+    model = UnaryModel().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(
+        model=model, x=x, dynamic_shapes=dynamic_shapes, atol=1e-5, rtol=1e-5
+    )
+
+
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("x", [torch.rand(2, 3)])
 @pytest.mark.parametrize("dim", [0, 1, 2, -1])

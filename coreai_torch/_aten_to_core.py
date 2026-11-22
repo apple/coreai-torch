@@ -1430,7 +1430,7 @@ def replace_sym_float(
 
 def replace_exp2(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     # exp2(x) = 2^x
-    x = _get_operand(values_map, node, 0)
+    x = _promote_to_output_type(_get_operand(values_map, node, 0), node)
     return coreai.broadcasting_pow(coreai.constant(2, dtype=x.type.element_type), x)
 
 
@@ -1497,7 +1497,7 @@ def replace_expand(values_map: dict[str, Value], node: fx.Node, loc: Location) -
 
 def replace_expm1(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
     # expm1(x) = exp(x) - 1
-    x = _get_operand(values_map, node, 0)
+    x = _promote_to_output_type(_get_operand(values_map, node, 0), node)
     return coreai.broadcasting_sub(
         coreai.exp(x), coreai.constant(1, dtype=x.type.element_type)
     )
@@ -2175,6 +2175,18 @@ def replace_linalg_vector_norm(
     return linalg_vector_norm(x)
 
 
+def _promote_to_output_type(x: Value, node: fx.Node) -> Value:
+    """Cast ``x`` to the node's output element type when they differ.
+
+    PyTorch promotes integer and bool inputs of floating-point unary ops
+    (sqrt, exp, log, ...) to the default float dtype.
+    """
+    element_type = get_output_element_type_from_node(node)
+    if x.type.element_type != element_type:
+        x = coreai.cast(x, element_type)
+    return x
+
+
 def _log_base_n(x: Value, n: int, loc: Location) -> Value:
     """Compute log base n: log_n(x) = ln(x) / ln(n)"""
     return coreai.broadcasting_divide(
@@ -2184,18 +2196,20 @@ def _log_base_n(x: Value, n: int, loc: Location) -> Value:
 
 
 def replace_log10(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
-    return _log_base_n(_get_operand(values_map, node, 0), 10, loc)
+    x = _promote_to_output_type(_get_operand(values_map, node, 0), node)
+    return _log_base_n(x, 10, loc)
 
 
 def replace_log1p(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
-    x = _get_operand(values_map, node, 0)
+    x = _promote_to_output_type(_get_operand(values_map, node, 0), node)
     return coreai.log(
         coreai.broadcasting_add(x, coreai.constant(1, dtype=x.type.element_type))
     )
 
 
 def replace_log2(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
-    return _log_base_n(_get_operand(values_map, node, 0), 2, loc)
+    x = _promote_to_output_type(_get_operand(values_map, node, 0), node)
+    return _log_base_n(x, 2, loc)
 
 
 def replace_logical_not(
@@ -2454,7 +2468,7 @@ def replace_permute(
 def replace_reciprocal(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
-    x = _get_operand(values_map, node, 0)
+    x = _promote_to_output_type(_get_operand(values_map, node, 0), node)
     return coreai.broadcasting_divide(coreai.constant(1, dtype=x.type.element_type), x)
 
 
@@ -2914,7 +2928,8 @@ def replace_unary_ops(
         "tan.default": coreai.tan,
         "tanh.default": coreai.tanh,
     }
-    return unary_ops[get_target(node)](_get_operand(values_map, node, 0))
+    x = _promote_to_output_type(_get_operand(values_map, node, 0), node)
+    return unary_ops[get_target(node)](x)
 
 
 def replace_unsqueeze(
