@@ -91,6 +91,7 @@ This page lists every PyTorch ATen operator that `TorchConverter` lowers to Core
 | `log10.default` | |
 | `log1p.default` | |
 | `log2.default` | |
+| `logcumsumexp.default` | Max-shifted `exp` and `coreai.scan` sum; fp16 inputs computed in fp32 |
 | `logical_and.default` | |
 | `logical_not.default` | |
 | `logical_or.default` | |
