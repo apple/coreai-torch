@@ -6436,6 +6436,62 @@ async def test_cumsum(
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
+class _LogcumsumexpModel(nn.Module):
+    def __init__(self, dim: int) -> None:
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x: Tensor) -> Tensor:
+        return torch.logcumsumexp(x, dim=self.dim)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
+    "input_shape,dim,dtype",
+    [
+        ((10,), 0, torch.float32),
+        ((4, 6), 0, torch.float32),
+        ((4, 6), 1, torch.float32),
+        ((3, 4, 5), 0, torch.float32),
+        ((3, 4, 5), 2, torch.float32),
+        ((4, 6), -1, torch.float32),
+        ((4, 6), 0, torch.float16),
+        ((3, 4, 5), -2, torch.float16),
+    ],
+)
+async def test_logcumsumexp(
+    input_shape: tuple[int, ...],
+    dim: int,
+    dtype: torch.dtype,
+    dynamic: bool,
+) -> None:
+    """aten.logcumsumexp(input, dim) -> log(cumsum(exp(input), dim))."""
+    x = torch.randn(input_shape, dtype=dtype) * 4
+    model = _LogcumsumexpModel(dim).eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        # exp(12) and exp(20) exceed the fp16 maximum (65504): a lowering
+        # that exponentiates the raw input returns inf.
+        [0.0, 5.0, 12.0, 20.0],
+        # exp(-20) is below the smallest fp16 subnormal: a lowering that
+        # computes the max shift in fp16 returns -inf for the first position.
+        [-20.0, 0.0, 0.0, 0.0],
+        # Within the range the fp32 max shift represents.
+        [-80.0, 0.0, 0.0, 0.0],
+    ],
+)
+async def test_logcumsumexp_fp16_range(values: list[float]) -> None:
+    """fp16 inputs whose exponentials leave the fp16 range stay finite."""
+    x = torch.tensor([values], dtype=torch.float16)
+    model = _LogcumsumexpModel(-1).eval()
+    await validate_numerical_output(model=model, x=x)
+
+
 class TestUpsampleNearest2d:
     """Test suite for aten.upsample_nearest2d.vec → coreai.interpolate (nearest_neighbor)."""
 

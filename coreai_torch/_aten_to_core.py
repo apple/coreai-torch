@@ -2971,6 +2971,35 @@ def replace_cumsum(values_map: dict[str, Value], node: fx.Node, loc: Location) -
     return coreai.scan(x, np.uint32(dim), False, combiner="sum")
 
 
+def replace_logcumsumexp(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """Converts aten.logcumsumexp to max(x) + log(cumsum(exp(x - max(x)))).
+
+    The max is taken over the whole scan axis, so every exponent is <= 0 and
+    cannot overflow. fp16 inputs are computed in fp32: in fp16, exp(x - max(x))
+    underflows to 0 once a position lies about 17 below a later maximum, which
+    would turn that position's finite result into -inf. In fp32 the same
+    happens only beyond a gap of about 100.
+    """
+    x = _get_operand(values_map, node, 0)
+    dim = node.args[1]
+    dim = dim + x.type.rank if dim < 0 else dim
+    target_type = get_output_element_type_from_node(node)
+    if x.type.element_type != target_type:
+        x = coreai.cast(x, target_type)
+    x, _, use_fp32 = prepare_compute_type_for_norm(x, target_type, loc)
+
+    max_x = coreai.reduce_max(x, [dim])
+    exp_shifted = coreai.exp(coreai.broadcasting_sub(x, max_x))
+    cum = coreai.scan(exp_shifted, np.uint32(dim), False, combiner="sum")
+    result = coreai.broadcasting_add(coreai.log(cum), max_x)
+
+    if use_fp32:
+        result = coreai.cast(result, target_type)
+    return result
+
+
 def replace_upsample_bilinear2d_vec(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
@@ -3709,6 +3738,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "cos.default": replace_unary_ops,
     "cosh.default": replace_unary_ops,
     "cumsum.default": replace_cumsum,
+    "logcumsumexp.default": replace_logcumsumexp,
     "div.Scalar": replace_truediv,
     "div.Tensor": replace_truediv,
     "div.Tensor_mode": replace_div_tensor_mode,
