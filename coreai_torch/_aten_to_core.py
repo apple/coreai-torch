@@ -98,6 +98,46 @@ def replace_alias(values_map: dict[str, Value], node: fx.Node, loc: Location) ->
     return x
 
 
+def replace_as_strided(
+    values_map: dict[str, Value], node: fx.Node, loc: Location
+) -> Value:
+    """Lowers aten.as_strided when it does not move any element.
+
+    aten.as_strided(input, size, stride, storage_offset=None) -> Tensor
+
+    adaptive_avg_pool2d with output size 1 on a channels-last input
+    decomposes to ``mean`` followed by an ``as_strided`` that keeps the shape
+    and only changes the strides of size-1 dims. Such a call returns the same
+    values as its input. Any other as_strided is rejected.
+    """
+    x = _get_operand(values_map, node, 0)
+    in_val = node.args[0].meta.get("val")
+    out_val = node.meta.get("val")
+
+    def _same(a: Any, b: Any) -> bool:
+        return str(a) == str(b)
+
+    is_identity = (
+        isinstance(in_val, torch.Tensor)
+        and isinstance(out_val, torch.Tensor)
+        and in_val.dim() == out_val.dim()
+        and all(_same(a, b) for a, b in zip(in_val.shape, out_val.shape))
+        and _same(in_val.storage_offset(), out_val.storage_offset())
+        and all(
+            _same(a, b)
+            for size, a, b in zip(out_val.shape, in_val.stride(), out_val.stride())
+            if not _same(size, 1)
+        )
+    )
+    if not is_identity:
+        raise ValueError(
+            "as_strided is only supported when it keeps the input shape and "
+            "element order (only strides of size-1 dims may change); got "
+            f"size={node.args[1]}, stride={node.args[2]}"
+        )
+    return x
+
+
 def replace_amax_default(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
@@ -3682,6 +3722,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "any.dims": replace_any_dims,
     "arange.start_step": replace_arange_start_step,
     "argmax.default": replace_argmax,
+    "as_strided.default": replace_as_strided,
     "asin.default": replace_unary_ops,
     "asinh.default": replace_unary_ops,
     "atan.default": replace_unary_ops,

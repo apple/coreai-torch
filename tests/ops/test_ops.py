@@ -598,6 +598,47 @@ async def test_adaptive_avg_pool2d(
     await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
 
 
+@pytest.mark.parametrize("permute", [False, True])
+@pytest.mark.parametrize("hw", [2, 7])
+@pytest.mark.parametrize("dynamic_batch", [False, True])
+async def test_global_avg_pool2d_channels_last_input(
+    permute: bool, hw: int, dynamic_batch: bool
+) -> None:
+    """Global average pooling of a channels-last (NHWC permuted to NCHW) input.
+
+    For a channels-last input, aten.adaptive_avg_pool2d with output size 1
+    decomposes to mean followed by an as_strided that only restrides the
+    size-1 dims. This is the classifier head of torchvision convnext and swin.
+    """
+
+    class GlobalPoolModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            if permute:
+                x = x.permute(0, 3, 1, 2)
+            return torch.nn.functional.adaptive_avg_pool2d(x, 1)
+
+    x = torch.rand(2, hw, hw, 8) if permute else torch.rand(2, 8, hw, hw)
+    dynamic_shapes = {"x": [torch.export.Dim.STATIC] * 4}
+    if dynamic_batch:
+        dynamic_shapes["x"][0] = torch.export.Dim("batch", min=2, max=64)
+    await validate_numerical_output(
+        model=GlobalPoolModel().eval(), x=x, dynamic_shapes=dynamic_shapes
+    )
+
+
+async def test_as_strided_non_identity_raises() -> None:
+    """An as_strided that moves elements is rejected instead of passed through."""
+
+    class TransposeAsStrided(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return torch.as_strided(x, (3, 2), (1, 3))
+
+    with pytest.raises(Exception, match="as_strided"):
+        await validate_numerical_output(
+            model=TransposeAsStrided().eval(), x=torch.rand(2, 3)
+        )
+
+
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
     "shape,dim,keepdim,dtype",
