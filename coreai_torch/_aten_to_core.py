@@ -2264,10 +2264,39 @@ def replace_maxpool2d_with_indices(
     dilation = args[4] if len(args) >= 5 else [1, 1]
     ceil_mode = args[5] if len(args) >= 6 else False
 
+    # In ceil mode PyTorch drops a last window that would start in the
+    # right/bottom padding, which the plain ceil formula keeps. When that
+    # happens (static spatial dims only), switch to floor mode and add just
+    # enough extra -inf padding on the right/bottom (less than one stride) for
+    # floor mode to give PyTorch's output size in each spatial dim.
+    in_hw = x.type.shape[2:]
+    extra_hw = [0, 0]
+    if ceil_mode and all(sz >= 0 for sz in in_hw):
+        outs, dropped = [], False
+        for sz, k, d, s, p in zip(in_hw, kernel_size, dilation, stride, padding):
+            out = -(-(sz + 2 * p - d * (k - 1) - 1) // s) + 1
+            if (out - 1) * s >= sz + p:
+                out -= 1
+                dropped = True
+            outs.append(out)
+        if dropped:
+            extra_hw = [
+                max(0, (out - 1) * s + d * (k - 1) + 1 - (sz + 2 * p))
+                for out, sz, k, d, s, p in zip(
+                    outs, in_hw, kernel_size, dilation, stride, padding
+                )
+            ]
+            ceil_mode = False
+
     # Perform padding manually — coreai.maxpool2d does not support padding
     x = coreai.pad(
         x,
-        np.array(4 * [0] + 2 * [padding[0]] + 2 * [padding[1]], dtype=np.uint32),
+        np.array(
+            4 * [0]
+            + [padding[0], padding[0] + extra_hw[0]]
+            + [padding[1], padding[1] + extra_hw[1]],
+            dtype=np.uint32,
+        ),
         coreai.cast(np.float32("-inf"), x.type.element_type),
     )
 
