@@ -3021,6 +3021,13 @@ async def test_maximum(x: Tensor, y: Tensor, dynamic: bool) -> None:
         ((2, 4, 16, 16), torch.float32, 3, 1, 0, 2, False, tuple()),
         ((2, 4, 16, 16), torch.float32, 3, 1, 1, 2, False, tuple()),
         ((2, 4, 16, 16), torch.float32, 3, 2, 0, 2, True, tuple()),
+        # ceil_mode + padding where the last ceil window would start in the
+        # right/bottom padding (PyTorch drops it)
+        ((1, 4, 5, 5), torch.float32, 2, 2, 1, 1, True, tuple()),
+        ((2, 4, 7, 9), torch.float32, 2, 2, 1, 1, True, tuple()),  # non-square
+        ((1, 4, 8, 11), torch.float32, 3, 3, 1, 1, True, tuple()),
+        ((1, 4, 6, 7), torch.float32, 2, 2, 1, 1, True, tuple()),  # H kept, W dropped
+        ((1, 4, 5, 5), torch.float16, 2, 2, 1, 1, True, tuple()),  # float16
         ((1, 4, 14, 20), torch.float32, 3, 2, 1, 1, False, tuple()),  # non-square
         ((2, 4, 16, 16), torch.float16, 3, 2, 1, 1, False, tuple()),  # float16
         (
@@ -3040,6 +3047,7 @@ async def test_maximum(x: Tensor, y: Tensor, dynamic: bool) -> None:
         ((2, 4, 16, 16), torch.float32, 3, 1, 0, 2, False, (0,)),
         ((2, 4, 16, 16), torch.float32, 3, 1, 1, 2, False, (0,)),
         ((2, 4, 16, 16), torch.float32, 3, 2, 0, 2, True, (0,)),
+        ((2, 4, 7, 9), torch.float32, 2, 2, 1, 1, True, (0,)),
         # Dynamic batch + channel
         ((2, 4, 16, 16), torch.float32, 3, 2, 1, 1, False, (0, 1)),
         ((2, 4, 16, 16), torch.float16, 3, 1, 0, 2, False, (0, 1)),
